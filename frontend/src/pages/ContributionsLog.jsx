@@ -51,7 +51,10 @@ export default function ContributionsLog() {
   async function saveEdit(form) {
     setBusy(true);
     try {
-      await api.patch(`/api/contributions/${editing._id}`, form);
+      await api.patch(`/api/contributions/${editing._id}`, {
+        ...form,
+        expectedUpdatedAt: editing.updatedAt,
+      });
       toast('Contribution updated');
       setEditing(null);
       load(page, methodFilter, typeFilter);
