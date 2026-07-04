@@ -83,82 +83,86 @@ export default function ContributionsLog() {
         <h1 className="mt-1 text-2xl font-bold">Log a contribution</h1>
       </header>
 
-      <ContributionForm onLogged={() => load(1, methodFilter, typeFilter)} />
-
-      <section>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">Recent</h2>
-          <div className="flex gap-2">
-            <select
-              value={typeFilter}
-              onChange={(e) => {
-                setPage(1);
-                setTypeFilter(e.target.value);
-              }}
-              className="min-h-11 rounded-lg border border-rule bg-surface px-2 text-sm"
-              aria-label="Filter by type"
-            >
-              <option value="">All types</option>
-              {types.map((t) => (
-                <option key={t._id} value={t._id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={methodFilter}
-              onChange={(e) => {
-                setPage(1);
-                setMethodFilter(e.target.value);
-              }}
-              className="min-h-11 rounded-lg border border-rule bg-surface px-2 text-sm"
-              aria-label="Filter by method"
-            >
-              <option value="">All methods</option>
-              {Object.entries(METHOD_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
+      <div className="md:grid md:grid-cols-[380px_1fr] md:items-start md:gap-6">
+        <div className="md:sticky md:top-6">
+          <ContributionForm onLogged={() => load(1, methodFilter, typeFilter)} />
         </div>
 
-        {loading ? (
-          <Loader />
-        ) : (
-          <LedgerRows
-            contributions={contributions}
-            showMember
-            onEdit={setEditing}
-            onDelete={setDeleting}
-          />
-        )}
+        <section className="mt-5 md:mt-0">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">Recent</h2>
+            <div className="flex gap-2">
+              <select
+                value={typeFilter}
+                onChange={(e) => {
+                  setPage(1);
+                  setTypeFilter(e.target.value);
+                }}
+                className="min-h-11 rounded-lg border border-rule bg-surface px-2 text-sm"
+                aria-label="Filter by type"
+              >
+                <option value="">All types</option>
+                {types.map((t) => (
+                  <option key={t._id} value={t._id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={methodFilter}
+                onChange={(e) => {
+                  setPage(1);
+                  setMethodFilter(e.target.value);
+                }}
+                className="min-h-11 rounded-lg border border-rule bg-surface px-2 text-sm"
+                aria-label="Filter by method"
+              >
+                <option value="">All methods</option>
+                {Object.entries(METHOD_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-        {pages > 1 && (
-          <nav className="mt-3 flex items-center justify-between" aria-label="Pages">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="min-h-11 rounded-lg px-3 text-sm font-medium text-primary disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <span className="amount text-xs text-muted">
-              Page {page} of {pages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.min(pages, p + 1))}
-              disabled={page === pages}
-              className="min-h-11 rounded-lg px-3 text-sm font-medium text-primary disabled:opacity-40"
-            >
-              Next
-            </button>
-          </nav>
-        )}
-      </section>
+          {loading ? (
+            <Loader />
+          ) : (
+            <LedgerRows
+              contributions={contributions}
+              showMember
+              onEdit={setEditing}
+              onDelete={setDeleting}
+            />
+          )}
+
+          {pages > 1 && (
+            <nav className="mt-3 flex items-center justify-between" aria-label="Pages">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="min-h-11 rounded-lg px-3 text-sm font-medium text-primary disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <span className="amount text-xs text-muted">
+                Page {page} of {pages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(pages, p + 1))}
+                disabled={page === pages}
+                className="min-h-11 rounded-lg px-3 text-sm font-medium text-primary disabled:opacity-40"
+              >
+                Next
+              </button>
+            </nav>
+          )}
+        </section>
+      </div>
 
       {editing && (
         <EditContributionModal

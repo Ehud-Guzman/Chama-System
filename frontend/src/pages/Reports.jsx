@@ -60,6 +60,7 @@ export default function Reports() {
         </button>
       </header>
 
+      <div className="md:grid md:grid-cols-2 md:items-start md:gap-6">
       {summary && (
         <section className="rounded-xl border border-rule bg-surface p-5">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
@@ -118,7 +119,7 @@ export default function Reports() {
         </section>
       )}
 
-      <section>
+      <section className="mt-5 md:mt-0">
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
           Audit trail
         </h2>
@@ -178,6 +179,7 @@ export default function Reports() {
           </nav>
         )}
       </section>
+      </div>
     </div>
   );
 }

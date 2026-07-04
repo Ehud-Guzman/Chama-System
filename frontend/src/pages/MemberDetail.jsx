@@ -160,23 +160,25 @@ export default function MemberDetail() {
         </div>
       </section>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-          Pledges
-        </h2>
-        <PledgeEditor memberId={member._id} byType={byType} onSaved={load} />
-      </section>
+      <div className="md:grid md:grid-cols-[320px_1fr] md:items-start md:gap-6">
+        <section>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+            Pledges
+          </h2>
+          <PledgeEditor memberId={member._id} byType={byType} onSaved={load} />
+        </section>
 
-      <section>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-          Contributions ({contributions.length})
-        </h2>
-        <LedgerRows
-          contributions={contributions}
-          onEdit={setEditingContribution}
-          onDelete={setDeletingContribution}
-        />
-      </section>
+        <section className="mt-5 md:mt-0">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+            Contributions ({contributions.length})
+          </h2>
+          <LedgerRows
+            contributions={contributions}
+            onEdit={setEditingContribution}
+            onDelete={setDeletingContribution}
+          />
+        </section>
+      </div>
 
       {editing && (
         <MemberForm
