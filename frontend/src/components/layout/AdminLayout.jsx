@@ -19,7 +19,9 @@ export default function AdminLayout({ children }) {
           Sign out
         </button>
       </header>
-      <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6 md:pb-10">{children}</main>
+      <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6 md:max-w-6xl md:px-8 md:pb-10">
+        {children}
+      </main>
       <BottomNav />
     </div>
   );

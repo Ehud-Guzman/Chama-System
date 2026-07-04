@@ -2,9 +2,10 @@ import { Link } from 'react-router-dom';
 import { money, shortDate } from '../../utils/format';
 
 // Mobile-first member list: stacked cards, no horizontal-scroll tables.
+// Cards flow into columns as the screen widens instead of staying single-file.
 export default function MemberCards({ members }) {
   return (
-    <ul className="space-y-2">
+    <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
       {members.map((m) => (
         <li key={m._id}>
           <Link
