@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import api from '../../services/api';
 import { money } from '../../utils/format';
+import StatTile from '../shared/StatTile';
 
 // Loads automatically for anyone who opens the link — no phone number needed.
 // This is the group-wide half of "open book": who the chama is, how many
 // members it has (and has ever had), and what's been raised per fund.
+// Renders as a row of tiles rather than one narrow card so it actually uses
+// the width on a desktop screen.
 export default function GroupOverview({ onChamaName }) {
   const [overview, setOverview] = useState(null);
 
@@ -23,23 +26,23 @@ export default function GroupOverview({ onChamaName }) {
   if (!overview) return null;
 
   return (
-    <section className="mt-6 overflow-hidden rounded-xl border border-rule bg-surface shadow-sm">
-      <header className="border-b border-rule px-5 py-4">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-          Group overview
-        </p>
-        <p className="amount mt-1 text-sm">
-          <span className="font-semibold">{overview.activeMembers}</span> active members
-          <span className="text-muted"> · {overview.totalMembersEver} registered all-time</span>
-        </p>
-      </header>
+    <section>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <StatTile label="Active members" value={overview.activeMembers} />
+        <StatTile label="Registered all-time" value={overview.totalMembersEver} />
+        <StatTile
+          label="Total raised, all funds"
+          value={money(overview.totalContributed)}
+          accent
+        />
+      </div>
 
       {overview.byType.length > 0 && (
-        <div className="px-5 py-4">
+        <div className="mt-3 rounded-xl border border-rule bg-surface p-4 md:p-5">
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
             Raised by contribution type
           </p>
-          <ul className="space-y-2">
+          <ul className="grid gap-x-6 gap-y-2 md:grid-cols-2">
             {overview.byType.map((t) => (
               <li key={t.name} className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="min-w-0 truncate">{t.name}</span>
@@ -49,15 +52,6 @@ export default function GroupOverview({ onChamaName }) {
           </ul>
         </div>
       )}
-
-      <footer className="border-t border-rule bg-primary/5 px-5 py-4">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-          Total raised, all funds
-        </p>
-        <p className="amount mt-1 text-2xl font-bold text-primary">
-          {money(overview.totalContributed)}
-        </p>
-      </footer>
     </section>
   );
 }
