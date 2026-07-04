@@ -55,9 +55,17 @@ export default function PublicLookup() {
           the full width. */}
       <main className="mx-auto w-full max-w-105 md:max-w-6xl">
         <div className="md:mx-auto md:max-w-105">
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted">
-            {chamaName || 'Contribution Manager'}
-          </p>
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted">
+              {chamaName || 'Contribution Manager'}
+            </p>
+            <Link
+              to="/admin/login"
+              className="shrink-0 text-xs text-muted underline-offset-2 hover:underline"
+            >
+              Admin sign in
+            </Link>
+          </div>
           <h1 className="mt-2 text-3xl font-bold leading-tight">Check your contributions</h1>
           <p className="mt-2 text-sm text-muted">
             An open book — see what the group has raised, then find your own record below.
@@ -125,12 +133,6 @@ export default function PublicLookup() {
             <DirectoryList />
           </div>
         </section>
-
-        <p className="mt-12 text-center">
-          <Link to="/admin/login" className="text-xs text-muted underline-offset-2 hover:underline">
-            Admin sign in
-          </Link>
-        </p>
       </main>
     </div>
   );
