@@ -1,9 +1,44 @@
 const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
+const Fine = require('../models/Fine');
+const ContributionType = require('../models/ContributionType');
 const { normalizePhone } = require('../utils/phone');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { parseMembersCSV } = require('../utils/csvImport');
 const { typeBreakdown } = require('../utils/typeBreakdown');
+const { buildWeeklySchedule } = require('../utils/weeklySchedule');
+
+// Shared by both the admin member view and the public passbook: pending/settled
+// fines for a member, and the week-by-week due schedule for every isWeekly
+// contribution type, anchored to this member's own joinDate.
+async function buildFinesAndSchedules(member, contributions) {
+  const [pending, settled, weeklyTypes] = await Promise.all([
+    Fine.find({ memberId: member._id, deleted: false, remaining: { $gt: 0 } })
+      .sort({ date: 1 })
+      .populate('typeId', 'name')
+      .lean(),
+    Fine.find({ memberId: member._id, deleted: false, remaining: { $lte: 0 } })
+      .sort({ date: -1 })
+      .populate('typeId', 'name')
+      .lean(),
+    ContributionType.find({ isWeekly: true, active: true }).lean(),
+  ]);
+
+  const totalOwed = pending.reduce((sum, f) => sum + f.remaining, 0);
+  const weeklySchedules = weeklyTypes.map((type) => {
+    const typeContributions = contributions.filter(
+      (c) => String(c.typeId?._id || c.typeId) === String(type._id)
+    );
+    return {
+      typeId: type._id,
+      typeName: type.name,
+      weeklyAmount: type.weeklyAmount,
+      weeks: buildWeeklySchedule(member.joinDate, type.weeklyAmount, typeContributions),
+    };
+  });
+
+  return { fines: { pending, settled, totalOwed }, weeklySchedules };
+}
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -90,8 +125,9 @@ async function getMember(req, res, next) {
     ]);
     const totalContributed = contributions.reduce((sum, c) => sum + c.amount, 0);
     const totalPledged = byType.reduce((sum, b) => sum + b.pledged, 0);
+    const { fines, weeklySchedules } = await buildFinesAndSchedules(member, contributions);
 
-    res.json({ member, contributions, totalContributed, totalPledged, byType });
+    res.json({ member, contributions, totalContributed, totalPledged, byType, fines, weeklySchedules });
   } catch (err) {
     next(err);
   }
@@ -153,7 +189,7 @@ async function updateMember(req, res, next) {
     if (!member) return res.status(404).json({ message: 'Member not found' });
     const before = snapshot(member);
 
-    const { name, phone, regNumber, notes, active } = req.body || {};
+    const { name, phone, regNumber, notes, active, joinDate } = req.body || {};
     if (name !== undefined) {
       if (!String(name).trim()) return res.status(400).json({ message: 'Name cannot be empty' });
       member.name = String(name).trim();
@@ -167,7 +203,19 @@ async function updateMember(req, res, next) {
     }
     if (regNumber !== undefined) member.regNumber = String(regNumber).trim() || undefined;
     if (notes !== undefined) member.notes = String(notes).trim();
-    if (active !== undefined) member.active = Boolean(active);
+    if (joinDate !== undefined && joinDate !== null && joinDate !== '') {
+      const d = new Date(joinDate);
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid join date' });
+      member.joinDate = d;
+    }
+    if (active !== undefined) {
+      member.active = Boolean(active);
+      // Reactivating clears the resignation record — they're a current member again.
+      if (member.active) {
+        member.resignedAt = null;
+        member.resignationReason = '';
+      }
+    }
 
     await member.save();
     await logAudit({
@@ -195,6 +243,35 @@ async function deleteMember(req, res, next) {
     await member.save();
     await logAudit({
       action: 'delete',
+      entityType: 'Member',
+      entityId: member._id,
+      performedBy: req.user._id,
+      before,
+      after: snapshot(member),
+    });
+    res.json({ member });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/members/:id/resign — explicit resignation, distinct from a plain
+// deactivation: records when and why, and is what the public resigned list is
+// keyed on.
+async function resignMember(req, res, next) {
+  try {
+    const member = await Member.findById(req.params.id);
+    if (!member) return res.status(404).json({ message: 'Member not found' });
+    if (!member.active) return res.status(400).json({ message: 'Member is already inactive' });
+    const before = snapshot(member);
+
+    member.active = false;
+    member.resignedAt = new Date();
+    member.resignationReason = String(req.body?.reason || '').trim();
+    await member.save();
+
+    await logAudit({
+      action: 'update',
       entityType: 'Member',
       entityId: member._id,
       performedBy: req.user._id,
@@ -329,6 +406,8 @@ async function buildPublicProfile(member) {
     running += c.amount;
     return {
       amount: c.amount,
+      grossAmount: c.grossAmount,
+      fineDeducted: c.fineDeducted || 0,
       date: c.date,
       method: c.method,
       type: c.typeId?.name || null,
@@ -337,6 +416,21 @@ async function buildPublicProfile(member) {
   });
 
   const totalPledged = breakdown.reduce((sum, b) => sum + b.pledged, 0);
+  const { fines, weeklySchedules } = await buildFinesAndSchedules(member, docs);
+  // Strip admin-only fields (who issued it, which contribution settled it)
+  // before this reaches the public passbook.
+  const publicFine = (f) => ({
+    type: f.typeId?.name || null,
+    amount: f.amount,
+    remaining: f.remaining,
+    reason: f.reason,
+    date: f.date,
+  });
+  const publicFines = {
+    pending: fines.pending.map(publicFine),
+    settled: fines.settled.map(publicFine),
+    totalOwed: fines.totalOwed,
+  };
 
   return {
     name: member.name,
@@ -349,7 +443,84 @@ async function buildPublicProfile(member) {
       contributed: b.contributed,
     })),
     contributions,
+    fines: publicFines,
+    weeklySchedules,
   };
+}
+
+// Renders a buildPublicProfile() result as a downloadable statement — same
+// shape used by the passbook, so what a member downloads matches what they see.
+function statementCSV(profile) {
+  const esc = (v) => {
+    const s = String(v ?? '');
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [
+    `Statement for ${esc(profile.name)}${profile.regNumber ? ` (${esc(profile.regNumber)})` : ''}`,
+    '',
+    ['Date', 'Type', 'Method', 'Amount', 'Fine deducted', 'Balance'].join(','),
+  ];
+  for (const c of profile.contributions) {
+    lines.push(
+      [
+        new Date(c.date).toISOString().slice(0, 10),
+        esc(c.type || ''),
+        esc(c.method),
+        c.amount,
+        c.fineDeducted || 0,
+        c.runningBalance,
+      ].join(',')
+    );
+  }
+  lines.push('');
+  lines.push(`Total contributed,${profile.totalContributed}`);
+  if (profile.totalPledged > 0) lines.push(`Total pledged,${profile.totalPledged}`);
+  if (profile.fines.totalOwed > 0) lines.push(`Fines owed,${profile.fines.totalOwed}`);
+  return lines.join('\r\n');
+}
+
+function sendStatement(res, profile) {
+  const slug = (profile.regNumber || profile.name).replace(/[^a-z0-9]+/gi, '-');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="statement-${slug}.csv"`);
+  res.send('﻿' + statementCSV(profile));
+}
+
+// GET /api/public/lookup/statement?phone= — PUBLIC, same access rule as publicLookup.
+async function publicLookupStatement(req, res, next) {
+  try {
+    const normalized = normalizePhone(String(req.query.phone || ''));
+    if (!normalized) {
+      return res.status(400).json({ message: 'Enter a valid phone number (e.g. 0712 345 678)' });
+    }
+    const member = await Member.findOne({ phone: normalized, active: true }).lean();
+    if (!member) return res.status(404).json({ message: 'not_found' });
+    sendStatement(res, await buildPublicProfile(member));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/public/directory/:id/statement — PUBLIC, same access rule as publicMemberProfile.
+async function publicMemberStatement(req, res, next) {
+  try {
+    const member = await Member.findOne({ _id: req.params.id, active: true }).lean();
+    if (!member) return res.status(404).json({ message: 'not_found' });
+    sendStatement(res, await buildPublicProfile(member));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/members/:id/statement — admin, any member regardless of active status.
+async function memberStatement(req, res, next) {
+  try {
+    const member = await Member.findById(req.params.id).lean();
+    if (!member) return res.status(404).json({ message: 'Member not found' });
+    sendStatement(res, await buildPublicProfile(member));
+  } catch (err) {
+    next(err);
+  }
 }
 
 // GET /api/public/lookup?phone= — PUBLIC, rate-limited, EXACT match only.
@@ -444,15 +615,56 @@ async function publicMemberProfile(req, res, next) {
   }
 }
 
+// GET /api/public/resigned?search=&page=&limit= — PUBLIC list of members who
+// explicitly resigned (resignedAt set), separate from the current directory.
+// Same full-transparency choice as publicDirectory.
+async function publicResigned(req, res, next) {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const search = String(req.query.search || '').trim();
+
+    const filter = { active: false, resignedAt: { $ne: null } };
+    if (search) {
+      const rx = new RegExp(escapeRegex(search), 'i');
+      filter.$or = [{ name: rx }, { regNumber: rx }];
+    }
+
+    const [members, total] = await Promise.all([
+      Member.find(filter).sort({ resignedAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      Member.countDocuments(filter),
+    ]);
+
+    res.json({
+      members: members.map((m) => ({
+        name: m.name,
+        regNumber: m.regNumber || null,
+        resignedAt: m.resignedAt,
+        resignationReason: m.resignationReason || '',
+      })),
+      total,
+      page,
+      pages: Math.ceil(total / limit) || 1,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   listMembers,
   getMember,
   createMember,
   updateMember,
   deleteMember,
+  resignMember,
   importMembers,
   exportMembers,
+  memberStatement,
   publicLookup,
+  publicLookupStatement,
   publicDirectory,
   publicMemberProfile,
+  publicMemberStatement,
+  publicResigned,
 };

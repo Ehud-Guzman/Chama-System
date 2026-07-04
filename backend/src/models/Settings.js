@@ -5,6 +5,7 @@ const { Schema, model } = require('mongoose');
 const SettingsSchema = new Schema(
   {
     chamaName: { type: String, required: true, trim: true, default: 'Our Chama' },
+    constitution: { type: String, default: '' },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

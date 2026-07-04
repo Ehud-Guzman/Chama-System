@@ -1,5 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
+import api from '../../services/api';
 import { money, shortDate, METHOD_LABELS } from '../../utils/format';
+import FinesPanel from '../shared/FinesPanel';
+import WeeklyScheduleTable from '../shared/WeeklyScheduleTable';
 
 const PAGE_SIZE = 20;
 
@@ -7,7 +10,9 @@ const PAGE_SIZE = 20;
 // the ledger, and a stamped total. Used both for a phone-number search result
 // and for the directory's per-member detail view — pass a fresh `key` from the
 // caller when the underlying member changes so the reveal animation replays.
-export default function PassbookCard({ result }) {
+// `statementUrl` (relative, e.g. /api/public/lookup/statement?phone=...) is
+// optional — omit it if the caller has no way to re-identify this member.
+export default function PassbookCard({ result, statementUrl }) {
   const [page, setPage] = useState(1);
   // Animates once on mount only — paging away and back doesn't replay it
   const animateRef = useRef(true);
@@ -19,14 +24,25 @@ export default function PassbookCard({ result }) {
   const animate = animateRef.current && page === 1;
 
   return (
+    <div className="space-y-4">
     <section className="overflow-hidden rounded-xl border border-rule bg-surface shadow-sm">
       {/* Passbook header */}
-      <header className="border-b border-rule px-5 py-4">
-        <h2 className="text-lg font-bold">{result.name}</h2>
-        {result.regNumber && (
-          <p className="amount mt-0.5 text-xs font-medium uppercase tracking-widest text-muted">
-            Member № {result.regNumber}
-          </p>
+      <header className="flex items-start justify-between gap-3 border-b border-rule px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold">{result.name}</h2>
+          {result.regNumber && (
+            <p className="amount mt-0.5 text-xs font-medium uppercase tracking-widest text-muted">
+              Member № {result.regNumber}
+            </p>
+          )}
+        </div>
+        {statementUrl && (
+          <a
+            href={`${api.defaults.baseURL}${statementUrl}`}
+            className="shrink-0 rounded-lg border border-rule px-3 py-2 text-xs font-medium text-primary"
+          >
+            Export statement
+          </a>
         )}
       </header>
 
@@ -77,6 +93,11 @@ export default function PassbookCard({ result }) {
                     {c.type ? `${c.type} · ` : ''}
                     {METHOD_LABELS[c.method] || c.method}
                   </span>
+                  {c.fineDeducted > 0 && (
+                    <span className="block text-xs text-alert">
+                      − {money(c.fineDeducted)} to fines (paid {money(c.grossAmount)})
+                    </span>
+                  )}
                 </span>
                 <span className="amount text-right text-sm font-semibold">{money(c.amount)}</span>
                 <span className="amount w-20 text-right text-sm font-medium text-accent">
@@ -141,5 +162,9 @@ export default function PassbookCard({ result }) {
         )}
       </footer>
     </section>
+
+    <FinesPanel fines={result.fines} />
+    <WeeklyScheduleTable schedules={result.weeklySchedules} />
+    </div>
   );
 }

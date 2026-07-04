@@ -8,6 +8,10 @@ const MemberSchema = new Schema(
     notes: { type: String, default: '' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     active: { type: Boolean, default: true },
+    // Anchor for this member's own weekly-contribution schedule (week 1 starts here).
+    joinDate: { type: Date, default: Date.now },
+    resignedAt: { type: Date, default: null },
+    resignationReason: { type: String, default: '' },
   },
   { timestamps: true }
 );

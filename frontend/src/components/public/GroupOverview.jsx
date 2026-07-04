@@ -52,6 +52,22 @@ export default function GroupOverview({ onChamaName }) {
           </ul>
         </div>
       )}
+
+      {overview.fundBalances?.length > 0 && (
+        <div className="mt-3 rounded-xl border border-rule bg-surface p-4 md:p-5">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+            Fund balances (collected minus spent)
+          </p>
+          <ul className="grid gap-x-6 gap-y-2 md:grid-cols-2">
+            {overview.fundBalances.map((f) => (
+              <li key={f.name} className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">{f.name}</span>
+                <span className="amount shrink-0 font-medium">{money(f.balance)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }

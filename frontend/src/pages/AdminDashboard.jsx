@@ -6,6 +6,8 @@ import { money } from '../utils/format';
 import AddAdminForm from '../components/shared/AddAdminForm';
 import ChamaSettingsForm from '../components/shared/ChamaSettingsForm';
 import TypeManager from '../components/contributions/TypeManager';
+import FineTypeManager from '../components/contributions/FineTypeManager';
+import ExpensesPanel from '../components/shared/ExpensesPanel';
 import StatTile from '../components/shared/StatTile';
 import Loader from '../components/shared/Loader';
 
@@ -60,6 +62,8 @@ export default function AdminDashboard() {
       <div className="grid gap-4 md:grid-cols-2 md:items-start">
         <ChamaSettingsForm />
         <TypeManager />
+        <FineTypeManager />
+        <ExpensesPanel />
         {user?.role === 'super_admin' && <AddAdminForm />}
       </div>
     </div>

@@ -4,6 +4,7 @@ import api, { apiMessage } from '../services/api';
 import GroupOverview from '../components/public/GroupOverview';
 import PassbookCard from '../components/public/PassbookCard';
 import DirectoryList from '../components/public/DirectoryList';
+import ResignedMembersList from '../components/public/ResignedMembersList';
 
 // Mirrors the backend normalizer for instant client-side validation
 function normalizePhone(input) {
@@ -19,8 +20,10 @@ export default function PublicLookup() {
   const [phone, setPhone] = useState('');
   const [status, setStatus] = useState('idle'); // idle | loading | found | notFound | error
   const [result, setResult] = useState(null);
+  const [lookedUpPhone, setLookedUpPhone] = useState('');
   const [error, setError] = useState('');
   const [chamaName, setChamaName] = useState('');
+  const [directoryTab, setDirectoryTab] = useState('current'); // current | resigned
   const onChamaName = useCallback((name) => setChamaName(name), []);
 
   async function onSubmit(e) {
@@ -37,6 +40,7 @@ export default function PublicLookup() {
     try {
       const res = await api.get('/api/public/lookup', { params: { phone: normalized } });
       setResult(res.data);
+      setLookedUpPhone(normalized);
       setStatus('found');
     } catch (err) {
       if (err.response?.status === 404) {
@@ -59,12 +63,17 @@ export default function PublicLookup() {
             <p className="text-xs font-semibold uppercase tracking-widest text-muted">
               {chamaName || 'Contribution Manager'}
             </p>
-            <Link
-              to="/admin/login"
-              className="shrink-0 text-xs text-muted underline-offset-2 hover:underline"
-            >
-              Admin sign in
-            </Link>
+            <div className="flex shrink-0 items-center gap-3">
+              <Link to="/constitution" className="text-xs text-muted underline-offset-2 hover:underline">
+                Constitution
+              </Link>
+              <Link
+                to="/admin/login"
+                className="text-xs text-muted underline-offset-2 hover:underline"
+              >
+                Admin sign in
+              </Link>
+            </div>
           </div>
           <h1 className="mt-2 text-3xl font-bold leading-tight">Check your contributions</h1>
           <p className="mt-2 text-sm text-muted">
@@ -113,7 +122,11 @@ export default function PublicLookup() {
 
           {status === 'found' && result && (
             <div className="mt-6">
-              <PassbookCard key={result.regNumber || result.name} result={result} />
+              <PassbookCard
+                key={result.regNumber || result.name}
+                result={result}
+                statementUrl={`/api/public/lookup/statement?phone=${lookedUpPhone}`}
+              />
             </div>
           )}
         </div>
@@ -123,14 +136,44 @@ export default function PublicLookup() {
         </div>
 
         <section className="mt-10">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
-            All members
-          </h2>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
+              {directoryTab === 'current' ? 'All members' : 'Resigned members'}
+            </h2>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDirectoryTab('current')}
+                aria-pressed={directoryTab === 'current'}
+                className={`min-h-9 rounded-lg border px-3 text-xs font-semibold ${
+                  directoryTab === 'current'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-rule text-muted'
+                }`}
+              >
+                Current
+              </button>
+              <button
+                type="button"
+                onClick={() => setDirectoryTab('resigned')}
+                aria-pressed={directoryTab === 'resigned'}
+                className={`min-h-9 rounded-lg border px-3 text-xs font-semibold ${
+                  directoryTab === 'resigned'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-rule text-muted'
+                }`}
+              >
+                Resigned
+              </button>
+            </div>
+          </div>
           <p className="mt-1 text-sm text-muted">
-            Browse the full membership — open to everyone, no login required.
+            {directoryTab === 'current'
+              ? 'Browse the full membership — open to everyone, no login required.'
+              : 'Members who have explicitly resigned from the group.'}
           </p>
           <div className="mt-4">
-            <DirectoryList />
+            {directoryTab === 'current' ? <DirectoryList /> : <ResignedMembersList />}
           </div>
         </section>
       </main>
