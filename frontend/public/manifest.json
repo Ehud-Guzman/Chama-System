@@ -1,0 +1,17 @@
+{
+  "name": "Contribution Manager",
+  "short_name": "Contributions",
+  "description": "Check your chama contributions",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F2F4F1",
+  "theme_color": "#166534",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
