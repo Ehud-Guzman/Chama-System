@@ -22,6 +22,10 @@ export default function ContributionForm({ onLogged }) {
   const debounceRef = useRef(null);
   const amountRef = useRef(null);
   const searchRef = useRef(null);
+  // Stable per-attempt idempotency key: only rotates after a successful
+  // submit, so a retry of a failed/dropped request reuses the same key
+  // instead of registering as a second contribution.
+  const clientRequestIdRef = useRef(crypto.randomUUID());
 
   // Contribution types load once — same list is reused across entries at a meeting
   useEffect(() => {
@@ -87,9 +91,11 @@ export default function ContributionForm({ onLogged }) {
         method,
         date,
         note: note.trim(),
+        clientRequestId: clientRequestIdRef.current,
       });
       toast(`Contribution logged — ${member.name}, ${money(value)}`);
       // Reset for the next entry; method and date persist for meeting-day speed
+      clientRequestIdRef.current = crypto.randomUUID();
       setAmount('');
       setNote('');
       clearMember();

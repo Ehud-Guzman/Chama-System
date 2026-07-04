@@ -68,7 +68,10 @@ export default function MemberDetail() {
   async function saveContribution(form) {
     setBusy(true);
     try {
-      await api.patch(`/api/contributions/${editingContribution._id}`, form);
+      await api.patch(`/api/contributions/${editingContribution._id}`, {
+        ...form,
+        expectedUpdatedAt: editingContribution.updatedAt,
+      });
       toast('Contribution updated');
       setEditingContribution(null);
       load();

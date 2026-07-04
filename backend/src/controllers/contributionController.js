@@ -4,6 +4,7 @@ const ContributionType = require('../models/ContributionType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 
 const METHODS = ['cash', 'bank', 'mobile', 'other'];
+const DUPLICATE_WINDOW_MS = 10 * 1000;
 
 // Shared validation for create/update. Returns an error message or null.
 function validateFields({ amount, date, method }, { partial = false } = {}) {
@@ -56,7 +57,17 @@ async function listContributions(req, res, next) {
 // POST /api/contributions — loggedBy comes from the JWT, never the body
 async function createContribution(req, res, next) {
   try {
-    const { memberId, typeId, amount, date, method, note } = req.body || {};
+    const { memberId, typeId, amount, date, method, note, clientRequestId } = req.body || {};
+
+    // Idempotent replay: the same submit attempt (e.g. a retried request after
+    // a dropped response) resolves to the original document, not a new one.
+    if (clientRequestId) {
+      const existing = await Contribution.findOne({ clientRequestId })
+        .populate('memberId', 'name phone regNumber')
+        .populate('typeId', 'name')
+        .lean();
+      if (existing) return res.status(200).json({ contribution: existing, replay: true });
+    }
 
     const [member, type] = await Promise.all([
       Member.findById(memberId),
@@ -71,15 +82,47 @@ async function createContribution(req, res, next) {
     const invalid = validateFields({ amount, date, method });
     if (invalid) return res.status(400).json({ message: invalid });
 
-    const contribution = await Contribution.create({
+    // Heuristic guard for duplicate submissions that don't carry a matching
+    // clientRequestId (e.g. two browser tabs each generating their own key).
+    const recentDuplicate = await Contribution.findOne({
       memberId: member._id,
       typeId: type._id,
       amount: Number(amount),
-      date: date ? new Date(date) : new Date(),
       method,
-      note: String(note || '').trim(),
-      loggedBy: req.user._id,
-    });
+      deleted: false,
+      createdAt: { $gte: new Date(Date.now() - DUPLICATE_WINDOW_MS) },
+    }).lean();
+    if (recentDuplicate) {
+      return res.status(409).json({
+        message: 'This looks like a duplicate of a contribution just logged for this member. Refresh and check before retrying.',
+      });
+    }
+
+    let contribution;
+    try {
+      contribution = await Contribution.create({
+        memberId: member._id,
+        typeId: type._id,
+        amount: Number(amount),
+        date: date ? new Date(date) : new Date(),
+        method,
+        note: String(note || '').trim(),
+        loggedBy: req.user._id,
+        clientRequestId: clientRequestId || undefined,
+      });
+    } catch (err) {
+      // Two near-simultaneous requests with the same key both passed the
+      // replay check above; the unique index is what actually decides the
+      // race. The loser fetches and returns the winner's document.
+      if (err.code === 11000 && clientRequestId) {
+        const winner = await Contribution.findOne({ clientRequestId })
+          .populate('memberId', 'name phone regNumber')
+          .populate('typeId', 'name')
+          .lean();
+        if (winner) return res.status(200).json({ contribution: winner, replay: true });
+      }
+      throw err;
+    }
 
     await logAudit({
       action: 'create',
@@ -106,9 +149,16 @@ async function updateContribution(req, res, next) {
     if (!contribution || contribution.deleted) {
       return res.status(404).json({ message: 'Contribution not found' });
     }
-    const before = snapshot(contribution);
 
-    const { typeId, amount, date, method, note } = req.body || {};
+    const { typeId, amount, date, method, note, expectedUpdatedAt } = req.body || {};
+    // Optimistic concurrency: if the editor tells us what version it loaded
+    // and someone else has since changed the record, refuse to overwrite it.
+    if (expectedUpdatedAt && new Date(expectedUpdatedAt).getTime() !== contribution.updatedAt.getTime()) {
+      return res.status(409).json({
+        message: 'This contribution was changed by someone else since you opened it. Refresh and try again.',
+      });
+    }
+    const before = snapshot(contribution);
     const invalid = validateFields({ amount, date, method }, { partial: true });
     if (invalid) return res.status(400).json({ message: invalid });
 
