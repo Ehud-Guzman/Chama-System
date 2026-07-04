@@ -17,13 +17,14 @@ async function updateSettings(req, res, next) {
     const settings = await getOrCreateSettings();
     const before = snapshot(settings);
 
-    const { chamaName } = req.body || {};
+    const { chamaName, constitution } = req.body || {};
     if (chamaName !== undefined) {
       if (!String(chamaName).trim()) {
         return res.status(400).json({ message: 'Chama name cannot be empty' });
       }
       settings.chamaName = String(chamaName).trim();
     }
+    if (constitution !== undefined) settings.constitution = String(constitution);
     settings.updatedBy = req.user._id;
 
     await settings.save();

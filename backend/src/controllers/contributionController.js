@@ -1,10 +1,42 @@
 const Contribution = require('../models/Contribution');
 const Member = require('../models/Member');
 const ContributionType = require('../models/ContributionType');
+const Fine = require('../models/Fine');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 
 const METHODS = ['cash', 'bank', 'mobile', 'other'];
 const DUPLICATE_WINDOW_MS = 10 * 1000;
+
+// Applies a gross payment against a member's pending fines, oldest first,
+// until either the fines are exhausted or the amount runs out. Returns the
+// net amount to credit as the contribution plus how much was deducted; the
+// caller records the resulting settlements against `contribution._id` once
+// the contribution document exists.
+async function allocateFinePayment(memberId, grossAmount) {
+  const pendingFines = await Fine.find({ memberId, deleted: false, remaining: { $gt: 0 } }).sort({
+    date: 1,
+  });
+
+  let remainingPayment = grossAmount;
+  const allocations = [];
+  for (const fine of pendingFines) {
+    if (remainingPayment <= 0) break;
+    const applied = Math.min(remainingPayment, fine.remaining);
+    allocations.push({ fine, applied });
+    remainingPayment -= applied;
+  }
+
+  const fineDeducted = grossAmount - remainingPayment;
+  return { netAmount: remainingPayment, fineDeducted, allocations };
+}
+
+async function recordFineSettlements(allocations, contributionId) {
+  for (const { fine, applied } of allocations) {
+    fine.remaining -= applied;
+    fine.settlements.push({ contributionId, amount: applied, date: new Date() });
+    await fine.save();
+  }
+}
 
 // Shared validation for create/update. Returns an error message or null.
 function validateFields({ amount, date, method }, { partial = false } = {}) {
@@ -98,12 +130,19 @@ async function createContribution(req, res, next) {
       });
     }
 
+    const { netAmount, fineDeducted, allocations } = await allocateFinePayment(
+      member._id,
+      Number(amount)
+    );
+
     let contribution;
     try {
       contribution = await Contribution.create({
         memberId: member._id,
         typeId: type._id,
-        amount: Number(amount),
+        amount: netAmount,
+        grossAmount: fineDeducted > 0 ? Number(amount) : null,
+        fineDeducted,
         date: date ? new Date(date) : new Date(),
         method,
         note: String(note || '').trim(),
@@ -122,6 +161,10 @@ async function createContribution(req, res, next) {
         if (winner) return res.status(200).json({ contribution: winner, replay: true });
       }
       throw err;
+    }
+
+    if (allocations.length) {
+      await recordFineSettlements(allocations, contribution._id);
     }
 
     await logAudit({

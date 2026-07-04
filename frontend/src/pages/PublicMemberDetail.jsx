@@ -49,7 +49,7 @@ export default function PublicMemberDetail() {
 
         {!loading && result && (
           <div className="mt-6">
-            <PassbookCard key={id} result={result} />
+            <PassbookCard key={id} result={result} statementUrl={`/api/public/directory/${id}/statement`} />
           </div>
         )}
       </main>

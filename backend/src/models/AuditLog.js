@@ -5,7 +5,16 @@ const AuditLogSchema = new Schema(
     action: { type: String, enum: ['create', 'update', 'delete'], required: true },
     entityType: {
       type: String,
-      enum: ['Member', 'Contribution', 'ContributionType', 'Pledge', 'Settings'],
+      enum: [
+        'Member',
+        'Contribution',
+        'ContributionType',
+        'Pledge',
+        'Settings',
+        'FineType',
+        'Fine',
+        'Expense',
+      ],
       required: true,
     },
     entityId: { type: Schema.Types.ObjectId, required: true },

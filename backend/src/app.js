@@ -7,7 +7,14 @@ const mongoSanitize = require('express-mongo-sanitize');
 const connectDB = require('./config/db');
 const { lookupLimiter, overviewLimiter, directoryLimiter } = require('./middleware/rateLimiter');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
-const { publicLookup, publicDirectory, publicMemberProfile } = require('./controllers/memberController');
+const {
+  publicLookup,
+  publicLookupStatement,
+  publicDirectory,
+  publicMemberProfile,
+  publicMemberStatement,
+  publicResigned,
+} = require('./controllers/memberController');
 const { publicOverview } = require('./controllers/overviewController');
 
 const authRoutes = require('./routes/authRoutes');
@@ -16,6 +23,9 @@ const contributionRoutes = require('./routes/contributionRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const typeRoutes = require('./routes/typeRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const fineTypeRoutes = require('./routes/fineTypeRoutes');
+const fineRoutes = require('./routes/fineRoutes');
+const expenseRoutes = require('./routes/expenseRoutes');
 
 const app = express();
 
@@ -36,11 +46,15 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // Public member lookup — rate-limited, exact match only
 app.get('/api/public/lookup', lookupLimiter, publicLookup);
+app.get('/api/public/lookup/statement', lookupLimiter, publicLookupStatement);
 // Public group overview — chama name, membership size, totals by type
 app.get('/api/public/overview', overviewLimiter, publicOverview);
 // Public member directory — full openness by design; phone numbers are masked
 app.get('/api/public/directory', directoryLimiter, publicDirectory);
 app.get('/api/public/directory/:id', directoryLimiter, publicMemberProfile);
+app.get('/api/public/directory/:id/statement', directoryLimiter, publicMemberStatement);
+// Public resigned-members list — same openness policy as the active directory
+app.get('/api/public/resigned', directoryLimiter, publicResigned);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/members', memberRoutes);
@@ -48,6 +62,9 @@ app.use('/api/contributions', contributionRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/types', typeRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/fine-types', fineTypeRoutes);
+app.use('/api/fines', fineRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

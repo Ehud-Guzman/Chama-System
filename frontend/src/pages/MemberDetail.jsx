@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
 import { money, shortDate } from '../utils/format';
@@ -8,11 +8,14 @@ import PledgeEditor from '../components/members/PledgeEditor';
 import LedgerRows from '../components/contributions/LedgerRows';
 import EditContributionModal from '../components/contributions/EditContributionModal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import ResignDialog from '../components/members/ResignDialog';
+import IssueFineForm from '../components/members/IssueFineForm';
+import FinesPanel from '../components/shared/FinesPanel';
+import WeeklyScheduleTable from '../components/shared/WeeklyScheduleTable';
 import Loader from '../components/shared/Loader';
 
 export default function MemberDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const toast = useToast();
 
   const [data, setData] = useState(null);
@@ -20,7 +23,9 @@ export default function MemberDetail() {
   const [editing, setEditing] = useState(false);
   const [editingContribution, setEditingContribution] = useState(null);
   const [deletingContribution, setDeletingContribution] = useState(null);
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [confirmingResign, setConfirmingResign] = useState(false);
+  const [issuingFine, setIssuingFine] = useState(false);
+  const [voidingFine, setVoidingFine] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -52,16 +57,45 @@ export default function MemberDetail() {
     }
   }
 
-  async function removeMember() {
+  async function resignMember(reason) {
     setBusy(true);
     try {
-      await api.delete(`/api/members/${id}`);
-      toast('Member removed');
-      navigate('/admin/members');
+      await api.post(`/api/members/${id}/resign`, { reason });
+      toast('Member resigned');
+      setConfirmingResign(false);
+      load();
     } catch (err) {
       toast(apiMessage(err), 'error');
+    } finally {
       setBusy(false);
-      setConfirmingRemove(false);
+    }
+  }
+
+  async function exportStatement() {
+    try {
+      const res = await api.get(`/api/members/${id}/statement`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `statement-${member.regNumber || member.name}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast(apiMessage(err, 'Export failed'), 'error');
+    }
+  }
+
+  async function voidFine() {
+    setBusy(true);
+    try {
+      await api.delete(`/api/fines/${voidingFine._id}`);
+      toast('Fine voided');
+      setVoidingFine(null);
+      load();
+    } catch (err) {
+      toast(apiMessage(err), 'error');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -105,7 +139,7 @@ export default function MemberDetail() {
     );
   }
 
-  const { member, contributions, totalContributed, totalPledged, byType } = data;
+  const { member, contributions, totalContributed, totalPledged, byType, fines, weeklySchedules } = data;
 
   return (
     <div className="space-y-4">
@@ -141,8 +175,14 @@ export default function MemberDetail() {
           </div>
         </div>
         <p className="mt-3 border-t border-rule pt-3 text-xs text-muted">
-          Member since {shortDate(member.createdAt)}
+          Member since {shortDate(member.joinDate || member.createdAt)}
         </p>
+        {member.resignedAt && (
+          <p className="mt-1 text-xs text-alert">
+            Resigned {shortDate(member.resignedAt)}
+            {member.resignationReason ? ` — ${member.resignationReason}` : ''}
+          </p>
+        )}
         <div className="mt-3 flex gap-3">
           <button
             type="button"
@@ -151,35 +191,82 @@ export default function MemberDetail() {
           >
             Edit
           </button>
+          <button
+            type="button"
+            onClick={exportStatement}
+            className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
+          >
+            Export statement
+          </button>
           {member.active && (
             <button
               type="button"
-              onClick={() => setConfirmingRemove(true)}
+              onClick={() => setConfirmingResign(true)}
               className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium text-alert"
             >
-              Remove member
+              Resign member
             </button>
           )}
         </div>
       </section>
 
       <div className="md:grid md:grid-cols-[320px_1fr] md:items-start md:gap-6">
-        <section>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-            Pledges
-          </h2>
-          <PledgeEditor memberId={member._id} byType={byType} onSaved={load} />
+        <section className="space-y-4">
+          <div>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+              Pledges
+            </h2>
+            <PledgeEditor memberId={member._id} byType={byType} onSaved={load} />
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">Fines</h2>
+              {!issuingFine && (
+                <button
+                  type="button"
+                  onClick={() => setIssuingFine(true)}
+                  className="text-xs font-medium text-primary"
+                >
+                  Issue fine
+                </button>
+              )}
+            </div>
+            {issuingFine ? (
+              <IssueFineForm
+                memberId={member._id}
+                onIssued={() => {
+                  setIssuingFine(false);
+                  load();
+                }}
+                onCancel={() => setIssuingFine(false)}
+              />
+            ) : (
+              <FinesPanel fines={fines} onVoid={setVoidingFine} />
+            )}
+          </div>
         </section>
 
-        <section className="mt-5 md:mt-0">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-            Contributions ({contributions.length})
-          </h2>
-          <LedgerRows
-            contributions={contributions}
-            onEdit={setEditingContribution}
-            onDelete={setDeletingContribution}
-          />
+        <section className="mt-5 space-y-4 md:mt-0">
+          <div>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+              Contributions ({contributions.length})
+            </h2>
+            <LedgerRows
+              contributions={contributions}
+              onEdit={setEditingContribution}
+              onDelete={setDeletingContribution}
+            />
+          </div>
+
+          {weeklySchedules?.length > 0 && (
+            <div>
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+                Weekly schedule
+              </h2>
+              <WeeklyScheduleTable schedules={weeklySchedules} />
+            </div>
+          )}
         </section>
       </div>
 
@@ -213,15 +300,22 @@ export default function MemberDetail() {
         onConfirm={removeContribution}
         onCancel={() => setDeletingContribution(null)}
       />
+      <ResignDialog
+        open={confirmingResign}
+        memberName={member.name}
+        busy={busy}
+        onConfirm={resignMember}
+        onCancel={() => setConfirmingResign(false)}
+      />
       <ConfirmDialog
-        open={confirmingRemove}
-        title="Remove this member?"
-        body="The member is marked inactive and hidden from public lookup. Their contribution history is kept."
-        confirmLabel="Remove"
+        open={!!voidingFine}
+        title="Void this fine?"
+        body={voidingFine ? `${money(voidingFine.remaining)} outstanding will no longer be owed.` : ''}
+        confirmLabel="Void"
         danger
         busy={busy}
-        onConfirm={removeMember}
-        onCancel={() => setConfirmingRemove(false)}
+        onConfirm={voidFine}
+        onCancel={() => setVoidingFine(null)}
       />
     </div>
   );
