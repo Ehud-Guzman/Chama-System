@@ -6,18 +6,8 @@ import { money } from '../utils/format';
 import AddAdminForm from '../components/shared/AddAdminForm';
 import ChamaSettingsForm from '../components/shared/ChamaSettingsForm';
 import TypeManager from '../components/contributions/TypeManager';
+import StatTile from '../components/shared/StatTile';
 import Loader from '../components/shared/Loader';
-
-function StatTile({ label, value, accent }) {
-  return (
-    <div className="rounded-xl border border-rule bg-surface p-4 md:p-5">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</p>
-      <p className={`amount mt-1 text-2xl font-bold md:text-3xl ${accent ? 'text-primary' : ''}`}>
-        {value}
-      </p>
-    </div>
-  );
-}
 
 export default function AdminDashboard() {
   const { user } = useAuth();

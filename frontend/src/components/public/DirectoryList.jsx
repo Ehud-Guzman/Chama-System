@@ -70,7 +70,7 @@ export default function DirectoryList() {
           </p>
         </div>
       ) : (
-        <ul className="mt-3 space-y-2">
+        <ul className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
           {members.map((m) => (
             <li key={m.id}>
               <Link

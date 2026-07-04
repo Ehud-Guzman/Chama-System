@@ -49,63 +49,70 @@ export default function PublicLookup() {
   }
 
   return (
-    <div className="min-h-dvh px-4 py-10">
-      <main className="mx-auto w-full max-w-[420px]">
-        <p className="text-xs font-semibold uppercase tracking-widest text-muted">
-          {chamaName || 'Contribution Manager'}
-        </p>
-        <h1 className="mt-2 text-3xl font-bold leading-tight">Check your contributions</h1>
-        <p className="mt-2 text-sm text-muted">
-          An open book — see what the group has raised, then find your own record below.
-        </p>
+    <div className="min-h-dvh px-4 py-10 md:px-8">
+      {/* Page widens on desktop; the hero/search stays a focused narrow
+          column inside it, everything below (overview, directory) uses
+          the full width. */}
+      <main className="mx-auto w-full max-w-105 md:max-w-6xl">
+        <div className="md:mx-auto md:max-w-105">
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted">
+            {chamaName || 'Contribution Manager'}
+          </p>
+          <h1 className="mt-2 text-3xl font-bold leading-tight">Check your contributions</h1>
+          <p className="mt-2 text-sm text-muted">
+            An open book — see what the group has raised, then find your own record below.
+          </p>
 
-        <GroupOverview onChamaName={onChamaName} />
+          <form onSubmit={onSubmit} className="mt-6">
+            <label htmlFor="phone" className="sr-only">
+              Phone number
+            </label>
+            <input
+              id="phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="07XX XXX XXX"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                if (status === 'error') setStatus('idle');
+              }}
+              className="amount h-14 w-full rounded-xl border border-rule bg-surface px-4 text-lg"
+            />
+            <button
+              type="submit"
+              disabled={status === 'loading'}
+              className="mt-3 h-14 w-full rounded-xl bg-primary text-base font-semibold text-white disabled:opacity-60"
+            >
+              {status === 'loading' ? 'Checking…' : 'Check contributions'}
+            </button>
+            {status === 'error' && (
+              <p className="mt-3 text-sm font-medium text-alert" role="alert">
+                {error}
+              </p>
+            )}
+          </form>
 
-        <form onSubmit={onSubmit} className="mt-6">
-          <label htmlFor="phone" className="sr-only">
-            Phone number
-          </label>
-          <input
-            id="phone"
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            placeholder="07XX XXX XXX"
-            value={phone}
-            onChange={(e) => {
-              setPhone(e.target.value);
-              if (status === 'error') setStatus('idle');
-            }}
-            className="amount h-14 w-full rounded-xl border border-rule bg-surface px-4 text-lg"
-          />
-          <button
-            type="submit"
-            disabled={status === 'loading'}
-            className="mt-3 h-14 w-full rounded-xl bg-primary text-base font-semibold text-white disabled:opacity-60"
-          >
-            {status === 'loading' ? 'Checking…' : 'Check contributions'}
-          </button>
-          {status === 'error' && (
-            <p className="mt-3 text-sm font-medium text-alert" role="alert">
-              {error}
-            </p>
+          {status === 'notFound' && (
+            <div className="mt-6 rounded-xl border border-rule bg-surface px-5 py-8 text-center">
+              <p className="font-semibold">No record found for that number</p>
+              <p className="mt-2 text-sm text-muted">
+                Number not registered? Contact your treasurer.
+              </p>
+            </div>
           )}
-        </form>
 
-        {status === 'notFound' && (
-          <div className="mt-6 rounded-xl border border-rule bg-surface px-5 py-8 text-center">
-            <p className="font-semibold">No record found for that number</p>
-            <p className="mt-2 text-sm text-muted">
-              Number not registered? Contact your treasurer.
-            </p>
-          </div>
-        )}
+          {status === 'found' && result && (
+            <div className="mt-6">
+              <PassbookCard key={result.regNumber || result.name} result={result} />
+            </div>
+          )}
+        </div>
 
-        {status === 'found' && result && (
-          <div className="mt-6">
-            <PassbookCard key={result.regNumber || result.name} result={result} />
-          </div>
-        )}
+        <div className="mt-10">
+          <GroupOverview onChamaName={onChamaName} />
+        </div>
 
         <section className="mt-10">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
