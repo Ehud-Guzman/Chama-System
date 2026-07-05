@@ -14,6 +14,7 @@ export default function TypeManager({ onChange }) {
     isWeekly: false,
     weeklyAmount: '',
     tracksExpenses: false,
+    isGroupFund: false,
   });
   const [busy, setBusy] = useState(false);
   const [editingWeeklyId, setEditingWeeklyId] = useState(null);
@@ -41,7 +42,14 @@ export default function TypeManager({ onChange }) {
         weeklyAmount: form.isWeekly ? Number(form.weeklyAmount) || 0 : 0,
       });
       toast('Contribution type added');
-      setForm({ name: '', description: '', isWeekly: false, weeklyAmount: '', tracksExpenses: false });
+      setForm({
+        name: '',
+        description: '',
+        isWeekly: false,
+        weeklyAmount: '',
+        tracksExpenses: false,
+        isGroupFund: false,
+      });
       load();
       onChange?.();
     } catch (err) {
@@ -55,6 +63,21 @@ export default function TypeManager({ onChange }) {
     try {
       await api.patch(`/api/types/${type._id}`, { active: !type.active });
       toast(type.active ? 'Type deactivated' : 'Type reactivated');
+      load();
+      onChange?.();
+    } catch (err) {
+      toast(apiMessage(err), 'error');
+    }
+  }
+
+  async function toggleGroupFund(type) {
+    try {
+      await api.patch(`/api/types/${type._id}`, { isGroupFund: !type.isGroupFund });
+      toast(
+        type.isGroupFund
+          ? 'Now counts toward members’ personal totals'
+          : 'Now excluded from members’ personal totals'
+      );
       load();
       onChange?.();
     } catch (err) {
@@ -108,17 +131,36 @@ export default function TypeManager({ onChange }) {
                         Fund
                       </span>
                     )}
+                    {t.isGroupFund && (
+                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-alert">
+                        Group fund
+                      </span>
+                    )}
                   </p>
                   {t.description && <p className="truncate text-xs text-muted">{t.description}</p>}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => toggleActive(t)}
-                  className="min-h-11 shrink-0 rounded-lg border border-rule px-3 text-xs font-medium"
-                >
-                  {t.active ? 'Deactivate' : 'Reactivate'}
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroupFund(t)}
+                    className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium"
+                  >
+                    {t.isGroupFund ? 'Unmark group fund' : 'Mark as group fund'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleActive(t)}
+                    className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium"
+                  >
+                    {t.active ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                </div>
               </div>
+              {t.isGroupFund && (
+                <p className="mt-1 text-xs text-muted">
+                  Belongs to the group — excluded from each member's personal contribution total.
+                </p>
+              )}
 
               {t.isWeekly && (
                 <div className="mt-2">
@@ -212,6 +254,14 @@ export default function TypeManager({ onChange }) {
             onChange={(e) => setForm({ ...form, tracksExpenses: e.target.checked })}
           />
           Tracks expenses (e.g. Chai fund spent on refreshments)
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={form.isGroupFund}
+            onChange={(e) => setForm({ ...form, isGroupFund: e.target.checked })}
+          />
+          Belongs to the group, not the individual (e.g. Chai) — excluded from personal totals
         </label>
         <button
           type="submit"

@@ -10,6 +10,7 @@ import EditContributionModal from '../components/contributions/EditContributionM
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import ResignDialog from '../components/members/ResignDialog';
 import IssueFineForm from '../components/members/IssueFineForm';
+import MessageMemberPanel from '../components/members/MessageMemberPanel';
 import FinesPanel from '../components/shared/FinesPanel';
 import WeeklyScheduleTable from '../components/shared/WeeklyScheduleTable';
 import Loader from '../components/shared/Loader';
@@ -247,6 +248,8 @@ export default function MemberDetail() {
               <FinesPanel fines={fines} onVoid={setVoidingFine} />
             )}
           </div>
+
+          <MessageMemberPanel member={member} pendingFinesTotal={fines?.totalOwed || 0} />
         </section>
 
         <section className="mt-5 space-y-4 md:mt-0">

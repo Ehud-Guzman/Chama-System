@@ -59,6 +59,45 @@ async function createExpense(req, res, next) {
   }
 }
 
+// PATCH /api/expenses/:id — edit amount/date/description (e.g. correcting the
+// tea/water expense once the actual cost is known)
+async function updateExpense(req, res, next) {
+  try {
+    const expense = await Expense.findById(req.params.id);
+    if (!expense || expense.deleted) return res.status(404).json({ message: 'Expense not found' });
+    const before = snapshot(expense);
+
+    const { amount, date, description } = req.body || {};
+    if (amount !== undefined) {
+      const n = Number(amount);
+      if (!Number.isFinite(n) || n <= 0) {
+        return res.status(400).json({ message: 'Amount must be a number greater than zero' });
+      }
+      expense.amount = n;
+    }
+    if (date !== undefined && date !== null && date !== '') {
+      const d = new Date(date);
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid date' });
+      expense.date = d;
+    }
+    if (description !== undefined) expense.description = String(description).trim();
+
+    await expense.save();
+    await logAudit({
+      action: 'update',
+      entityType: 'Expense',
+      entityId: expense._id,
+      performedBy: req.user._id,
+      before,
+      after: snapshot(expense),
+    });
+    const populated = await Expense.findById(expense._id).populate('typeId', 'name').lean();
+    res.json({ expense: populated });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // DELETE /api/expenses/:id — soft delete
 async function deleteExpense(req, res, next) {
   try {
@@ -82,4 +121,4 @@ async function deleteExpense(req, res, next) {
   }
 }
 
-module.exports = { listExpenses, createExpense, deleteExpense };
+module.exports = { listExpenses, createExpense, updateExpense, deleteExpense };

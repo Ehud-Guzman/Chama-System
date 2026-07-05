@@ -12,9 +12,14 @@
 //      (deleting Users would lock everyone out; Settings holds the chama
 //      name/constitution, unrelated to this data).
 //   2. Recreates the contribution types this ledger needs: "Weekly
-//      Contribution" (1,400/week), "Chai" (100/week, tracks expenses),
-//      "Fines & Penalties", "Registration Fees", "Resignation Fund" (tracks
-//      expenses).
+//      Contribution" (1,400/week, personal — counts toward each member's own
+//      total), "Chai" (100/week, tracks expenses, group fund — collected
+//      from everyone but spent on refreshments, never counts as anyone's
+//      personal savings), "Fines & Penalties", "Registration Fees" (fee paid
+//      by incoming members), and "Resignation Fines" (charged to members who
+//      resign partway through a cycle) — the latter three are also group
+//      funds, per the treasurer: this money becomes the group's, it must
+//      never inflate a member's personal contributed total.
 //   3. Creates the 32 members from the sheet with PLACEHOLDER phone numbers
 //      (0700000001, 0700000002, ...) — the real numbers are being collected
 //      separately and must be entered via the admin UI before a member can
@@ -103,8 +108,11 @@ const REGISTRATION_TOTAL = 19200; // unchanged this week (NIL)
 const TEA_BALANCE_PREVIOUS = 100150;
 const TEA_BALANCE_CONTRIBUTION_THIS_WEEK = 1560;
 const TEA_BALANCE_DEBT_THIS_WEEK = 140;
-const RESIGNATION_PREVIOUS = 23550;
-const RESIGNATION_TOTAL = 19200; // a payout this week (previous - total)
+// Resignation fines charged to members who left partway through a cycle.
+// The sheet shows this dropping from 23,550 to 19,200 this week — per the
+// treasurer this bucket is fine revenue, not a payout, so we seed the
+// current (week 75) figure rather than trying to model the drop as an expense.
+const RESIGNATION_CURRENT_TOTAL = 19200;
 
 function joinDateFromWeek(sheetDate, weekNumber) {
   const d = new Date(sheetDate);
@@ -200,26 +208,37 @@ async function main() {
       isWeekly: true,
       weeklyAmount: CHAI_WEEKLY_AMOUNT,
       tracksExpenses: true,
+      isGroupFund: true,
       createdBy: admin._id,
     },
     'ContributionType'
   );
   const finesType = await createLogged(
     ContributionType,
-    { name: 'Fines & Penalties', description: 'Historical fines collected', createdBy: admin._id },
+    {
+      name: 'Fines & Penalties',
+      description: 'Historical fines collected',
+      isGroupFund: true,
+      createdBy: admin._id,
+    },
     'ContributionType'
   );
   const registrationType = await createLogged(
     ContributionType,
-    { name: 'Registration Fees', description: 'One-time member registration fee', createdBy: admin._id },
+    {
+      name: 'Registration Fees',
+      description: 'One-time fee paid by incoming members',
+      isGroupFund: true,
+      createdBy: admin._id,
+    },
     'ContributionType'
   );
   const resignationType = await createLogged(
     ContributionType,
     {
-      name: 'Resignation Fund',
-      description: 'Payouts to members who have resigned',
-      tracksExpenses: true,
+      name: 'Resignation Fines',
+      description: 'Fines charged to members who resign partway through a cycle',
+      isGroupFund: true,
       createdBy: admin._id,
     },
     'ContributionType'
@@ -399,28 +418,14 @@ async function main() {
     {
       memberId: systemMember._id,
       typeId: resignationType._id,
-      amount: RESIGNATION_PREVIOUS,
-      date: openingDate,
+      amount: RESIGNATION_CURRENT_TOTAL,
+      date: SHEET_DATE,
       method: 'other',
-      note: `Opening resignation fund balance, per paper ledger through week ${WEEK_NUMBER - 1}`,
+      note: `Resignation fines collected, per paper ledger through week ${WEEK_NUMBER}`,
       loggedBy: admin._id,
     },
     'Contribution'
   );
-  const resignationPayout = RESIGNATION_PREVIOUS - RESIGNATION_TOTAL;
-  if (resignationPayout > 0) {
-    await createLogged(
-      Expense,
-      {
-        typeId: resignationType._id,
-        amount: resignationPayout,
-        date: SHEET_DATE,
-        description: `Resignation payout, week ${WEEK_NUMBER}, per paper ledger`,
-        loggedBy: admin._id,
-      },
-      'Expense'
-    );
-  }
 
   console.log('\n--- Import complete ---');
   console.log(`Members created:      ${membersCreated}`);
