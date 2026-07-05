@@ -26,6 +26,7 @@ const settingsRoutes = require('./routes/settingsRoutes');
 const fineTypeRoutes = require('./routes/fineTypeRoutes');
 const fineRoutes = require('./routes/fineRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
+const minuteRoutes = require('./routes/minuteRoutes');
 
 const app = express();
 
@@ -65,6 +66,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/fine-types', fineTypeRoutes);
 app.use('/api/fines', fineRoutes);
 app.use('/api/expenses', expenseRoutes);
+app.use('/api/minutes', minuteRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

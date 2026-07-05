@@ -14,6 +14,8 @@ export default function ExpensesPanel() {
   const [balance, setBalance] = useState(null);
   const [form, setForm] = useState({ amount: '', description: '', date: todayISO() });
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ amount: '', description: '', date: '' });
 
   useEffect(() => {
     api
@@ -61,6 +63,51 @@ export default function ExpensesPanel() {
     }
   }
 
+  function startEdit(expense) {
+    setEditingId(expense._id);
+    setEditForm({
+      amount: String(expense.amount),
+      description: expense.description || '',
+      date: new Date(expense.date).toISOString().slice(0, 10),
+    });
+  }
+
+  async function saveEdit(id) {
+    const n = Number(editForm.amount);
+    if (!Number.isFinite(n) || n <= 0) {
+      toast('Enter an amount greater than zero', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.patch(`/api/expenses/${id}`, {
+        amount: n,
+        description: editForm.description,
+        date: editForm.date,
+      });
+      toast('Expense updated');
+      setEditingId(null);
+      load(typeId);
+    } catch (err) {
+      toast(apiMessage(err), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeExpense(id) {
+    setBusy(true);
+    try {
+      await api.delete(`/api/expenses/${id}`);
+      toast('Expense deleted');
+      load(typeId);
+    } catch (err) {
+      toast(apiMessage(err), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (fundTypes.length === 0) return null;
 
   return (
@@ -100,15 +147,78 @@ export default function ExpensesPanel() {
 
       {expenses.length > 0 && (
         <ul className="mt-3 divide-y divide-rule">
-          {expenses.map((e) => (
-            <li key={e._id} className="flex items-center justify-between gap-3 py-2">
-              <div className="min-w-0">
-                <p className="truncate text-sm">{e.description || 'Expense'}</p>
-                <p className="text-xs text-muted">{shortDate(e.date)}</p>
-              </div>
-              <span className="amount shrink-0 text-sm font-medium text-alert">{money(e.amount)}</span>
-            </li>
-          ))}
+          {expenses.map((e) =>
+            editingId === e._id ? (
+              <li key={e._id} className="space-y-2 py-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={editForm.amount}
+                    onChange={(ev) => setEditForm({ ...editForm, amount: ev.target.value })}
+                    className="amount h-10 w-28 rounded-lg border border-rule px-2 text-sm"
+                    aria-label="Edit expense amount"
+                  />
+                  <input
+                    type="text"
+                    value={editForm.description}
+                    onChange={(ev) => setEditForm({ ...editForm, description: ev.target.value })}
+                    className="h-10 flex-1 rounded-lg border border-rule px-2 text-sm"
+                    aria-label="Edit expense description"
+                  />
+                  <input
+                    type="date"
+                    max={todayISO()}
+                    value={editForm.date}
+                    onChange={(ev) => setEditForm({ ...editForm, date: ev.target.value })}
+                    className="h-10 rounded-lg border border-rule px-2 text-sm"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => saveEdit(e._id)}
+                    disabled={busy}
+                    className="min-h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-white disabled:opacity-60"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(null)}
+                    className="min-h-9 rounded-lg border border-rule px-3 text-xs font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeExpense(e._id)}
+                    disabled={busy}
+                    className="min-h-9 rounded-lg border border-rule px-3 text-xs font-medium text-alert disabled:opacity-60"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            ) : (
+              <li key={e._id} className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm">{e.description || 'Expense'}</p>
+                  <p className="text-xs text-muted">{shortDate(e.date)}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="amount text-sm font-medium text-alert">{money(e.amount)}</span>
+                  <button
+                    type="button"
+                    onClick={() => startEdit(e)}
+                    className="min-h-9 rounded-lg border border-rule px-2 text-xs font-medium"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </li>
+            )
+          )}
         </ul>
       )}
 

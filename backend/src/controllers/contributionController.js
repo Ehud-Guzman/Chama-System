@@ -75,7 +75,7 @@ async function listContributions(req, res, next) {
         .limit(limit)
         .populate('memberId', 'name phone regNumber')
         .populate('loggedBy', 'name')
-        .populate('typeId', 'name')
+        .populate('typeId', 'name isGroupFund')
         .lean(),
       Contribution.countDocuments(filter),
     ]);

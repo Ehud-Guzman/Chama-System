@@ -14,6 +14,7 @@ const AuditLogSchema = new Schema(
         'FineType',
         'Fine',
         'Expense',
+        'Minute',
       ],
       required: true,
     },

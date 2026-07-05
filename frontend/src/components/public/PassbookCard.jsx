@@ -98,6 +98,11 @@ export default function PassbookCard({ result, statementUrl }) {
                       − {money(c.fineDeducted)} to fines (paid {money(c.grossAmount)})
                     </span>
                   )}
+                  {c.isGroupFund && (
+                    <span className="block text-xs text-muted">
+                      Group fund — not counted in your personal balance
+                    </span>
+                  )}
                 </span>
                 <span className="amount text-right text-sm font-semibold">{money(c.amount)}</span>
                 <span className="amount w-20 text-right text-sm font-medium text-accent">

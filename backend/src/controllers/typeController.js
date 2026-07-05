@@ -15,7 +15,7 @@ async function listTypes(req, res, next) {
 // POST /api/types
 async function createType(req, res, next) {
   try {
-    const { name, description, isWeekly, weeklyAmount, tracksExpenses } = req.body || {};
+    const { name, description, isWeekly, weeklyAmount, tracksExpenses, isGroupFund } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ message: 'Name is required' });
     }
@@ -25,6 +25,7 @@ async function createType(req, res, next) {
       isWeekly: Boolean(isWeekly),
       weeklyAmount: Number(weeklyAmount) || 0,
       tracksExpenses: Boolean(tracksExpenses),
+      isGroupFund: Boolean(isGroupFund),
       createdBy: req.user._id,
     });
     await logAudit({
@@ -47,7 +48,8 @@ async function updateType(req, res, next) {
     if (!type) return res.status(404).json({ message: 'Contribution type not found' });
     const before = snapshot(type);
 
-    const { name, description, active, isWeekly, weeklyAmount, tracksExpenses } = req.body || {};
+    const { name, description, active, isWeekly, weeklyAmount, tracksExpenses, isGroupFund } =
+      req.body || {};
     if (name !== undefined) {
       if (!String(name).trim()) return res.status(400).json({ message: 'Name cannot be empty' });
       type.name = String(name).trim();
@@ -57,6 +59,7 @@ async function updateType(req, res, next) {
     if (isWeekly !== undefined) type.isWeekly = Boolean(isWeekly);
     if (weeklyAmount !== undefined) type.weeklyAmount = Number(weeklyAmount) || 0;
     if (tracksExpenses !== undefined) type.tracksExpenses = Boolean(tracksExpenses);
+    if (isGroupFund !== undefined) type.isGroupFund = Boolean(isGroupFund);
 
     await type.save();
     await logAudit({

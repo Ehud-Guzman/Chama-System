@@ -12,6 +12,11 @@ const ContributionTypeSchema = new Schema(
     weeklyAmount: { type: Number, default: 0 },
     // Marks a fund (e.g. Chai) whose balance = contributions minus logged expenses.
     tracksExpenses: { type: Boolean, default: false },
+    // Marks a shared/group fund (e.g. Chai) — money collected under this type
+    // belongs to the group, not the individual, so it's excluded from every
+    // member's personal "total contributed" figure even though it's still
+    // logged on their ledger.
+    isGroupFund: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

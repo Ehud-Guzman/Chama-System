@@ -7,6 +7,7 @@ const { logAudit, snapshot } = require('../utils/auditLogger');
 const { parseMembersCSV } = require('../utils/csvImport');
 const { typeBreakdown } = require('../utils/typeBreakdown');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
+const { nonPersonalTypeIds } = require('../utils/personalTypes');
 
 // Shared by both the admin member view and the public passbook: pending/settled
 // fines for a member, and the week-by-week due schedule for every isWeekly
@@ -80,25 +81,29 @@ async function listMembers(req, res, next) {
       Member.countDocuments(filter),
     ]);
 
-    // Per-member totals + last contribution date for the card list
+    // Per-member totals (personal types only — group funds like Chai belong to
+    // the group, not the individual, so they must not inflate this figure)
+    // + last contribution date of any kind, for the card list.
     const ids = members.map((m) => m._id);
-    const sums = await Contribution.aggregate([
-      { $match: { memberId: { $in: ids }, deleted: false } },
-      {
-        $group: {
-          _id: '$memberId',
-          totalContributed: { $sum: '$amount' },
-          lastContributionDate: { $max: '$date' },
-        },
-      },
+    const excludedTypeIds = await nonPersonalTypeIds();
+    const [personalSums, lastDates] = await Promise.all([
+      Contribution.aggregate([
+        { $match: { memberId: { $in: ids }, deleted: false, typeId: { $nin: excludedTypeIds } } },
+        { $group: { _id: '$memberId', totalContributed: { $sum: '$amount' } } },
+      ]),
+      Contribution.aggregate([
+        { $match: { memberId: { $in: ids }, deleted: false } },
+        { $group: { _id: '$memberId', lastContributionDate: { $max: '$date' } } },
+      ]),
     ]);
-    const sumMap = new Map(sums.map((s) => [String(s._id), s]));
+    const sumMap = new Map(personalSums.map((s) => [String(s._id), s]));
+    const lastDateMap = new Map(lastDates.map((s) => [String(s._id), s.lastContributionDate]));
 
     res.json({
       members: members.map((m) => ({
         ...m,
         totalContributed: sumMap.get(String(m._id))?.totalContributed || 0,
-        lastContributionDate: sumMap.get(String(m._id))?.lastContributionDate || null,
+        lastContributionDate: lastDateMap.get(String(m._id)) || null,
       })),
       total,
       page,
@@ -119,11 +124,15 @@ async function getMember(req, res, next) {
       Contribution.find({ memberId: member._id, deleted: false })
         .sort({ date: -1, createdAt: -1 })
         .populate('loggedBy', 'name')
-        .populate('typeId', 'name')
+        .populate('typeId', 'name isGroupFund')
         .lean(),
       typeBreakdown(member._id),
     ]);
-    const totalContributed = contributions.reduce((sum, c) => sum + c.amount, 0);
+    // Group-fund types (e.g. Chai) are still shown on the ledger but excluded
+    // from the personal total — that money belongs to the group, not them.
+    const totalContributed = contributions
+      .filter((c) => !c.typeId?.isGroupFund)
+      .reduce((sum, c) => sum + c.amount, 0);
     const totalPledged = byType.reduce((sum, b) => sum + b.pledged, 0);
     const { fines, weeklySchedules } = await buildFinesAndSchedules(member, contributions);
 
@@ -136,7 +145,7 @@ async function getMember(req, res, next) {
 // POST /api/members
 async function createMember(req, res, next) {
   try {
-    const { name, phone, regNumber, notes } = req.body || {};
+    const { name, phone, email, regNumber, notes } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ message: 'Name is required' });
     }
@@ -144,10 +153,15 @@ async function createMember(req, res, next) {
     if (!normalized) {
       return res.status(400).json({ message: 'Enter a valid phone number (e.g. 0712 345 678)' });
     }
+    const trimmedEmail = String(email || '').trim();
+    if (trimmedEmail && !/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
+      return res.status(400).json({ message: 'Enter a valid email address' });
+    }
 
     const doc = {
       name: String(name).trim(),
       phone: normalized,
+      email: trimmedEmail,
       notes: String(notes || '').trim(),
       createdBy: req.user._id,
     };
@@ -189,7 +203,7 @@ async function updateMember(req, res, next) {
     if (!member) return res.status(404).json({ message: 'Member not found' });
     const before = snapshot(member);
 
-    const { name, phone, regNumber, notes, active, joinDate } = req.body || {};
+    const { name, phone, email, regNumber, notes, active, joinDate } = req.body || {};
     if (name !== undefined) {
       if (!String(name).trim()) return res.status(400).json({ message: 'Name cannot be empty' });
       member.name = String(name).trim();
@@ -200,6 +214,13 @@ async function updateMember(req, res, next) {
         return res.status(400).json({ message: 'Enter a valid phone number (e.g. 0712 345 678)' });
       }
       member.phone = normalized;
+    }
+    if (email !== undefined) {
+      const trimmedEmail = String(email).trim();
+      if (trimmedEmail && !/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
+        return res.status(400).json({ message: 'Enter a valid email address' });
+      }
+      member.email = trimmedEmail;
     }
     if (regNumber !== undefined) member.regNumber = String(regNumber).trim() || undefined;
     if (notes !== undefined) member.notes = String(notes).trim();
@@ -357,8 +378,9 @@ async function exportMembers(req, res, next) {
   try {
     const members = await Member.find().sort({ name: 1 }).lean();
     const ids = members.map((m) => m._id);
+    const excludedTypeIds = await nonPersonalTypeIds();
     const sums = await Contribution.aggregate([
-      { $match: { memberId: { $in: ids }, deleted: false } },
+      { $match: { memberId: { $in: ids }, deleted: false, typeId: { $nin: excludedTypeIds } } },
       { $group: { _id: '$memberId', total: { $sum: '$amount' } } },
     ]);
     const sumMap = new Map(sums.map((s) => [String(s._id), s.total]));
@@ -396,14 +418,17 @@ async function buildPublicProfile(member) {
   const [docs, breakdown] = await Promise.all([
     Contribution.find({ memberId: member._id, deleted: false })
       .sort({ date: 1, createdAt: 1 })
-      .populate('typeId', 'name')
+      .populate('typeId', 'name isGroupFund')
       .lean(),
     typeBreakdown(member._id),
   ]);
 
+  // Group-fund contributions (e.g. Chai) still show up as their own ledger
+  // row, but don't add to the running personal balance — that money belongs
+  // to the group, not the individual.
   let running = 0;
   const contributions = docs.map((c) => {
-    running += c.amount;
+    if (!c.typeId?.isGroupFund) running += c.amount;
     return {
       amount: c.amount,
       grossAmount: c.grossAmount,
@@ -411,6 +436,7 @@ async function buildPublicProfile(member) {
       date: c.date,
       method: c.method,
       type: c.typeId?.name || null,
+      isGroupFund: !!c.typeId?.isGroupFund,
       runningBalance: running,
     };
   });
@@ -571,17 +597,19 @@ async function publicDirectory(req, res, next) {
     ]);
 
     const ids = members.map((m) => m._id);
-    const sums = await Contribution.aggregate([
-      { $match: { memberId: { $in: ids }, deleted: false } },
-      {
-        $group: {
-          _id: '$memberId',
-          total: { $sum: '$amount' },
-          lastContributionDate: { $max: '$date' },
-        },
-      },
+    const excludedTypeIds = await nonPersonalTypeIds();
+    const [personalSums, lastDates] = await Promise.all([
+      Contribution.aggregate([
+        { $match: { memberId: { $in: ids }, deleted: false, typeId: { $nin: excludedTypeIds } } },
+        { $group: { _id: '$memberId', total: { $sum: '$amount' } } },
+      ]),
+      Contribution.aggregate([
+        { $match: { memberId: { $in: ids }, deleted: false } },
+        { $group: { _id: '$memberId', lastContributionDate: { $max: '$date' } } },
+      ]),
     ]);
-    const sumMap = new Map(sums.map((s) => [String(s._id), s]));
+    const sumMap = new Map(personalSums.map((s) => [String(s._id), s.total]));
+    const lastDateMap = new Map(lastDates.map((s) => [String(s._id), s.lastContributionDate]));
 
     res.json({
       members: members.map((m) => ({
@@ -589,8 +617,8 @@ async function publicDirectory(req, res, next) {
         name: m.name,
         regNumber: m.regNumber || null,
         phoneMasked: maskPhone(m.phone),
-        totalContributed: sumMap.get(String(m._id))?.total || 0,
-        lastContributionDate: sumMap.get(String(m._id))?.lastContributionDate || null,
+        totalContributed: sumMap.get(String(m._id)) || 0,
+        lastContributionDate: lastDateMap.get(String(m._id)) || null,
       })),
       total,
       page,

@@ -29,6 +29,9 @@ export default function LedgerRows({ contributions, showMember = false, onEdit, 
               </span>
             </p>
             {c.note && <p className="truncate text-xs text-muted">{c.note}</p>}
+            {c.typeId?.isGroupFund && (
+              <p className="truncate text-xs text-muted">Group fund — not counted in personal total</p>
+            )}
           </div>
           <p className="amount shrink-0 text-right font-semibold">{money(c.amount)}</p>
           {(onEdit || onDelete) && (

@@ -5,6 +5,7 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
   const [form, setForm] = useState({
     name: initial?.name || '',
     phone: initial?.phone || '',
+    email: initial?.email || '',
     regNumber: initial?.regNumber || '',
     notes: initial?.notes || '',
   });
@@ -52,6 +53,18 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
             placeholder="07XX XXX XXX"
             value={form.phone}
             onChange={set('phone')}
+            className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm"
+          />
+        </div>
+        <div>
+          <label htmlFor="m-email" className="mb-1 block text-sm font-medium">
+            Email <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <input
+            id="m-email"
+            type="email"
+            value={form.email}
+            onChange={set('email')}
             className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm"
           />
         </div>

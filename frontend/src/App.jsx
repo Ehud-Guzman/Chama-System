@@ -15,6 +15,7 @@ const MembersList = lazy(() => import('./pages/MembersList.jsx'));
 const MemberDetail = lazy(() => import('./pages/MemberDetail.jsx'));
 const ContributionsLog = lazy(() => import('./pages/ContributionsLog.jsx'));
 const Reports = lazy(() => import('./pages/Reports.jsx'));
+const Minutes = lazy(() => import('./pages/Minutes.jsx'));
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
               <Route path="/admin/members/:id" element={<MemberDetail />} />
               <Route path="/admin/log" element={<ContributionsLog />} />
               <Route path="/admin/reports" element={<Reports />} />
+              <Route path="/admin/minutes" element={<Minutes />} />
             </Route>
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />

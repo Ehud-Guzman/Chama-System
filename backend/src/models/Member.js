@@ -4,6 +4,7 @@ const MemberSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     phone: { type: String, required: true, unique: true, index: true, trim: true },
+    email: { type: String, default: '', trim: true, lowercase: true },
     regNumber: { type: String, unique: true, sparse: true },
     notes: { type: String, default: '' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
