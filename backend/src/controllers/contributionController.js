@@ -185,6 +185,106 @@ async function createContribution(req, res, next) {
   }
 }
 
+// POST /api/contributions/bulk — logs many contributions in one request, one
+// per non-empty grid cell (member × type) from the weekly logging grid.
+// Shares the same fine-deduction/audit-log behavior as a single create, but
+// processes each entry independently so one bad row doesn't block the rest.
+async function bulkCreateContributions(req, res, next) {
+  try {
+    const { date, method, note, entries } = req.body || {};
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ message: 'No entries to log' });
+    }
+    if (!METHODS.includes(method)) {
+      return res.status(400).json({ message: 'Method must be one of: cash, bank, mobile, other' });
+    }
+    const parsedDate = date ? new Date(date) : new Date();
+    if (Number.isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ message: 'Invalid date' });
+    }
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    if (parsedDate > endOfToday) {
+      return res.status(400).json({ message: 'Date cannot be in the future' });
+    }
+
+    const memberIds = [...new Set(entries.map((e) => e.memberId))];
+    const typeIds = [...new Set(entries.map((e) => e.typeId))];
+    const [members, types] = await Promise.all([
+      Member.find({ _id: { $in: memberIds } }),
+      ContributionType.find({ _id: { $in: typeIds } }),
+    ]);
+    const memberMap = new Map(members.map((m) => [String(m._id), m]));
+    const typeMap = new Map(types.map((t) => [String(t._id), t]));
+
+    const sharedNote = String(note || '').trim();
+    const createdIds = [];
+    const skipped = [];
+
+    for (const entry of entries) {
+      const member = memberMap.get(String(entry.memberId));
+      const type = typeMap.get(String(entry.typeId));
+      const amount = Number(entry.amount);
+      const label = `${member?.name || entry.memberId} — ${type?.name || entry.typeId}`;
+
+      if (!member || !member.active) {
+        skipped.push({ ...entry, reason: `${label}: member not found or inactive` });
+        continue;
+      }
+      if (!type || !type.active) {
+        skipped.push({ ...entry, reason: `${label}: type not found or inactive` });
+        continue;
+      }
+      if (!Number.isFinite(amount) || amount <= 0) {
+        skipped.push({ ...entry, reason: `${label}: amount must be greater than zero` });
+        continue;
+      }
+
+      const recentDuplicate = await Contribution.findOne({
+        memberId: member._id,
+        typeId: type._id,
+        amount,
+        method,
+        deleted: false,
+        createdAt: { $gte: new Date(Date.now() - DUPLICATE_WINDOW_MS) },
+      }).lean();
+      if (recentDuplicate) {
+        skipped.push({ ...entry, reason: `${label}: duplicate of a contribution just logged, skipped` });
+        continue;
+      }
+
+      const { netAmount, fineDeducted, allocations } = await allocateFinePayment(member._id, amount);
+      const contribution = await Contribution.create({
+        memberId: member._id,
+        typeId: type._id,
+        amount: netAmount,
+        grossAmount: fineDeducted > 0 ? amount : null,
+        fineDeducted,
+        date: parsedDate,
+        method,
+        note: sharedNote,
+        loggedBy: req.user._id,
+      });
+      if (allocations.length) {
+        await recordFineSettlements(allocations, contribution._id);
+      }
+      await logAudit({
+        action: 'create',
+        entityType: 'Contribution',
+        entityId: contribution._id,
+        performedBy: req.user._id,
+        after: snapshot(contribution),
+      });
+      createdIds.push(contribution._id);
+    }
+
+    res.status(201).json({ created: createdIds.length, skipped });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // PATCH /api/contributions/:id
 async function updateContribution(req, res, next) {
   try {
@@ -259,4 +359,10 @@ async function deleteContribution(req, res, next) {
   }
 }
 
-module.exports = { listContributions, createContribution, updateContribution, deleteContribution };
+module.exports = {
+  listContributions,
+  createContribution,
+  bulkCreateContributions,
+  updateContribution,
+  deleteContribution,
+};
