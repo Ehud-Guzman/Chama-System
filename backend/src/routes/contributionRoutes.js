@@ -2,6 +2,7 @@ const router = require('express').Router();
 const {
   listContributions,
   createContribution,
+  bulkCreateContributions,
   updateContribution,
   deleteContribution,
 } = require('../controllers/contributionController');
@@ -11,6 +12,7 @@ router.use(requireAuth);
 
 router.get('/', listContributions);
 router.post('/', createContribution);
+router.post('/bulk', bulkCreateContributions);
 router.patch('/:id', updateContribution);
 router.delete('/:id', deleteContribution);
 
