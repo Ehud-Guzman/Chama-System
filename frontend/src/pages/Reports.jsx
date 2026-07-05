@@ -69,6 +69,7 @@ export default function Reports() {
           <p className="amount mt-1 text-3xl font-bold text-primary">
             {money(summary.totalContributed)}
           </p>
+          <p className="amount mt-1 text-sm text-muted">{money(summary.thisWeekTotal)} this week</p>
 
           <p className="mt-4 border-t border-rule pt-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
             By method

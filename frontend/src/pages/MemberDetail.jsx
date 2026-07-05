@@ -167,7 +167,9 @@ export default function MemberDetail() {
             {member.notes && <p className="mt-2 text-sm text-muted">{member.notes}</p>}
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">Total</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Total (all-time)
+            </p>
             <p className="amount text-xl font-bold text-accent">{money(totalContributed)}</p>
             {totalPledged > 0 && (
               <p className="amount mt-1 text-xs text-muted">of {money(totalPledged)} pledged</p>

@@ -9,17 +9,23 @@ const { fundBalance } = require('../utils/fundBalance');
 // per contribution type. Deliberately contains no per-member data.
 async function publicOverview(req, res, next) {
   try {
-    const [settings, activeMembers, totalMembersEver, resignedCount, types, totals] = await Promise.all([
-      getOrCreateSettings(),
-      Member.countDocuments({ active: true }),
-      Member.countDocuments(),
-      Member.countDocuments({ active: false, resignedAt: { $ne: null } }),
-      ContributionType.find({ active: true }).sort({ name: 1 }).lean(),
-      Contribution.aggregate([
-        { $match: { deleted: false } },
-        { $group: { _id: '$typeId', total: { $sum: '$amount' } } },
-      ]),
-    ]);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [settings, activeMembers, totalMembersEver, resignedCount, types, totals, thisWeekAgg] =
+      await Promise.all([
+        getOrCreateSettings(),
+        Member.countDocuments({ active: true }),
+        Member.countDocuments(),
+        Member.countDocuments({ active: false, resignedAt: { $ne: null } }),
+        ContributionType.find({ active: true }).sort({ name: 1 }).lean(),
+        Contribution.aggregate([
+          { $match: { deleted: false } },
+          { $group: { _id: '$typeId', total: { $sum: '$amount' } } },
+        ]),
+        Contribution.aggregate([
+          { $match: { deleted: false, date: { $gte: sevenDaysAgo } } },
+          { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]),
+      ]);
 
     const totalsMap = new Map(totals.map((t) => [String(t._id), t.total]));
     const byType = types.map((t) => ({
@@ -28,6 +34,7 @@ async function publicOverview(req, res, next) {
       totalContributed: totalsMap.get(String(t._id)) || 0,
     }));
     const totalContributed = byType.reduce((sum, t) => sum + t.totalContributed, 0);
+    const thisWeekTotal = thisWeekAgg[0]?.total || 0;
 
     const expenseTypes = types.filter((t) => t.tracksExpenses);
     const fundBalances = await Promise.all(
@@ -42,6 +49,7 @@ async function publicOverview(req, res, next) {
       resignedCount,
       byType,
       totalContributed,
+      thisWeekTotal,
       fundBalances,
     });
   } catch (err) {

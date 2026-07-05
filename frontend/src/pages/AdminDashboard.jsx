@@ -35,8 +35,9 @@ export default function AdminDashboard() {
         <Loader />
       ) : (
         summary && (
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatTile label="Total contributed" value={money(summary.totalContributed)} accent />
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <StatTile label="Total contributed (all-time)" value={money(summary.totalContributed)} accent />
+            <StatTile label="This week's total" value={money(summary.thisWeekTotal)} />
             <StatTile label="Active members" value={summary.activeMembers} />
             <StatTile label="Yet to contribute" value={summary.membersWithZeroContributions} />
             <StatTile label="Entries" value={summary.contributionCount} />
