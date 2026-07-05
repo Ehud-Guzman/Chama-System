@@ -5,7 +5,8 @@ const AuditLog = require('../models/AuditLog');
 // GET /api/reports/summary — total, per-method breakdown, zero-contribution member count
 async function summary(req, res, next) {
   try {
-    const [byMethod, byTypeRaw, activeMembers, contributingIds] = await Promise.all([
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg] = await Promise.all([
       Contribution.aggregate([
         { $match: { deleted: false } },
         { $group: { _id: '$method', total: { $sum: '$amount' }, count: { $sum: 1 } } },
@@ -27,6 +28,10 @@ async function summary(req, res, next) {
       ]),
       Member.countDocuments({ active: true }),
       Contribution.distinct('memberId', { deleted: false }),
+      Contribution.aggregate([
+        { $match: { deleted: false, date: { $gte: sevenDaysAgo } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
     ]);
 
     const totalContributed = byMethod.reduce((sum, m) => sum + m.total, 0);
@@ -39,6 +44,7 @@ async function summary(req, res, next) {
 
     res.json({
       totalContributed,
+      thisWeekTotal: thisWeekAgg[0]?.total || 0,
       contributionCount: totalCount,
       activeMembers,
       membersWithZeroContributions: activeMembers - contributingActive,

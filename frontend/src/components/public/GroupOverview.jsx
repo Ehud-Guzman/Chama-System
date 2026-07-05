@@ -27,20 +27,25 @@ export default function GroupOverview({ onChamaName }) {
 
   return (
     <section>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatTile label="Active members" value={overview.activeMembers} />
         <StatTile label="Registered all-time" value={overview.totalMembersEver} />
         <StatTile
-          label="Total raised, all funds"
+          label="Total raised (all-time)"
           value={money(overview.totalContributed)}
           accent
         />
+        <StatTile label="Raised this week" value={money(overview.thisWeekTotal)} />
       </div>
+      <p className="mt-2 text-xs text-muted">
+        "All-time" is everyone's lifetime contributions added up — not cash currently held by the
+        group, since funds get paid out (loans, payouts) between meetings.
+      </p>
 
       {overview.byType.length > 0 && (
         <div className="mt-3 rounded-xl border border-rule bg-surface p-4 md:p-5">
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-            Raised by contribution type
+            Raised by contribution type (all-time)
           </p>
           <ul className="grid gap-x-6 gap-y-2 md:grid-cols-2">
             {overview.byType.map((t) => (

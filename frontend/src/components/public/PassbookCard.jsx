@@ -152,7 +152,7 @@ export default function PassbookCard({ result, statementUrl }) {
         }
       >
         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-          Total contributed
+          Total contributed (all-time)
         </p>
         <p className="amount mt-1 text-3xl font-bold text-primary">
           {money(result.totalContributed)}
