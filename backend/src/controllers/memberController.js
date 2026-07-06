@@ -8,6 +8,9 @@ const { parseMembersCSV } = require('../utils/csvImport');
 const { typeBreakdown } = require('../utils/typeBreakdown');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
+const { renderStatementPdf } = require('../utils/statementPdf');
+const { getOrCreateSettings } = require('../utils/settings');
+const { sendWorkbook } = require('../utils/xlsxExport');
 
 // Shared by both the admin member view and the public passbook: pending/settled
 // fines for a member, and the week-by-week due schedule for every isWeekly
@@ -373,7 +376,7 @@ async function importMembers(req, res, next) {
   }
 }
 
-// GET /api/members/export — CSV download
+// GET /api/members/export — .xlsx workbook download
 async function exportMembers(req, res, next) {
   try {
     const members = await Member.find().sort({ name: 1 }).lean();
@@ -385,28 +388,16 @@ async function exportMembers(req, res, next) {
     ]);
     const sumMap = new Map(sums.map((s) => [String(s._id), s.total]));
 
-    const esc = (v) => {
-      const s = String(v ?? '');
-      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const lines = [['name', 'phone', 'regNumber', 'totalContributed', 'status', 'notes'].join(',')];
-    for (const m of members) {
-      lines.push(
-        [
-          esc(m.name),
-          esc(m.phone),
-          esc(m.regNumber || ''),
-          sumMap.get(String(m._id)) || 0,
-          m.active ? 'active' : 'inactive',
-          esc(m.notes || ''),
-        ].join(',')
-      );
-    }
-
-    // BOM so Excel detects UTF-8
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="members.csv"');
-    res.send('﻿' + lines.join('\r\n'));
+    const sheetRows = members.map((m) => ({
+      Name: m.name,
+      Phone: m.phone,
+      Email: m.email || '',
+      'Reg number': m.regNumber || '',
+      'Total contributed': sumMap.get(String(m._id)) || 0,
+      Status: m.active ? 'active' : 'inactive',
+      Notes: m.notes || '',
+    }));
+    sendWorkbook(res, 'members.xlsx', [{ name: 'Members', rows: sheetRows }]);
   } catch (err) {
     next(err);
   }
@@ -474,42 +465,12 @@ async function buildPublicProfile(member) {
   };
 }
 
-// Renders a buildPublicProfile() result as a downloadable statement — same
-// shape used by the passbook, so what a member downloads matches what they see.
-function statementCSV(profile) {
-  const esc = (v) => {
-    const s = String(v ?? '');
-    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const lines = [
-    `Statement for ${esc(profile.name)}${profile.regNumber ? ` (${esc(profile.regNumber)})` : ''}`,
-    '',
-    ['Date', 'Type', 'Method', 'Amount', 'Fine deducted', 'Balance'].join(','),
-  ];
-  for (const c of profile.contributions) {
-    lines.push(
-      [
-        new Date(c.date).toISOString().slice(0, 10),
-        esc(c.type || ''),
-        esc(c.method),
-        c.amount,
-        c.fineDeducted || 0,
-        c.runningBalance,
-      ].join(',')
-    );
-  }
-  lines.push('');
-  lines.push(`Total contributed,${profile.totalContributed}`);
-  if (profile.totalPledged > 0) lines.push(`Total pledged,${profile.totalPledged}`);
-  if (profile.fines.totalOwed > 0) lines.push(`Fines owed,${profile.fines.totalOwed}`);
-  return lines.join('\r\n');
-}
-
-function sendStatement(res, profile) {
-  const slug = (profile.regNumber || profile.name).replace(/[^a-z0-9]+/gi, '-');
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="statement-${slug}.csv"`);
-  res.send('﻿' + statementCSV(profile));
+// Renders a buildPublicProfile() result as a downloadable PDF statement — a
+// spreadsheet isn't a great fit for someone checking their own record on a
+// phone; PDF opens/prints cleanly everywhere.
+async function sendStatement(res, profile) {
+  const settings = await getOrCreateSettings();
+  renderStatementPdf(res, profile, settings.chamaName);
 }
 
 // GET /api/public/lookup/statement?phone= — PUBLIC, same access rule as publicLookup.
@@ -521,7 +482,7 @@ async function publicLookupStatement(req, res, next) {
     }
     const member = await Member.findOne({ phone: normalized, active: true }).lean();
     if (!member) return res.status(404).json({ message: 'not_found' });
-    sendStatement(res, await buildPublicProfile(member));
+    await sendStatement(res, await buildPublicProfile(member));
   } catch (err) {
     next(err);
   }
@@ -532,7 +493,7 @@ async function publicMemberStatement(req, res, next) {
   try {
     const member = await Member.findOne({ _id: req.params.id, active: true }).lean();
     if (!member) return res.status(404).json({ message: 'not_found' });
-    sendStatement(res, await buildPublicProfile(member));
+    await sendStatement(res, await buildPublicProfile(member));
   } catch (err) {
     next(err);
   }
@@ -543,7 +504,7 @@ async function memberStatement(req, res, next) {
   try {
     const member = await Member.findById(req.params.id).lean();
     if (!member) return res.status(404).json({ message: 'Member not found' });
-    sendStatement(res, await buildPublicProfile(member));
+    await sendStatement(res, await buildPublicProfile(member));
   } catch (err) {
     next(err);
   }

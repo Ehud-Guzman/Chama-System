@@ -1,13 +1,80 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import api, { apiMessage } from '../../services/api';
 import { useToast } from '../shared/Toast';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import { money, todayISO, METHOD_LABELS } from '../../utils/format';
 
 const METHODS = Object.keys(METHOD_LABELS);
+// Cells the treasurer writes to mean "nothing new this week" rather than a
+// number — clear the cell rather than leaving a stale default in it.
+const ZERO_WORDS = new Set(['nil', 'paid', 'none', '-', '—', 'n/a']);
 
 function cellKey(memberId, typeId) {
   return `${memberId}:${typeId}`;
+}
+
+function normalizeKey(s) {
+  return String(s || '').trim().toLowerCase();
+}
+
+// Parses an uploaded spreadsheet shaped like the on-screen grid — one row
+// per member, one column per contribution type — and returns which
+// member/type cells it could confidently match, plus what it couldn't (so
+// the admin can fix the file or the row/column name rather than have data
+// silently dropped).
+function parseWorkbook(XLSX, workbook, members, types) {
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  if (rows.length === 0) return { updates: {}, unmatchedRows: [], unmatchedColumns: [], matchedCells: 0 };
+
+  const columnKeys = Object.keys(rows[0]);
+  const nameKey = columnKeys.find((k) => /^name$/i.test(k.trim())) || columnKeys[0];
+  const regKey = columnKeys.find((k) => /reg/i.test(k));
+
+  const memberByName = new Map(members.map((m) => [normalizeKey(m.name), m]));
+  const memberByReg = new Map(
+    members.filter((m) => m.regNumber).map((m) => [normalizeKey(m.regNumber), m])
+  );
+  const typeByName = new Map(types.map((t) => [normalizeKey(t.name), t]));
+
+  const typeColumns = columnKeys.filter((k) => k !== nameKey && k !== regKey);
+  const matchedTypeColumns = new Map(
+    typeColumns.filter((k) => typeByName.has(normalizeKey(k))).map((k) => [k, typeByName.get(normalizeKey(k))])
+  );
+  const unmatchedColumns = typeColumns.filter((k) => !matchedTypeColumns.has(k));
+
+  const updates = {};
+  const unmatchedRows = [];
+  let matchedCells = 0;
+
+  for (const row of rows) {
+    const rawName = String(row[nameKey] ?? '').trim();
+    if (!rawName) continue;
+    const rawReg = regKey ? String(row[regKey] ?? '').trim() : '';
+    const member =
+      (rawReg && memberByReg.get(normalizeKey(rawReg))) || memberByName.get(normalizeKey(rawName));
+    if (!member) {
+      unmatchedRows.push(rawReg ? `${rawName} (${rawReg})` : rawName);
+      continue;
+    }
+
+    for (const [col, type] of matchedTypeColumns) {
+      const raw = row[col];
+      const text = String(raw ?? '').trim();
+      if (text === '') continue; // blank cell — leave whatever's already in the grid
+      if (ZERO_WORDS.has(text.toLowerCase())) {
+        updates[cellKey(member._id, type._id)] = '';
+        continue;
+      }
+      const n = Number(text.replace(/[,\s]/g, ''));
+      if (Number.isFinite(n) && n > 0) {
+        updates[cellKey(member._id, type._id)] = String(n);
+        matchedCells++;
+      }
+    }
+  }
+
+  return { updates, unmatchedRows, unmatchedColumns, matchedCells };
 }
 
 // One screen for a whole meeting: a row per active member, a column per
@@ -25,6 +92,8 @@ export default function BulkContributionGrid({ onLogged }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null); // { matchedCells, unmatchedRows, unmatchedColumns }
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     Promise.all([
@@ -70,6 +139,38 @@ export default function BulkContributionGrid({ onLogged }) {
       for (const m of members) next[cellKey(m._id, typeId)] = '';
       return next;
     });
+  }
+
+  function onFileSelected(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        // Loaded on demand — xlsx is a large library, no reason to ship it
+        // to everyone who just wants to fill the grid by hand.
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(event.target.result, { type: 'array' });
+        const { updates, unmatchedRows, unmatchedColumns, matchedCells } = parseWorkbook(
+          XLSX,
+          workbook,
+          members,
+          types
+        );
+        setValues((prev) => ({ ...prev, ...updates }));
+        setUploadResult({ matchedCells, unmatchedRows, unmatchedColumns });
+        if (matchedCells === 0) {
+          toast('No matching member/type cells found in that file', 'error');
+        } else {
+          toast(`Filled ${matchedCells} cell${matchedCells === 1 ? '' : 's'} from the spreadsheet`);
+        }
+      } catch (err) {
+        toast('Could not read that file — is it a valid .xlsx/.csv?', 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   const entries = useMemo(() => {
@@ -170,7 +271,46 @@ export default function BulkContributionGrid({ onLogged }) {
             className="h-11 w-full rounded-lg border border-rule px-3 text-sm"
           />
         </div>
+        <div>
+          <span className="mb-1 block text-xs font-medium">Or upload a spreadsheet</span>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="min-h-11 rounded-lg border border-rule px-3 text-xs font-semibold text-primary"
+          >
+            Upload .xlsx / .csv
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={onFileSelected}
+            className="hidden"
+          />
+        </div>
       </div>
+
+      <p className="text-xs text-muted">
+        Expected layout: one row per member (a "Name" column, optionally a "Reg" column), one
+        column per contribution type using its exact name (e.g. "Chai"). Unmatched rows/columns
+        are listed below rather than guessed at.
+      </p>
+
+      {uploadResult && (uploadResult.unmatchedRows.length > 0 || uploadResult.unmatchedColumns.length > 0) && (
+        <div className="rounded-xl border border-alert/40 bg-alert/5 p-4 text-xs">
+          <p className="font-semibold text-alert">Some rows/columns from the file weren't matched:</p>
+          {uploadResult.unmatchedRows.length > 0 && (
+            <p className="mt-1 text-muted">
+              Unmatched members: {uploadResult.unmatchedRows.join(', ')}
+            </p>
+          )}
+          {uploadResult.unmatchedColumns.length > 0 && (
+            <p className="mt-1 text-muted">
+              Unmatched columns (name doesn't match any contribution type): {uploadResult.unmatchedColumns.join(', ')}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-rule bg-surface">
         <table className="w-full border-collapse text-sm">
