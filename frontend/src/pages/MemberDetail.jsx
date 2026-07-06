@@ -78,7 +78,7 @@ export default function MemberDetail() {
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `statement-${member.regNumber || member.name}.csv`;
+      a.download = `statement-${member.regNumber || member.name}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {

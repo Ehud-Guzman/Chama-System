@@ -5,11 +5,7 @@ const Fine = require('../models/Fine');
 const AuditLog = require('../models/AuditLog');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
-
-function csvEscape(v) {
-  const s = String(v ?? '');
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
+const { sendWorkbook } = require('../utils/xlsxExport');
 
 // Shared by /performance and /performance/export: per active member, personal
 // total, weekly-schedule consistency (personal weekly types only — group
@@ -97,45 +93,26 @@ async function performance(req, res, next) {
   }
 }
 
-// GET /api/reports/performance/export — same data as CSV
+// GET /api/reports/performance/export — same data as an .xlsx workbook
 async function exportPerformance(req, res, next) {
   try {
     const rows = await computePerformance();
-    const lines = [
-      [
-        'name',
-        'regNumber',
-        'phone',
-        'totalContributed',
-        'weeksExpected',
-        'weeksPaid',
-        'weeksPartial',
-        'weeksUnpaid',
-        'consistencyPercent',
-        'pendingFines',
-        'lastContributionDate',
-      ].join(','),
-    ];
-    for (const r of rows) {
-      lines.push(
-        [
-          csvEscape(r.name),
-          csvEscape(r.regNumber || ''),
-          csvEscape(r.phone),
-          r.totalContributed,
-          r.weeksExpected,
-          r.weeksPaid,
-          r.weeksPartial,
-          r.weeksUnpaid,
-          r.consistency ?? '',
-          r.pendingFines,
-          r.lastContributionDate ? new Date(r.lastContributionDate).toISOString().slice(0, 10) : '',
-        ].join(',')
-      );
-    }
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="member-performance.csv"');
-    res.send('﻿' + lines.join('\r\n'));
+    const sheetRows = rows.map((r) => ({
+      Name: r.name,
+      'Reg number': r.regNumber || '',
+      Phone: r.phone,
+      'Total contributed': r.totalContributed,
+      'Weeks expected': r.weeksExpected,
+      'Weeks paid': r.weeksPaid,
+      'Weeks partial': r.weeksPartial,
+      'Weeks unpaid': r.weeksUnpaid,
+      'Consistency %': r.consistency ?? '',
+      'Pending fines': r.pendingFines,
+      'Last contribution': r.lastContributionDate
+        ? new Date(r.lastContributionDate).toISOString().slice(0, 10)
+        : '',
+    }));
+    sendWorkbook(res, 'member-performance.xlsx', [{ name: 'Performance', rows: sheetRows }]);
   } catch (err) {
     next(err);
   }
@@ -199,20 +176,18 @@ async function monthly(req, res, next) {
   }
 }
 
-// GET /api/reports/monthly/export — same data as CSV, one row per month × type
+// GET /api/reports/monthly/export — same data as an .xlsx workbook, one row per month × type
 async function exportMonthly(req, res, next) {
   try {
     const months = await computeMonthly();
-    const lines = [['month', 'type', 'total'].join(',')];
+    const sheetRows = [];
     for (const m of months) {
       for (const t of m.byType) {
-        lines.push([csvEscape(m.month), csvEscape(t.name), t.total].join(','));
+        sheetRows.push({ Month: m.month, Type: t.name, Total: t.total });
       }
-      lines.push([csvEscape(m.month), 'TOTAL (all types)', m.total].join(','));
+      sheetRows.push({ Month: m.month, Type: 'TOTAL (all types)', Total: m.total });
     }
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="monthly-totals.csv"');
-    res.send('﻿' + lines.join('\r\n'));
+    sendWorkbook(res, 'monthly-totals.xlsx', [{ name: 'Monthly totals', rows: sheetRows }]);
   } catch (err) {
     next(err);
   }
@@ -274,7 +249,7 @@ async function summary(req, res, next) {
   }
 }
 
-// GET /api/reports/export — all contributions with member names, CSV
+// GET /api/reports/export — all contributions with member names, .xlsx workbook
 async function exportContributions(req, res, next) {
   try {
     const contributions = await Contribution.find({ deleted: false })
@@ -284,32 +259,18 @@ async function exportContributions(req, res, next) {
       .populate('typeId', 'name')
       .lean();
 
-    const esc = (v) => {
-      const s = String(v ?? '');
-      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const lines = [
-      ['date', 'member', 'regNumber', 'phone', 'type', 'amount', 'method', 'note', 'loggedBy'].join(','),
-    ];
-    for (const c of contributions) {
-      lines.push(
-        [
-          new Date(c.date).toISOString().slice(0, 10),
-          esc(c.memberId?.name || 'Unknown'),
-          esc(c.memberId?.regNumber || ''),
-          esc(c.memberId?.phone || ''),
-          esc(c.typeId?.name || ''),
-          c.amount,
-          c.method,
-          esc(c.note || ''),
-          esc(c.loggedBy?.name || ''),
-        ].join(',')
-      );
-    }
-
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="contributions.csv"');
-    res.send('﻿' + lines.join('\r\n'));
+    const sheetRows = contributions.map((c) => ({
+      Date: new Date(c.date).toISOString().slice(0, 10),
+      Member: c.memberId?.name || 'Unknown',
+      'Reg number': c.memberId?.regNumber || '',
+      Phone: c.memberId?.phone || '',
+      Type: c.typeId?.name || '',
+      Amount: c.amount,
+      Method: c.method,
+      Note: c.note || '',
+      'Logged by': c.loggedBy?.name || '',
+    }));
+    sendWorkbook(res, 'contributions.xlsx', [{ name: 'Contributions', rows: sheetRows }]);
   } catch (err) {
     next(err);
   }

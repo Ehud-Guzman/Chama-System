@@ -65,13 +65,13 @@ export default function MembersList() {
     }
   }
 
-  async function exportCSV() {
+  async function exportExcel() {
     try {
       const res = await api.get('/api/members/export', { responseType: 'blob' });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'members.csv';
+      a.download = 'members.xlsx';
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -116,10 +116,10 @@ export default function MembersList() {
         </button>
         <button
           type="button"
-          onClick={exportCSV}
+          onClick={exportExcel}
           className="min-h-11 flex-1 rounded-lg border border-rule bg-surface text-sm font-medium"
         >
-          Export CSV
+          Export Excel
         </button>
       </div>
 

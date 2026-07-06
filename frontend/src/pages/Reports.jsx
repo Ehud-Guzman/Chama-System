@@ -7,7 +7,7 @@ import Loader from '../components/shared/Loader';
 
 const ACTION_LABELS = { create: 'Created', update: 'Edited', delete: 'Deleted' };
 
-async function downloadCSV(url, filename, toast) {
+async function downloadFile(url, filename, toast) {
   try {
     const res = await api.get(url, { responseType: 'blob' });
     const objectUrl = URL.createObjectURL(res.data);
@@ -83,28 +83,28 @@ export default function Reports() {
           {tab === 'summary' && (
             <button
               type="button"
-              onClick={() => downloadCSV('/api/reports/export', 'contributions.csv', toast)}
+              onClick={() => downloadFile('/api/reports/export', 'contributions.xlsx', toast)}
               className="min-h-12 rounded-xl border border-rule bg-surface px-4 text-sm font-semibold"
             >
-              Export CSV
+              Export Excel
             </button>
           )}
           {tab === 'performance' && (
             <button
               type="button"
-              onClick={() => downloadCSV('/api/reports/performance/export', 'member-performance.csv', toast)}
+              onClick={() => downloadFile('/api/reports/performance/export', 'member-performance.xlsx', toast)}
               className="min-h-12 rounded-xl border border-rule bg-surface px-4 text-sm font-semibold"
             >
-              Export CSV
+              Export Excel
             </button>
           )}
           {tab === 'monthly' && (
             <button
               type="button"
-              onClick={() => downloadCSV('/api/reports/monthly/export', 'monthly-totals.csv', toast)}
+              onClick={() => downloadFile('/api/reports/monthly/export', 'monthly-totals.xlsx', toast)}
               className="min-h-12 rounded-xl border border-rule bg-surface px-4 text-sm font-semibold"
             >
-              Export CSV
+              Export Excel
             </button>
           )}
         </div>
