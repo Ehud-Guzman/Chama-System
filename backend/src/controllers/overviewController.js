@@ -3,6 +3,7 @@ const ContributionType = require('../models/ContributionType');
 const Contribution = require('../models/Contribution');
 const { getOrCreateSettings } = require('../utils/settings');
 const { fundBalance } = require('../utils/fundBalance');
+const { totalFinesCollected } = require('../utils/finesCollected');
 
 // GET /api/public/overview — PUBLIC, no phone number needed.
 // Group-wide transparency: chama name, membership size, and totals raised
@@ -10,7 +11,7 @@ const { fundBalance } = require('../utils/fundBalance');
 async function publicOverview(req, res, next) {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const [settings, activeMembers, totalMembersEver, resignedCount, types, totals, thisWeekAgg] =
+    const [settings, activeMembers, totalMembersEver, resignedCount, types, totals, thisWeekAgg, finesCollected] =
       await Promise.all([
         getOrCreateSettings(),
         Member.countDocuments({ active: true }),
@@ -25,6 +26,7 @@ async function publicOverview(req, res, next) {
           { $match: { deleted: false, date: { $gte: sevenDaysAgo } } },
           { $group: { _id: null, total: { $sum: '$amount' } } },
         ]),
+        totalFinesCollected(),
       ]);
 
     const totalsMap = new Map(totals.map((t) => [String(t._id), t.total]));
@@ -51,6 +53,10 @@ async function publicOverview(req, res, next) {
       totalContributed,
       thisWeekTotal,
       fundBalances,
+      // Fines paid (auto-deducted from a contribution or settled manually)
+      // are real cash the group holds but never appear as a Contribution —
+      // shown separately so "total contributed" isn't mistaken for total cash.
+      finesCollected,
     });
   } catch (err) {
     next(err);

@@ -17,6 +17,21 @@ function normalizeKey(s) {
   return String(s || '').trim().toLowerCase();
 }
 
+// Cells start pre-filled with each isWeekly type's default amount (e.g. 100
+// for Chai) — the treasurer scans down and edits/clears rather than typing
+// every cell from scratch.
+function buildDefaultValues(members, types) {
+  const initial = {};
+  for (const m of members) {
+    for (const t of types) {
+      if (t.isWeekly && t.weeklyAmount > 0) {
+        initial[cellKey(m._id, t._id)] = String(t.weeklyAmount);
+      }
+    }
+  }
+  return initial;
+}
+
 // Parses an uploaded spreadsheet shaped like the on-screen grid — one row
 // per member, one column per contribution type — and returns which
 // member/type cells it could confidently match, plus what it couldn't (so
@@ -93,11 +108,18 @@ export default function BulkContributionGrid({ onLogged }) {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [uploadResult, setUploadResult] = useState(null); // { matchedCells, unmatchedRows, unmatchedColumns }
+  const [lastResult, setLastResult] = useState(null); // { created, skipped } from the last submit
   const fileInputRef = useRef(null);
+  // Identifies this whole batch attempt — rotates only after a successful
+  // submit, so retrying a failed/dropped request resolves each entry to the
+  // one already logged instead of creating duplicates.
+  const clientRequestIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     Promise.all([
-      api.get('/api/members', { params: { status: 'active', limit: 100 } }),
+      // limit matches the server's raised ceiling for this admin listing —
+      // the grid needs every active member in one page, not just the first 100.
+      api.get('/api/members', { params: { status: 'active', limit: 500 } }),
       api.get('/api/types'),
     ])
       .then(([membersRes, typesRes]) => {
@@ -105,16 +127,7 @@ export default function BulkContributionGrid({ onLogged }) {
         const activeTypes = typesRes.data.types;
         setMembers(activeMembers);
         setTypes(activeTypes);
-
-        const initial = {};
-        for (const m of activeMembers) {
-          for (const t of activeTypes) {
-            if (t.isWeekly && t.weeklyAmount > 0) {
-              initial[cellKey(m._id, t._id)] = String(t.weeklyAmount);
-            }
-          }
-        }
-        setValues(initial);
+        setValues(buildDefaultValues(activeMembers, activeTypes));
       })
       .catch((err) => toast(apiMessage(err, 'Could not load members/types'), 'error'))
       .finally(() => setLoading(false));
@@ -198,16 +211,21 @@ export default function BulkContributionGrid({ onLogged }) {
         method,
         note: note.trim(),
         entries: entries.map(({ memberId, typeId, amount }) => ({ memberId, typeId, amount })),
+        clientRequestId: clientRequestIdRef.current,
       });
       toast(
         res.data.skipped?.length
-          ? `Logged ${res.data.created}, skipped ${res.data.skipped.length} — see console for details`
+          ? `Logged ${res.data.created}, skipped ${res.data.skipped.length} — see details below`
           : `Logged ${res.data.created} contributions`
       );
-      if (res.data.skipped?.length) {
-        // eslint-disable-next-line no-console
-        console.warn('Bulk log skipped rows:', res.data.skipped);
-      }
+      setLastResult(res.data);
+      // Next attempt is a fresh batch, not a retry of this one
+      clientRequestIdRef.current = crypto.randomUUID();
+      // Reset the grid back to defaults for the next meeting rather than
+      // leaving this week's entries sitting in it — an untouched "Log all"
+      // tap later would otherwise re-log everyone.
+      setValues(buildDefaultValues(members, types));
+      setNote('');
       setConfirming(false);
       onLogged?.();
     } catch (err) {
@@ -309,6 +327,30 @@ export default function BulkContributionGrid({ onLogged }) {
               Unmatched columns (name doesn't match any contribution type): {uploadResult.unmatchedColumns.join(', ')}
             </p>
           )}
+        </div>
+      )}
+
+      {lastResult?.skipped?.length > 0 && (
+        <div className="rounded-xl border border-alert/40 bg-alert/5 p-4 text-xs">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-semibold text-alert">
+              {lastResult.skipped.length} entr{lastResult.skipped.length === 1 ? 'y' : 'ies'} skipped from the last submit:
+            </p>
+            <button
+              type="button"
+              onClick={() => setLastResult(null)}
+              className="shrink-0 text-[10px] font-semibold uppercase tracking-widest text-muted"
+            >
+              Dismiss
+            </button>
+          </div>
+          <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+            {lastResult.skipped.map((s, i) => (
+              <li key={i} className="text-muted">
+                {s.reason}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

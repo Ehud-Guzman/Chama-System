@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { logAudit } = require('../utils/auditLogger');
 
 function toDTO(user) {
   return { id: user._id, name: user.name, email: user.email, role: user.role, active: user.active };
@@ -12,7 +13,7 @@ function signToken(user) {
   });
 }
 
-// POST /api/auth/login (public)
+// POST /api/auth/login (public, rate-limited)
 async function login(req, res, next) {
   try {
     const { email, password } = req.body || {};
@@ -35,6 +36,35 @@ async function login(req, res, next) {
 // GET /api/auth/me (admin+)
 async function me(req, res) {
   res.json({ user: toDTO(req.user) });
+}
+
+// PATCH /api/auth/me/password (admin+) — self-service password change
+async function changeOwnPassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new password are required' });
+    }
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters' });
+    }
+    const user = await User.findById(req.user._id).select('+password');
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+    user.password = await bcrypt.hash(String(newPassword), 10);
+    await user.save();
+    await logAudit({
+      action: 'update',
+      entityType: 'User',
+      entityId: user._id,
+      performedBy: req.user._id,
+      after: { changed: 'password' },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
 }
 
 // GET /api/auth/admins (super_admin)
@@ -64,6 +94,13 @@ async function createAdmin(req, res, next) {
       password: hashed,
       role: 'admin',
     });
+    await logAudit({
+      action: 'create',
+      entityType: 'User',
+      entityId: user._id,
+      performedBy: req.user._id,
+      after: toDTO(user),
+    });
     res.status(201).json({ user: toDTO(user) });
   } catch (err) {
     next(err);
@@ -85,12 +122,59 @@ async function updateAdmin(req, res, next) {
     if (target.role === 'super_admin') {
       return res.status(400).json({ message: 'The super admin account cannot be deactivated' });
     }
+    const before = toDTO(target);
     target.active = active;
     await target.save();
+    await logAudit({
+      action: 'update',
+      entityType: 'User',
+      entityId: target._id,
+      performedBy: req.user._id,
+      before,
+      after: toDTO(target),
+    });
     res.json({ user: toDTO(target) });
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { login, me, listAdmins, createAdmin, updateAdmin };
+// POST /api/auth/admins/:id/reset-password (super_admin) — there is no
+// self-serve "forgot password" flow (no email delivery in this system, by
+// design), so a locked-out admin needs the super admin to set a new one.
+async function resetAdminPassword(req, res, next) {
+  try {
+    const { password } = req.body || {};
+    if (!password || String(password).length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters' });
+    }
+    if (String(req.params.id) === String(req.user._id)) {
+      return res.status(400).json({ message: 'Use "Change my password" for your own account' });
+    }
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ message: 'Admin not found' });
+
+    target.password = await bcrypt.hash(String(password), 10);
+    await target.save();
+    await logAudit({
+      action: 'update',
+      entityType: 'User',
+      entityId: target._id,
+      performedBy: req.user._id,
+      after: { changed: 'password (reset by super admin)', for: target.email },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  login,
+  me,
+  changeOwnPassword,
+  listAdmins,
+  createAdmin,
+  updateAdmin,
+  resetAdminPassword,
+};

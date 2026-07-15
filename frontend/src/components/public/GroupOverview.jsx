@@ -40,6 +40,9 @@ export default function GroupOverview({ onChamaName }) {
       <p className="mt-2 text-xs text-muted">
         "All-time" is everyone's lifetime contributions added up — not cash currently held by the
         group, since funds get paid out (loans, payouts) between meetings.
+        {overview.finesCollected > 0 && (
+          <> It also excludes {money(overview.finesCollected)} collected from fines, which the group holds but isn't logged as a contribution.</>
+        )}
       </p>
 
       {overview.byType.length > 0 && (

@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
+import { useModal } from '../../hooks/useModal';
 
 export default function ConfirmDialog({
   open,
@@ -11,17 +12,7 @@ export default function ConfirmDialog({
   onCancel,
 }) {
   const confirmRef = useRef(null);
-
-  useEffect(() => {
-    if (open) confirmRef.current?.focus();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => e.key === 'Escape' && onCancel();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
+  const containerRef = useModal(open, onCancel, confirmRef);
 
   if (!open) return null;
 
@@ -33,7 +24,7 @@ export default function ConfirmDialog({
       aria-label={title}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
-      <div className="w-full max-w-sm rounded-xl bg-surface p-5 shadow-xl">
+      <div ref={containerRef} className="w-full max-w-sm rounded-xl bg-surface p-5 shadow-xl">
         <h2 className="text-base font-semibold">{title}</h2>
         {body && <p className="mt-2 text-sm text-muted">{body}</p>}
         <div className="mt-5 flex gap-3">

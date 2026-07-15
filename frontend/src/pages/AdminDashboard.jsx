@@ -4,6 +4,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { money } from '../utils/format';
 import AddAdminForm from '../components/shared/AddAdminForm';
+import ChangePasswordForm from '../components/shared/ChangePasswordForm';
 import ChamaSettingsForm from '../components/shared/ChamaSettingsForm';
 import TypeManager from '../components/contributions/TypeManager';
 import FineTypeManager from '../components/contributions/FineTypeManager';
@@ -65,6 +66,7 @@ export default function AdminDashboard() {
         <TypeManager />
         <FineTypeManager />
         <ExpensesPanel />
+        <ChangePasswordForm />
         {user?.role === 'super_admin' && <AddAdminForm />}
       </div>
     </div>

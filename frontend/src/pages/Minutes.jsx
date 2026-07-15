@@ -16,8 +16,16 @@ export default function Minutes() {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(null); // null | 'new' | minute._id
   const [form, setForm] = useState(BLANK);
+  // What the form looked like right after load/select/save — used to detect
+  // unsaved edits so switching minutes doesn't silently discard them.
+  const [baseline, setBaseline] = useState(BLANK);
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  // The switch the admin tried to make while there were unsaved changes —
+  // either 'new' or a minute to select — held until they confirm discarding.
+  const [pendingSwitch, setPendingSwitch] = useState(null);
+
+  const isDirty = JSON.stringify(form) !== JSON.stringify(baseline);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,18 +43,55 @@ export default function Minutes() {
     load();
   }, [load]);
 
-  function startNew() {
+  // Warn on tab close/refresh too, not just in-app navigation
+  useEffect(() => {
+    if (!isDirty) return undefined;
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [isDirty]);
+
+  function applyNew() {
     setSelectedId('new');
     setForm(BLANK);
+    setBaseline(BLANK);
   }
 
-  async function select(minute) {
-    setSelectedId(minute._id);
-    setForm({
+  function applySelect(minute) {
+    const next = {
       title: minute.title,
       date: new Date(minute.date).toISOString().slice(0, 10),
       content: minute.content || '',
-    });
+    };
+    setSelectedId(minute._id);
+    setForm(next);
+    setBaseline(next);
+  }
+
+  function startNew() {
+    if (isDirty) {
+      setPendingSwitch({ type: 'new' });
+      return;
+    }
+    applyNew();
+  }
+
+  function select(minute) {
+    if (selectedId === minute._id) return;
+    if (isDirty) {
+      setPendingSwitch({ type: 'select', minute });
+      return;
+    }
+    applySelect(minute);
+  }
+
+  function confirmDiscard() {
+    if (pendingSwitch?.type === 'new') applyNew();
+    else if (pendingSwitch?.type === 'select') applySelect(pendingSwitch.minute);
+    setPendingSwitch(null);
   }
 
   async function save() {
@@ -64,6 +109,7 @@ export default function Minutes() {
         await api.patch(`/api/minutes/${selectedId}`, form);
         toast('Minutes updated');
       }
+      setBaseline(form);
       load();
     } catch (err) {
       toast(apiMessage(err), 'error');
@@ -81,6 +127,7 @@ export default function Minutes() {
       if (selectedId === deleting._id) {
         setSelectedId(null);
         setForm(BLANK);
+        setBaseline(BLANK);
       }
       load();
     } catch (err) {
@@ -142,6 +189,9 @@ export default function Minutes() {
             </p>
           ) : (
             <div className="space-y-3 rounded-xl border border-rule bg-surface p-5">
+              {isDirty && (
+                <p className="text-xs font-medium text-alert">Unsaved changes</p>
+              )}
               <input
                 type="text"
                 required
@@ -198,6 +248,15 @@ export default function Minutes() {
         busy={busy}
         onConfirm={confirmDelete}
         onCancel={() => setDeleting(null)}
+      />
+      <ConfirmDialog
+        open={!!pendingSwitch}
+        title="Discard unsaved changes?"
+        body="Your edits to this minute haven't been saved."
+        confirmLabel="Discard"
+        danger
+        onConfirm={confirmDiscard}
+        onCancel={() => setPendingSwitch(null)}
       />
     </div>
   );

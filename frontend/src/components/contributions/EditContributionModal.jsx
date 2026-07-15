@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../services/api';
-import { todayISO, METHOD_LABELS } from '../../utils/format';
+import { useModal } from '../../hooks/useModal';
+import { money, todayISO, METHOD_LABELS } from '../../utils/format';
 
 const METHODS = Object.keys(METHOD_LABELS);
 
@@ -14,6 +15,8 @@ export default function EditContributionModal({ contribution, busy, onSubmit, on
     method: contribution.method,
     note: contribution.note || '',
   });
+  const containerRef = useModal(true, onCancel);
+  const amountLocked = contribution.fineDeducted > 0;
 
   // Active types plus the contribution's current type, even if it's since been deactivated
   useEffect(() => {
@@ -41,11 +44,12 @@ export default function EditContributionModal({ contribution, busy, onSubmit, on
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <form
+        ref={containerRef}
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit(form);
         }}
-        className="w-full max-w-sm space-y-3 rounded-xl bg-surface p-5 shadow-xl"
+        className="max-h-[85dvh] w-full max-w-sm space-y-3 overflow-y-auto rounded-xl bg-surface p-5 shadow-xl"
       >
         <h2 className="text-base font-semibold">Edit contribution</h2>
         <div>
@@ -57,10 +61,17 @@ export default function EditContributionModal({ contribution, busy, onSubmit, on
             type="text"
             inputMode="numeric"
             required
+            disabled={amountLocked}
             value={form.amount}
             onChange={(e) => setForm({ ...form, amount: e.target.value })}
-            className="amount h-12 w-full rounded-xl border border-rule px-4"
+            className="amount h-12 w-full rounded-xl border border-rule px-4 disabled:bg-canvas disabled:text-muted"
           />
+          {amountLocked && (
+            <p className="mt-1 text-xs text-muted">
+              {money(contribution.fineDeducted)} of this payment was applied to a fine — delete and
+              re-log to change the amount.
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor="ec-date" className="mb-1 block text-sm font-medium">

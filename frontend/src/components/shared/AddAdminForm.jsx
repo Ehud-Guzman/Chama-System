@@ -3,15 +3,19 @@ import api, { apiMessage } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from './Toast';
 
-// Super-admin only: create admins and deactivate/reactivate them.
-// Deliberately a small form, not a management page — this system
-// will only ever have 2-3 admin accounts.
+// Super-admin only: create admins, deactivate/reactivate them, and reset a
+// locked-out admin's password (there's no self-serve "forgot password" flow
+// — no email delivery in this system, by design). Deliberately a small
+// form, not a management page — this system will only ever have 2-3 admin
+// accounts.
 export default function AddAdminForm() {
   const { user } = useAuth();
   const toast = useToast();
   const [admins, setAdmins] = useState([]);
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [busy, setBusy] = useState(false);
+  const [resettingId, setResettingId] = useState(null);
+  const [resetValue, setResetValue] = useState('');
 
   async function loadAdmins() {
     try {
@@ -51,37 +55,100 @@ export default function AddAdminForm() {
     }
   }
 
+  async function saveReset(admin) {
+    if (resetValue.length < 8) {
+      toast('New password must be at least 8 characters', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.post(`/api/auth/admins/${admin.id}/reset-password`, { password: resetValue });
+      toast(`Password reset for ${admin.name}`);
+      setResettingId(null);
+      setResetValue('');
+    } catch (err) {
+      toast(apiMessage(err), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="rounded-xl border border-rule bg-surface p-5">
       <h2 className="text-base font-semibold">Admin accounts</h2>
 
       <ul className="mt-3 divide-y divide-rule">
         {admins.map((a) => (
-          <li key={a.id} className="flex items-center justify-between gap-3 py-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">
-                {a.name}
-                {a.role === 'super_admin' && (
-                  <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-accent">
-                    Super
-                  </span>
-                )}
-                {!a.active && (
-                  <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                    Inactive
-                  </span>
-                )}
-              </p>
-              <p className="truncate text-xs text-muted">{a.email}</p>
+          <li key={a.id} className="py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {a.name}
+                  {a.role === 'super_admin' && (
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-accent">
+                      Super
+                    </span>
+                  )}
+                  {!a.active && (
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      Inactive
+                    </span>
+                  )}
+                </p>
+                <p className="truncate text-xs text-muted">{a.email}</p>
+              </div>
+              {a.id !== user.id && (
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResettingId(resettingId === a.id ? null : a.id);
+                      setResetValue('');
+                    }}
+                    className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium"
+                  >
+                    Reset password
+                  </button>
+                  {a.role !== 'super_admin' && (
+                    <button
+                      type="button"
+                      onClick={() => toggleActive(a)}
+                      className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium"
+                    >
+                      {a.active ? 'Deactivate' : 'Reactivate'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-            {a.role !== 'super_admin' && a.id !== user.id && (
-              <button
-                type="button"
-                onClick={() => toggleActive(a)}
-                className="min-h-11 shrink-0 rounded-lg border border-rule px-3 text-xs font-medium"
-              >
-                {a.active ? 'Deactivate' : 'Reactivate'}
-              </button>
+            {resettingId === a.id && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="password"
+                  autoFocus
+                  minLength={8}
+                  placeholder="New password (min 8 characters)"
+                  value={resetValue}
+                  onChange={(e) => setResetValue(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-rule px-3 text-sm"
+                  aria-label={`New password for ${a.name}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => saveReset(a)}
+                  disabled={busy}
+                  className="min-h-11 shrink-0 rounded-lg bg-primary px-3 text-xs font-semibold text-white disabled:opacity-60"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResettingId(null)}
+                  className="min-h-11 shrink-0 rounded-lg border border-rule px-3 text-xs font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
             )}
           </li>
         ))}

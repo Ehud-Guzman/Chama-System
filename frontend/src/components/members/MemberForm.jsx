@@ -1,4 +1,12 @@
 import { useState } from 'react';
+import { useModal } from '../../hooks/useModal';
+import { todayISO } from '../../utils/format';
+
+function toDateInput(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+}
 
 // Create/edit member form, rendered inside a modal sheet.
 export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
@@ -8,7 +16,9 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
     email: initial?.email || '',
     regNumber: initial?.regNumber || '',
     notes: initial?.notes || '',
+    joinDate: toDateInput(initial?.joinDate),
   });
+  const containerRef = useModal(true, onCancel);
 
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
 
@@ -21,11 +31,12 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <form
+        ref={containerRef}
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit(form);
         }}
-        className="w-full max-w-sm space-y-3 rounded-xl bg-surface p-5 shadow-xl"
+        className="max-h-[85dvh] w-full max-w-sm space-y-3 overflow-y-auto rounded-xl bg-surface p-5 shadow-xl"
       >
         <h2 className="text-base font-semibold">{initial ? 'Edit member' : 'Add member'}</h2>
         <div>
@@ -79,6 +90,22 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
             onChange={set('regNumber')}
             className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm"
           />
+        </div>
+        <div>
+          <label htmlFor="m-join-date" className="mb-1 block text-sm font-medium">
+            Join date <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <input
+            id="m-join-date"
+            type="date"
+            max={todayISO()}
+            value={form.joinDate}
+            onChange={set('joinDate')}
+            className="h-12 w-full rounded-xl border border-rule px-3 text-sm"
+          />
+          <p className="mt-1 text-xs text-muted">
+            Anchors their weekly contribution schedule — week 1 starts here.
+          </p>
         </div>
         <div>
           <label htmlFor="m-notes" className="mb-1 block text-sm font-medium">

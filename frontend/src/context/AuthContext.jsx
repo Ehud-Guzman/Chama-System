@@ -12,7 +12,13 @@ export function AuthProvider({ children }) {
     api
       .get('/api/auth/me')
       .then((res) => setUser(res.data.user))
-      .catch(() => localStorage.removeItem(TOKEN_KEY))
+      .catch((err) => {
+        // Only a real "this token is invalid" response should sign the admin
+        // out. A network error or a cold-starting free-tier backend (Render
+        // spins down when idle) must not silently boot them to the login
+        // screen — the interceptor already handles genuine 401s elsewhere.
+        if (err.response?.status === 401) localStorage.removeItem(TOKEN_KEY);
+      })
       .finally(() => setLoading(false));
   }, []);
 
