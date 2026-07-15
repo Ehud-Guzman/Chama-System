@@ -1,5 +1,16 @@
 const rateLimit = require('express-rate-limit');
 
+// Admin login: the one endpoint actually worth brute-forcing. Tight budget,
+// keyed by IP — deliberately stricter than every public read-only route.
+const loginLimiter = rateLimit({
+  windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { message: 'Too many login attempts. Please wait a few minutes and try again.' },
+});
+
 // Public lookup limiter: defaults to 5 requests/minute per IP.
 // Sends 429 with RateLimit/Retry-After headers on breach.
 const lookupLimiter = rateLimit({
@@ -31,4 +42,4 @@ const directoryLimiter = rateLimit({
   message: { message: 'Too many requests. Please wait a minute and try again.' },
 });
 
-module.exports = { lookupLimiter, overviewLimiter, directoryLimiter };
+module.exports = { loginLimiter, lookupLimiter, overviewLimiter, directoryLimiter };

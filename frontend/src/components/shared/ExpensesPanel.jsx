@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api, { apiMessage } from '../../services/api';
 import { useToast } from './Toast';
+import ConfirmDialog from './ConfirmDialog';
 import { money, shortDate, todayISO } from '../../utils/format';
 
 // Expense tracking for any fund flagged tracksExpenses (e.g. Chai) — balance
@@ -16,6 +17,7 @@ export default function ExpensesPanel() {
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ amount: '', description: '', date: '' });
+  const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
     api
@@ -95,11 +97,13 @@ export default function ExpensesPanel() {
     }
   }
 
-  async function removeExpense(id) {
+  async function confirmDelete() {
     setBusy(true);
     try {
-      await api.delete(`/api/expenses/${id}`);
+      await api.delete(`/api/expenses/${deleting._id}`);
       toast('Expense deleted');
+      setDeleting(null);
+      setEditingId(null);
       load(typeId);
     } catch (err) {
       toast(apiMessage(err), 'error');
@@ -192,7 +196,7 @@ export default function ExpensesPanel() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => removeExpense(e._id)}
+                    onClick={() => setDeleting(e)}
                     disabled={busy}
                     className="min-h-9 rounded-lg border border-rule px-3 text-xs font-medium text-alert disabled:opacity-60"
                   >
@@ -257,6 +261,17 @@ export default function ExpensesPanel() {
           {busy ? 'Logging…' : 'Log expense'}
         </button>
       </form>
+
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete this expense?"
+        body={deleting ? `${money(deleting.amount)} — ${deleting.description || 'Expense'}, ${shortDate(deleting.date)}.` : ''}
+        confirmLabel="Delete"
+        danger
+        busy={busy}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleting(null)}
+      />
     </section>
   );
 }

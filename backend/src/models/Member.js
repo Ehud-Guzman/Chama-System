@@ -3,7 +3,8 @@ const { Schema, model } = require('mongoose');
 const MemberSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
-    phone: { type: String, required: true, unique: true, index: true, trim: true },
+    // `unique: true` already creates an index — no need for `index: true` too.
+    phone: { type: String, required: true, unique: true, trim: true },
     email: { type: String, default: '', trim: true, lowercase: true },
     regNumber: { type: String, unique: true, sparse: true },
     notes: { type: String, default: '' },

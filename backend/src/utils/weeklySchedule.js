@@ -12,12 +12,15 @@ function buildWeeklySchedule(joinDate, weeklyAmount, contributions) {
   for (let i = 0; i < weekCount; i++) {
     const startDate = new Date(start + i * WEEK_MS);
     const endDate = new Date(start + (i + 1) * WEEK_MS - 1);
+    // Use what the member actually handed over (grossAmount), not the net
+    // amount credited to this type — a payment that was partly redirected to
+    // settle a fine still fulfilled this week's due from the member's side.
     const paid = contributions
       .filter((c) => {
         const t = new Date(c.date).getTime();
         return t >= startDate.getTime() && t <= endDate.getTime();
       })
-      .reduce((sum, c) => sum + c.amount, 0);
+      .reduce((sum, c) => sum + (c.grossAmount || c.amount), 0);
 
     let status = 'unpaid';
     if (paid >= weeklyAmount && weeklyAmount > 0) status = 'paid';

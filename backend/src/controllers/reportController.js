@@ -6,6 +6,7 @@ const AuditLog = require('../models/AuditLog');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
 const { sendWorkbook } = require('../utils/xlsxExport');
+const { totalFinesCollected } = require('../utils/finesCollected');
 
 // Shared by /performance and /performance/export: per active member, personal
 // total, weekly-schedule consistency (personal weekly types only — group
@@ -20,7 +21,7 @@ async function computePerformance() {
   const memberIds = members.map((m) => m._id);
   const [contributions, pendingFines] = await Promise.all([
     Contribution.find({ memberId: { $in: memberIds }, deleted: false })
-      .select('memberId typeId amount date')
+      .select('memberId typeId amount grossAmount date')
       .lean(),
     Fine.aggregate([
       { $match: { memberId: { $in: memberIds }, deleted: false, remaining: { $gt: 0 } } },
@@ -128,7 +129,13 @@ async function computeMonthly() {
     { $match: { deleted: false } },
     {
       $group: {
-        _id: { month: { $dateToString: { format: '%Y-%m', date: '$date' } }, typeId: '$typeId' },
+        _id: {
+          // Group by the group's own local calendar month (Kenya, UTC+3) —
+          // a bare UTC grouping would misfile anything logged between
+          // midnight and 3am into the previous month.
+          month: { $dateToString: { format: '%Y-%m', date: '$date', timezone: 'Africa/Nairobi' } },
+          typeId: '$typeId',
+        },
         total: { $sum: '$amount' },
       },
     },
@@ -197,7 +204,7 @@ async function exportMonthly(req, res, next) {
 async function summary(req, res, next) {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg] = await Promise.all([
+    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected] = await Promise.all([
       Contribution.aggregate([
         { $match: { deleted: false } },
         { $group: { _id: '$method', total: { $sum: '$amount' }, count: { $sum: 1 } } },
@@ -223,6 +230,7 @@ async function summary(req, res, next) {
         { $match: { deleted: false, date: { $gte: sevenDaysAgo } } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
+      totalFinesCollected(),
     ]);
 
     const totalContributed = byMethod.reduce((sum, m) => sum + m.total, 0);
@@ -243,6 +251,9 @@ async function summary(req, res, next) {
         .map((m) => ({ method: m._id, total: m.total, count: m.count }))
         .sort((a, b) => b.total - a.total),
       byType: byTypeRaw,
+      // Cash collected against fines never shows up as a Contribution — kept
+      // separate from totalContributed so it isn't mistaken for total cash held.
+      finesCollected,
     });
   } catch (err) {
     next(err);

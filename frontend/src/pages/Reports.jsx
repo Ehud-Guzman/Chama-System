@@ -141,6 +141,12 @@ export default function Reports() {
             {money(summary.totalContributed)}
           </p>
           <p className="amount mt-1 text-sm text-muted">{money(summary.thisWeekTotal)} this week</p>
+          {summary.finesCollected > 0 && (
+            <p className="amount mt-1 text-xs text-muted">
+              + {money(summary.finesCollected)} collected from fines (not counted above — fines
+              aren't a contribution type)
+            </p>
+          )}
 
           <p className="mt-4 border-t border-rule pt-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
             By method

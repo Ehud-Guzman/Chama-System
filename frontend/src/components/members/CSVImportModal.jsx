@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import api, { apiMessage } from '../../services/api';
+import { useModal } from '../../hooks/useModal';
 
 // Reads the CSV file in the browser and posts its text — no multipart upload needed.
 export default function CSVImportModal({ onClose, onImported }) {
@@ -7,6 +8,7 @@ export default function CSVImportModal({ onClose, onImported }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const containerRef = useModal(true, onClose);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -33,7 +35,7 @@ export default function CSVImportModal({ onClose, onImported }) {
       aria-label="Import members from CSV"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-xl bg-surface p-5 shadow-xl">
+      <div ref={containerRef} className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-xl bg-surface p-5 shadow-xl">
         <h2 className="text-base font-semibold">Import members from CSV</h2>
         <p className="mt-1 text-xs text-muted">
           Columns: <span className="amount">name, phone, regNumber, notes</span> — regNumber and

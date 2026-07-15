@@ -1,24 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
+import { useModal } from '../../hooks/useModal';
 
 // Same visual shell as ConfirmDialog, but collects a resignation reason —
 // resignation is an explicit, reasoned admin action, not a plain deactivate.
 export default function ResignDialog({ open, memberName, busy, onConfirm, onCancel }) {
   const [reason, setReason] = useState('');
   const inputRef = useRef(null);
+  const containerRef = useModal(open, onCancel, inputRef);
 
   useEffect(() => {
-    if (open) {
-      setReason('');
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
+    if (open) setReason('');
   }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => e.key === 'Escape' && onCancel();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
 
   if (!open) return null;
 
@@ -30,7 +22,7 @@ export default function ResignDialog({ open, memberName, busy, onConfirm, onCanc
       aria-label="Resign member"
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
-      <div className="w-full max-w-sm rounded-xl bg-surface p-5 shadow-xl">
+      <div ref={containerRef} className="w-full max-w-sm rounded-xl bg-surface p-5 shadow-xl">
         <h2 className="text-base font-semibold">Resign {memberName}?</h2>
         <p className="mt-2 text-sm text-muted">
           They're marked inactive and hidden from the public directory, but will appear on the

@@ -1,10 +1,27 @@
 import { useMemo, useRef, useState } from 'react';
-import api from '../../services/api';
+import api, { apiMessage } from '../../services/api';
+import { useToast } from '../shared/Toast';
 import { money, shortDate, METHOD_LABELS } from '../../utils/format';
 import FinesPanel from '../shared/FinesPanel';
 import WeeklyScheduleTable from '../shared/WeeklyScheduleTable';
 
 const PAGE_SIZE = 20;
+
+// Axios error responses arrive as a Blob (not parsed JSON) when the request
+// was made with responseType: 'blob' — unwrap it to get the real server
+// message (e.g. the 429 rate-limit text) instead of a generic fallback.
+async function blobErrorMessage(err, fallback) {
+  const blob = err?.response?.data;
+  if (blob instanceof Blob && blob.type.includes('json')) {
+    try {
+      const parsed = JSON.parse(await blob.text());
+      return parsed.message || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return apiMessage(err, fallback);
+}
 
 // One member's full public passbook: header, pledged-vs-contributed by type,
 // the ledger, and a stamped total. Used both for a phone-number search result
@@ -13,7 +30,9 @@ const PAGE_SIZE = 20;
 // `statementUrl` (relative, e.g. /api/public/lookup/statement?phone=...) is
 // optional — omit it if the caller has no way to re-identify this member.
 export default function PassbookCard({ result, statementUrl }) {
+  const toast = useToast();
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
   // Animates once on mount only — paging away and back doesn't replay it
   const animateRef = useRef(true);
 
@@ -22,6 +41,26 @@ export default function PassbookCard({ result, statementUrl }) {
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const animate = animateRef.current && page === 1;
+
+  // Fetched as a blob rather than a plain <a href> — a bare link hitting a
+  // rate limit or error shows the visitor raw JSON in their browser instead
+  // of the app's own error handling.
+  async function exportStatement() {
+    setExporting(true);
+    try {
+      const res = await api.get(statementUrl, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `statement-${result.regNumber || result.name}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast(await blobErrorMessage(err, 'Could not export the statement. Please try again.'), 'error');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -37,12 +76,14 @@ export default function PassbookCard({ result, statementUrl }) {
           )}
         </div>
         {statementUrl && (
-          <a
-            href={`${api.defaults.baseURL}${statementUrl}`}
-            className="shrink-0 rounded-lg border border-rule px-3 py-2 text-xs font-medium text-primary"
+          <button
+            type="button"
+            onClick={exportStatement}
+            disabled={exporting}
+            className="shrink-0 rounded-lg border border-rule px-3 py-2 text-xs font-medium text-primary disabled:opacity-60"
           >
-            Export statement
-          </a>
+            {exporting ? 'Exporting…' : 'Export statement'}
+          </button>
         )}
       </header>
 

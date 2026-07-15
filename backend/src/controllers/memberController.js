@@ -2,6 +2,7 @@ const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const Fine = require('../models/Fine');
 const ContributionType = require('../models/ContributionType');
+const Counter = require('../models/Counter');
 const { normalizePhone } = require('../utils/phone');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { parseMembersCSV } = require('../utils/csvImport');
@@ -48,20 +49,42 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Sequential reg numbers: CM-0001, CM-0002, ... Retries on the rare duplicate.
+const REG_COUNTER_NAME = 'memberRegNumber';
+
+// Sequential reg numbers: CM-0001, CM-0002, ... backed by an atomic counter
+// so concurrent signups can never compute the same "next" number. On first
+// use the counter is seeded from the highest existing CM-#### regNumber
+// (numeric comparison — a lexicographic sort would treat "CM-10000" as
+// smaller than "CM-9999").
 async function nextRegNumber() {
-  const last = await Member.findOne({ regNumber: /^CM-\d+$/ })
-    .sort({ regNumber: -1 })
-    .select('regNumber');
-  const lastNum = last ? parseInt(last.regNumber.slice(3), 10) : 0;
-  return `CM-${String(lastNum + 1).padStart(4, '0')}`;
+  let counter = await Counter.findOne({ name: REG_COUNTER_NAME });
+  if (!counter) {
+    const existing = await Member.find({ regNumber: /^CM-\d+$/ }).select('regNumber').lean();
+    const seed = existing.reduce((max, m) => {
+      const n = parseInt(m.regNumber.slice(3), 10);
+      return Number.isFinite(n) && n > max ? n : max;
+    }, 0);
+    try {
+      counter = await Counter.create({ name: REG_COUNTER_NAME, value: seed });
+    } catch (err) {
+      if (err.code !== 11000) throw err; // lost the bootstrap race — fine, fall through
+    }
+  }
+  const updated = await Counter.findOneAndUpdate(
+    { name: REG_COUNTER_NAME },
+    { $inc: { value: 1 } },
+    { upsert: true, new: true }
+  );
+  return `CM-${String(updated.value).padStart(4, '0')}`;
 }
 
 // GET /api/members?search=&status=&page=&limit=
 async function listMembers(req, res, next) {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    // Higher ceiling than other list endpoints: the admin weekly logging grid
+    // needs every active member in one request to render its rows.
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const status = req.query.status || 'active';
     const search = String(req.query.search || '').trim();
 
@@ -148,7 +171,7 @@ async function getMember(req, res, next) {
 // POST /api/members
 async function createMember(req, res, next) {
   try {
-    const { name, phone, email, regNumber, notes } = req.body || {};
+    const { name, phone, email, regNumber, notes, joinDate } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ message: 'Name is required' });
     }
@@ -168,6 +191,11 @@ async function createMember(req, res, next) {
       notes: String(notes || '').trim(),
       createdBy: req.user._id,
     };
+    if (joinDate) {
+      const d = new Date(joinDate);
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid join date' });
+      doc.joinDate = d;
+    }
     const providedReg = String(regNumber || '').trim();
     doc.regNumber = providedReg || (await nextRegNumber());
 
@@ -308,6 +336,8 @@ async function resignMember(req, res, next) {
   }
 }
 
+const CSV_IMPORT_ROW_LIMIT = 1000;
+
 // POST /api/members/import — body: { csv: "name,phone,..." }
 async function importMembers(req, res, next) {
   try {
@@ -321,6 +351,11 @@ async function importMembers(req, res, next) {
       rows = parseMembersCSV(csv);
     } catch (err) {
       return res.status(400).json({ message: `Could not read CSV: ${err.message}` });
+    }
+    if (rows.length > CSV_IMPORT_ROW_LIMIT) {
+      return res.status(400).json({
+        message: `That file has ${rows.length} rows — please split it into batches of ${CSV_IMPORT_ROW_LIMIT} or fewer.`,
+      });
     }
 
     let imported = 0;
