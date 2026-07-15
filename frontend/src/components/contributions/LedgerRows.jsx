@@ -1,4 +1,4 @@
-import { money, shortDate, METHOD_LABELS } from '../../utils/format';
+import { money, shortDate, shortDateTime, isSameCalendarDay, METHOD_LABELS } from '../../utils/format';
 
 // Admin ledger list. Each row: date + method | member (optional) | amount, with
 // edit/delete actions when callbacks are provided.
@@ -31,6 +31,9 @@ export default function LedgerRows({ contributions, showMember = false, onEdit, 
             {c.note && <p className="truncate text-xs text-muted">{c.note}</p>}
             {c.typeId?.isGroupFund && (
               <p className="truncate text-xs text-muted">Group fund — not counted in personal total</p>
+            )}
+            {c.createdAt && !isSameCalendarDay(c.date, c.createdAt) && (
+              <p className="truncate text-xs text-muted">Logged {shortDateTime(c.createdAt)}</p>
             )}
           </div>
           <p className="amount shrink-0 text-right font-semibold">{money(c.amount)}</p>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
-import { money, shortDate, METHOD_LABELS } from '../utils/format';
+import { money, shortDate, shortDateTime, METHOD_LABELS } from '../utils/format';
 import { whatsappLink } from '../utils/messaging';
 import Loader from '../components/shared/Loader';
 
@@ -217,7 +217,7 @@ export default function Reports() {
                   </span>
                 </p>
                 <p className="mt-0.5 text-xs text-muted">
-                  {shortDate(e.createdAt)}
+                  {shortDateTime(e.createdAt)}
                   {e.entityType === 'Contribution' && (e.after || e.before) && (
                     <span className="amount">
                       {' '}
