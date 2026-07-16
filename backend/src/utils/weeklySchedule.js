@@ -26,7 +26,19 @@ function buildWeeklySchedule(joinDate, weeklyAmount, contributions) {
     if (paid >= weeklyAmount && weeklyAmount > 0) status = 'paid';
     else if (paid > 0) status = 'partial';
 
-    weeks.push({ weekNumber: i + 1, startDate, endDate, expected: weeklyAmount, paid, status });
+    // The last week in the range is always "as of today" — flagged so the UI
+    // can mark it distinctly from settled history. This list itself already
+    // grows on its own every time it's built (weekCount is derived from
+    // Date.now()), so no admin action is ever needed to "start" a new week.
+    weeks.push({
+      weekNumber: i + 1,
+      startDate,
+      endDate,
+      expected: weeklyAmount,
+      paid,
+      status,
+      isCurrent: i === weekCount - 1,
+    });
   }
   return weeks;
 }
