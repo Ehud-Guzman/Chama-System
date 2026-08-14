@@ -9,11 +9,11 @@ const {
   resetAdminPassword,
 } = require('../controllers/authController');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { loginLimiter } = require('../middleware/rateLimiter');
+const { loginLimiter, passwordChangeLimiter } = require('../middleware/rateLimiter');
 
 router.post('/login', loginLimiter, login);
 router.get('/me', requireAuth, me);
-router.patch('/me/password', requireAuth, changeOwnPassword);
+router.patch('/me/password', requireAuth, passwordChangeLimiter, changeOwnPassword);
 router.get('/admins', requireAuth, requireRole('super_admin'), listAdmins);
 router.post('/admins', requireAuth, requireRole('super_admin'), createAdmin);
 router.patch('/admins/:id', requireAuth, requireRole('super_admin'), updateAdmin);

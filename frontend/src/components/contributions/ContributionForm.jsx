@@ -26,6 +26,10 @@ export default function ContributionForm({ onLogged }) {
   // submit, so a retry of a failed/dropped request reuses the same key
   // instead of registering as a second contribution.
   const clientRequestIdRef = useRef(crypto.randomUUID());
+  // Bumped on every new search — a response is only applied if it's still
+  // the latest request, so a slower earlier keystroke can't overwrite a
+  // newer one with stale results.
+  const searchSeqRef = useRef(0);
 
   // Contribution types load once — same list is reused across entries at a meeting
   useEffect(() => {
@@ -45,13 +49,14 @@ export default function ContributionForm({ onLogged }) {
     }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
+      const seq = ++searchSeqRef.current;
       try {
         const res = await api.get('/api/members', {
           params: { search: search.trim(), limit: 6 },
         });
-        setResults(res.data.members);
+        if (seq === searchSeqRef.current) setResults(res.data.members);
       } catch {
-        setResults([]);
+        if (seq === searchSeqRef.current) setResults([]);
       }
     }, 250);
     return () => clearTimeout(debounceRef.current);

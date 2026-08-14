@@ -42,4 +42,15 @@ const directoryLimiter = rateLimit({
   message: { message: 'Too many requests. Please wait a minute and try again.' },
 });
 
-module.exports = { loginLimiter, lookupLimiter, overviewLimiter, directoryLimiter };
+// A leaked/stolen JWT shouldn't get unlimited guesses at the current
+// password — same budget as login since it's the same kind of attack.
+const passwordChangeLimiter = rateLimit({
+  windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { message: 'Too many attempts. Please wait a few minutes and try again.' },
+});
+
+module.exports = { loginLimiter, lookupLimiter, overviewLimiter, directoryLimiter, passwordChangeLimiter };
