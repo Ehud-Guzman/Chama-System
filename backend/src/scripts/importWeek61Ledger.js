@@ -35,7 +35,7 @@ const MEMBERS = [
   ['John Gatimu', 3000],
   ['Joel Ndungu', 3000],
   ['Benson Maina', 1500],
-  ['Benson Kaniu', 1500],
+  ['Benson Kaniu', 1560],
   ['Eustace Mugwanja', 1500],
   ['Joseph Gitonga', 1500],
   ['Wilson Kabichu', 1500],
