@@ -8,6 +8,7 @@ export default function ChamaSettingsForm() {
   const toast = useToast();
   const [chamaName, setChamaName] = useState('');
   const [constitution, setConstitution] = useState('');
+  const [weeklyTrackingStartDate, setWeeklyTrackingStartDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -17,6 +18,11 @@ export default function ChamaSettingsForm() {
       .then((res) => {
         setChamaName(res.data.settings.chamaName);
         setConstitution(res.data.settings.constitution || '');
+        setWeeklyTrackingStartDate(
+          res.data.settings.weeklyTrackingStartDate
+            ? res.data.settings.weeklyTrackingStartDate.slice(0, 10)
+            : ''
+        );
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -26,7 +32,11 @@ export default function ChamaSettingsForm() {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.patch('/api/settings', { chamaName, constitution });
+      await api.patch('/api/settings', {
+        chamaName,
+        constitution,
+        weeklyTrackingStartDate: weeklyTrackingStartDate || null,
+      });
       toast('Settings updated');
     } catch (err) {
       toast(apiMessage(err), 'error');
@@ -63,6 +73,25 @@ export default function ChamaSettingsForm() {
             onChange={(e) => setConstitution(e.target.value)}
             placeholder="Paste or write the chama's constitution here…"
             className="mt-2 w-full rounded-xl border border-rule px-4 py-3 text-sm"
+          />
+        </div>
+
+        <div className="border-t border-rule pt-3">
+          <label htmlFor="weeklyTrackingStartDate" className="text-sm font-medium">
+            Weekly reconciliation starts from
+          </label>
+          <p className="mt-1 text-xs text-muted">
+            The Reports → Weekly reconciliation view ignores weeks before this date — useful right
+            after a bulk paper-ledger import, where earlier weeks only have a cumulative balance,
+            not a real per-week breakdown. Leave blank to reconcile from each member's own join
+            date.
+          </p>
+          <input
+            id="weeklyTrackingStartDate"
+            type="date"
+            value={weeklyTrackingStartDate}
+            onChange={(e) => setWeeklyTrackingStartDate(e.target.value)}
+            className="mt-2 h-12 w-full rounded-xl border border-rule px-4 text-sm"
           />
         </div>
 

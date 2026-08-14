@@ -17,7 +17,7 @@ async function updateSettings(req, res, next) {
     const settings = await getOrCreateSettings();
     const before = snapshot(settings);
 
-    const { chamaName, constitution } = req.body || {};
+    const { chamaName, constitution, weeklyTrackingStartDate } = req.body || {};
     if (chamaName !== undefined) {
       if (!String(chamaName).trim()) {
         return res.status(400).json({ message: 'Chama name cannot be empty' });
@@ -25,6 +25,17 @@ async function updateSettings(req, res, next) {
       settings.chamaName = String(chamaName).trim();
     }
     if (constitution !== undefined) settings.constitution = String(constitution);
+    if (weeklyTrackingStartDate !== undefined) {
+      if (weeklyTrackingStartDate === null || weeklyTrackingStartDate === '') {
+        settings.weeklyTrackingStartDate = null;
+      } else {
+        const parsed = new Date(weeklyTrackingStartDate);
+        if (Number.isNaN(parsed.getTime())) {
+          return res.status(400).json({ message: 'Invalid weeklyTrackingStartDate' });
+        }
+        settings.weeklyTrackingStartDate = parsed;
+      }
+    }
     settings.updatedBy = req.user._id;
 
     await settings.save();
