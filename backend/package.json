@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
-    "seed:super-admin": "node src/scripts/seedSuperAdmin.js"
+    "seed:super-admin": "node src/scripts/seedSuperAdmin.js",
+    "ledger:template": "node src/scripts/createLedgerTemplate.js",
+    "ledger:import": "node src/scripts/importLedgerFromSpreadsheet.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
