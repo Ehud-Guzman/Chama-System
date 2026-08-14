@@ -7,6 +7,8 @@ const {
   exportPerformance,
   monthly,
   exportMonthly,
+  weekly,
+  exportWeekly,
 } = require('../controllers/reportController');
 const { requireAuth } = require('../middleware/auth');
 
@@ -19,5 +21,7 @@ router.get('/performance', performance);
 router.get('/performance/export', exportPerformance);
 router.get('/monthly', monthly);
 router.get('/monthly/export', exportMonthly);
+router.get('/weekly', weekly);
+router.get('/weekly/export', exportWeekly);
 
 module.exports = router;

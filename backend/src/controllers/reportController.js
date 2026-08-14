@@ -7,6 +7,7 @@ const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { totalFinesCollected } = require('../utils/finesCollected');
+const { computeWeeklyReconciliation } = require('../utils/weeklyReconciliation');
 
 // Shared by /performance and /performance/export: per active member, personal
 // total, weekly-schedule consistency (personal weekly types only — group
@@ -309,6 +310,55 @@ async function auditLog(req, res, next) {
   }
 }
 
+// GET /api/reports/weekly — chama-wide week-by-week reconciliation (expected vs actual)
+async function weekly(req, res, next) {
+  try {
+    res.json({ weeks: await computeWeeklyReconciliation() });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/reports/weekly/export — same data as an .xlsx workbook, one row per week × type
+async function exportWeekly(req, res, next) {
+  try {
+    const weeks = await computeWeeklyReconciliation();
+    const overviewRows = weeks.map((w) => ({
+      Week: w.weekNumber,
+      'Start date': w.startDate.toISOString().slice(0, 10),
+      'End date': w.endDate.toISOString().slice(0, 10),
+      Expected: w.expectedTotal,
+      Actual: w.actualTotal,
+      Diff: w.diff,
+      Balanced: w.balanced ? 'Yes' : 'No',
+    }));
+
+    const shortfallRows = [];
+    for (const w of weeks) {
+      for (const t of w.types) {
+        for (const m of t.shortfallMembers) {
+          shortfallRows.push({
+            Week: w.weekNumber,
+            Type: t.typeName,
+            Member: m.name,
+            'Reg number': m.regNumber || '',
+            Status: m.status,
+            Paid: m.paid,
+            Expected: t.weeklyAmount,
+          });
+        }
+      }
+    }
+
+    sendWorkbook(res, 'weekly-reconciliation.xlsx', [
+      { name: 'Weeks', rows: overviewRows },
+      { name: 'Shortfalls', rows: shortfallRows },
+    ]);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   summary,
   exportContributions,
@@ -317,4 +367,6 @@ module.exports = {
   exportPerformance,
   monthly,
   exportMonthly,
+  weekly,
+  exportWeekly,
 };
