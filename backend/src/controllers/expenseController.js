@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Expense = require('../models/Expense');
 const ContributionType = require('../models/ContributionType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
@@ -6,8 +7,12 @@ const { fundBalance } = require('../utils/fundBalance');
 // GET /api/expenses?typeId=
 async function listExpenses(req, res, next) {
   try {
+    const typeId = req.query.typeId;
+    if (typeId && !mongoose.Types.ObjectId.isValid(typeId)) {
+      return res.status(400).json({ message: 'Invalid contribution type id' });
+    }
     const filter = { deleted: false };
-    if (req.query.typeId) filter.typeId = req.query.typeId;
+    if (typeId) filter.typeId = typeId;
 
     const expenses = await Expense.find(filter)
       .sort({ date: -1, createdAt: -1 })
@@ -15,7 +20,7 @@ async function listExpenses(req, res, next) {
       .populate('loggedBy', 'name')
       .lean();
 
-    const balance = req.query.typeId ? await fundBalance(req.query.typeId) : null;
+    const balance = typeId ? await fundBalance(typeId) : null;
     res.json({ expenses, balance });
   } catch (err) {
     next(err);
