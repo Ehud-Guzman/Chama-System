@@ -7,6 +7,7 @@ const {
   deleteMember,
   resignMember,
   importMembers,
+  importTemplate,
   exportMembers,
   memberStatement,
 } = require('../controllers/memberController');
@@ -18,6 +19,7 @@ router.use(requireAuth);
 router.get('/', listMembers);
 router.post('/', createMember);
 router.post('/import', importMembers);
+router.get('/import-template', importTemplate);
 router.get('/export', exportMembers);
 router.get('/:id', getMember);
 router.get('/:id/statement', memberStatement);

@@ -112,7 +112,7 @@ export default function MembersList() {
           onClick={() => setShowImport(true)}
           className="min-h-11 flex-1 rounded-lg border border-rule bg-surface text-sm font-medium"
         >
-          Import CSV
+          Import
         </button>
         <button
           type="button"
