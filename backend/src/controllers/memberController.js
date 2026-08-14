@@ -411,6 +411,20 @@ async function importMembers(req, res, next) {
   }
 }
 
+// GET /api/members/import-template — blank .xlsx with the exact columns
+// importMembers reads, plus one filled example row so the format is obvious.
+async function importTemplate(req, res, next) {
+  try {
+    const sheetRows = [
+      { name: 'Jane Wanjiru', phone: '0712345678', regNumber: '', notes: 'Optional note' },
+      { name: '', phone: '', regNumber: '', notes: '' },
+    ];
+    sendWorkbook(res, 'members-import-template.xlsx', [{ name: 'Members', rows: sheetRows }]);
+  } catch (err) {
+    next(err);
+  }
+}
+
 // GET /api/members/export — .xlsx workbook download
 async function exportMembers(req, res, next) {
   try {
@@ -683,6 +697,7 @@ module.exports = {
   deleteMember,
   resignMember,
   importMembers,
+  importTemplate,
   exportMembers,
   memberStatement,
   publicLookup,
