@@ -330,7 +330,8 @@ async function exportWeekly(req, res, next) {
       Expected: w.expectedTotal,
       Actual: w.actualTotal,
       Diff: w.diff,
-      Balanced: w.balanced ? 'Yes' : 'No',
+      'Members short': w.shortfallCount,
+      'All paid': w.balanced ? 'Yes' : 'No',
     }));
 
     const shortfallRows = [];
