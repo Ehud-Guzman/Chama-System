@@ -122,6 +122,11 @@ async function computeWeeklyReconciliation() {
 
     const expectedTotal = types.reduce((s, t) => s + t.expected, 0);
     const actualTotal = types.reduce((s, t) => s + t.actual, 0);
+    // Comparing raw totals for equality is a poor "is this week okay?" signal:
+    // one member overpaying routinely offsets another underpaying, so the
+    // sums rarely match exactly even on a perfectly fine week. What actually
+    // matters to a treasurer is whether anyone still owes their minimum.
+    const shortfallCount = types.reduce((s, t) => s + t.shortfallMembers.length, 0);
 
     weeks.push({
       weekNumber: i + 1,
@@ -131,7 +136,8 @@ async function computeWeeklyReconciliation() {
       expectedTotal,
       actualTotal,
       diff: actualTotal - expectedTotal,
-      balanced: actualTotal === expectedTotal,
+      shortfallCount,
+      balanced: shortfallCount === 0,
       types,
     });
   }

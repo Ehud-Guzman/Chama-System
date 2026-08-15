@@ -413,10 +413,11 @@ export default function Reports() {
           ) : (
             <>
               <p className="mb-3 text-xs text-muted">
-                Expected vs actual, per week, across every fixed weekly contribution type. A week
-                is flagged <span className="font-semibold text-alert">not balanced</span> when
-                collected cash doesn't match what every eligible member owed — tap a week to see
-                exactly who fell short.
+                Expected vs actual, per week, across every fixed weekly contribution type. The
+                totals rarely match exactly on their own — one member overpaying offsets another
+                falling short — so a week is only flagged{' '}
+                <span className="font-semibold text-alert">short</span> when one or more eligible
+                members still owe their weekly minimum. Tap a week to see exactly who.
               </p>
               <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
                 {weeks.map((w) => (
@@ -441,7 +442,7 @@ export default function Reports() {
                         <span
                           className={`text-xs font-semibold ${w.balanced ? 'text-accent' : 'text-alert'}`}
                         >
-                          {w.balanced ? 'Balanced' : 'Not balanced'}
+                          {w.balanced ? 'All paid' : `${w.shortfallCount} short`}
                         </span>
                         <span className="amount text-sm font-semibold">{money(w.actualTotal)}</span>
                         <span className="amount text-xs text-muted">/ {money(w.expectedTotal)}</span>
