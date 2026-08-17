@@ -1,0 +1,1061 @@
+/* =========================================================
+   WAZO MOJA — PUBLIC CONSTITUTION
+   Mobile-first
+========================================================= */
+
+:root {
+  --constitution-green: #086b35;
+  --constitution-green-dark: #07562c;
+  --constitution-green-soft: #eaf6ef;
+  --constitution-border: #dbe5df;
+  --constitution-text: #17231c;
+  --constitution-muted: #68756d;
+  --constitution-bg: #f4f8f5;
+  --constitution-white: #ffffff;
+  --constitution-warning: #fff7df;
+}
+
+/* =========================================================
+   BASE
+========================================================= */
+
+.constitution-page {
+  min-height: 100vh;
+  background: var(--constitution-bg);
+  color: var(--constitution-text);
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.constitution-page *,
+.constitution-page *::before,
+.constitution-page *::after {
+  box-sizing: border-box;
+}
+
+.constitution-page button,
+.constitution-page input,
+.constitution-page select {
+  font: inherit;
+}
+
+.constitution-page button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* =========================================================
+   TOP BAR
+========================================================= */
+
+.constitution-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--constitution-border);
+  backdrop-filter: blur(14px);
+}
+
+.constitution-topbar-inner {
+  width: min(1400px, 100%);
+  margin: 0 auto;
+  min-height: 72px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.constitution-brand {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--constitution-green);
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  padding: 10px 4px;
+}
+
+.constitution-search {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.constitution-search input {
+  width: 100%;
+  height: 48px;
+  border: 1px solid #bdcec3;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--constitution-text);
+  padding: 0 46px;
+  outline: none;
+  font-size: 15px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.constitution-search input:focus {
+  border-color: var(--constitution-green);
+  box-shadow: 0 0 0 3px rgba(8, 107, 53, 0.1);
+}
+
+.constitution-search input::placeholder {
+  color: #87928b;
+}
+
+.constitution-search-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  pointer-events: none;
+}
+
+.constitution-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #edf3ef;
+  color: #405048;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.constitution-top-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.constitution-action {
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--constitution-border);
+  border-radius: 12px;
+  background: white;
+  color: var(--constitution-green);
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.constitution-action:hover {
+  background: var(--constitution-green-soft);
+  border-color: #b8d6c4;
+}
+
+.constitution-action:active {
+  transform: scale(0.97);
+}
+
+/* =========================================================
+   MOBILE CHAPTER NAV
+========================================================= */
+
+.constitution-mobile-nav {
+  display: none;
+}
+
+/* =========================================================
+   MAIN LAYOUT
+========================================================= */
+
+.constitution-layout {
+  width: min(1400px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 18px;
+  padding: 16px;
+}
+
+/* =========================================================
+   SIDEBAR
+========================================================= */
+
+.constitution-sidebar {
+  position: sticky;
+  top: 88px;
+  align-self: start;
+  height: calc(100vh - 104px);
+  overflow-y: auto;
+  background: white;
+  border: 1px solid var(--constitution-border);
+  border-radius: 18px;
+  padding: 16px 10px;
+  scrollbar-width: thin;
+}
+
+.constitution-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 10px 12px;
+  color: #617168;
+}
+
+.constitution-sidebar-header span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.constitution-sidebar-header small {
+  font-size: 11px;
+  color: #93a098;
+}
+
+.constitution-sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.constitution-nav-link {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  color: #26352c;
+  cursor: pointer;
+  line-height: 1.35;
+  font-size: 13px;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.constitution-nav-link:hover {
+  background: #f0f6f2;
+}
+
+.constitution-nav-link.is-active {
+  background: var(--constitution-green-soft);
+  color: var(--constitution-green-dark);
+  font-weight: 700;
+}
+
+.constitution-nav-number {
+  color: var(--constitution-green);
+  font-weight: 900;
+  font-size: 12px;
+}
+
+.constitution-nav-title {
+  min-width: 0;
+}
+
+.constitution-nav-link-muted {
+  opacity: 0.38;
+}
+
+/* =========================================================
+   MAIN CONTENT
+========================================================= */
+
+.constitution-main {
+  min-width: 0;
+}
+
+/* =========================================================
+   HERO
+========================================================= */
+
+.constitution-hero {
+  background: linear-gradient(
+    135deg,
+    #075c2e,
+    #0c803d
+  );
+  color: white;
+  border-radius: 22px;
+  padding: clamp(28px, 5vw, 56px);
+  margin-bottom: 16px;
+  box-shadow: 0 14px 34px rgba(4, 79, 38, 0.15);
+}
+
+.constitution-eyebrow {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.86;
+  margin-bottom: 14px;
+}
+
+.constitution-hero h1 {
+  margin: 0;
+  max-width: 900px;
+  font-size: clamp(34px, 5vw, 62px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.constitution-hero p {
+  max-width: 760px;
+  margin: 18px 0 0;
+  font-size: clamp(15px, 2vw, 18px);
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.constitution-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.constitution-badge {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+/* =========================================================
+   NOTICE
+========================================================= */
+
+.constitution-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border-left: 5px solid #efb42d;
+  border-radius: 14px;
+  background: var(--constitution-warning);
+  color: #473b20;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.constitution-notice-icon {
+  flex: 0 0 auto;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #f0b72f;
+  color: white;
+  font-weight: 900;
+}
+
+/* =========================================================
+   QUICK CARDS
+========================================================= */
+
+.constitution-quick {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.constitution-card {
+  background: white;
+  border: 1px solid var(--constitution-border);
+  border-radius: 16px;
+  padding: 18px;
+  line-height: 1.6;
+}
+
+.constitution-card-icon {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 20px;
+}
+
+.constitution-card b {
+  display: block;
+  color: var(--constitution-green);
+  margin-bottom: 5px;
+  font-size: 16px;
+}
+
+.constitution-card p {
+  margin: 0;
+  font-size: 14px;
+  color: #435148;
+}
+
+/* =========================================================
+   SEARCH RESULTS
+========================================================= */
+
+.constitution-search-results {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  margin-bottom: 16px;
+  border: 1px solid #cfe2d6;
+  border-radius: 12px;
+  background: #f1f8f4;
+  font-size: 14px;
+}
+
+.constitution-search-results span {
+  color: var(--constitution-muted);
+}
+
+.constitution-clear-results {
+  border: 0;
+  background: transparent;
+  color: var(--constitution-green);
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* =========================================================
+   NO RESULTS
+========================================================= */
+
+.constitution-no-results {
+  text-align: center;
+  padding: 44px 20px;
+  margin-bottom: 18px;
+  background: white;
+  border: 1px solid var(--constitution-border);
+  border-radius: 18px;
+}
+
+.constitution-no-results-icon {
+  font-size: 30px;
+  margin-bottom: 8px;
+}
+
+.constitution-no-results h3 {
+  margin: 0 0 6px;
+}
+
+.constitution-no-results p {
+  margin: 0 0 18px;
+  color: var(--constitution-muted);
+}
+
+/* =========================================================
+   CHAPTER
+========================================================= */
+
+.constitution-chapter {
+  scroll-margin-top: 92px;
+  background: white;
+  border: 1px solid var(--constitution-border);
+  border-radius: 20px;
+  margin-bottom: 18px;
+  overflow: hidden;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.constitution-chapter.is-active {
+  border-color: #c2ddcc;
+  box-shadow: 0 6px 22px rgba(5, 85, 42, 0.06);
+}
+
+.constitution-chapter-header {
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid #e7eee9;
+}
+
+.constitution-chapter-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.constitution-chapter-no {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--constitution-green-soft);
+  color: var(--constitution-green);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.constitution-chapter h2 {
+  margin: 0;
+  color: #163c26;
+  font-size: clamp(21px, 3vw, 29px);
+  line-height: 1.2;
+}
+
+.constitution-chapter-header p {
+  margin: 12px 0 0;
+  color: var(--constitution-muted);
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+/* =========================================================
+   CLAUSES
+========================================================= */
+
+.constitution-clauses {
+  padding: 8px;
+}
+
+.constitution-clause {
+  border-bottom: 1px solid #edf1ee;
+}
+
+.constitution-clause:last-child {
+  border-bottom: 0;
+}
+
+.constitution-clause.is-open {
+  background: #fbfdfc;
+}
+
+.constitution-clause-head {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--constitution-text);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.constitution-clause-head:hover {
+  background: #f3f8f5;
+}
+
+.constitution-clause-head:focus-visible,
+.constitution-nav-link:focus-visible,
+.constitution-action:focus-visible,
+.constitution-mobile-nav select:focus-visible,
+.constitution-floating-top:focus-visible {
+  outline: 3px solid rgba(8, 107, 53, 0.2);
+  outline-offset: 2px;
+}
+
+.constitution-clause-id {
+  color: var(--constitution-green);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.constitution-clause-title {
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.constitution-chevron {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #edf4ef;
+  color: var(--constitution-green);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.constitution-clause-body {
+  padding: 4px 18px 22px 78px;
+  color: #35433b;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.constitution-clause-body p {
+  margin: 0 0 14px;
+}
+
+.constitution-clause-body p:last-child {
+  margin-bottom: 0;
+}
+
+.constitution-clause-body ul,
+.constitution-clause-body ol {
+  padding-left: 22px;
+  margin-top: 8px;
+}
+
+.constitution-clause-body li {
+  margin-bottom: 8px;
+}
+
+/* =========================================================
+   CHAPTER BACK TO TOP
+========================================================= */
+
+.constitution-chapter-top {
+  display: block;
+  margin: 2px 18px 18px auto;
+  border: 0;
+  background: transparent;
+  color: var(--constitution-green);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* =========================================================
+   FOOTER
+========================================================= */
+
+.constitution-footer {
+  margin: 24px 0 50px;
+  padding: 24px;
+  color: #68766e;
+  text-align: center;
+  line-height: 1.7;
+  font-size: 13px;
+}
+
+/* =========================================================
+   FLOATING TOP
+========================================================= */
+
+.constitution-floating-top {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 90;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #c8d9ce;
+  border-radius: 50%;
+  background: white;
+  color: var(--constitution-green);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+/* =========================================================
+   TABLET
+========================================================= */
+
+@media (max-width: 1050px) {
+  .constitution-layout {
+    grid-template-columns: 230px minmax(0, 1fr);
+  }
+
+  .constitution-top-actions .constitution-action:first-child {
+    display: none;
+  }
+
+  .constitution-quick {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 760px) {
+  .constitution-topbar {
+    position: sticky;
+    top: 0;
+  }
+
+  .constitution-topbar-inner {
+    min-height: auto;
+    padding: 8px 10px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .constitution-brand {
+    font-size: 13px;
+    padding: 8px 2px;
+  }
+
+  .constitution-search input {
+    height: 44px;
+    border-radius: 12px;
+    font-size: 14px;
+    padding-left: 40px;
+    padding-right: 38px;
+  }
+
+  .constitution-search-icon {
+    left: 12px;
+  }
+
+  .constitution-top-actions {
+    display: flex;
+  }
+
+  .constitution-top-actions .constitution-action {
+    display: none;
+  }
+
+  .constitution-top-actions .constitution-action:last-child {
+    display: block;
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  /* Mobile chapter picker */
+  .constitution-mobile-nav {
+    position: sticky;
+    top: 60px;
+    z-index: 80;
+    display: block;
+    background: rgba(255, 255, 255, 0.97);
+    border-bottom: 1px solid var(--constitution-border);
+    backdrop-filter: blur(12px);
+  }
+
+  .constitution-mobile-nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+  }
+
+  .constitution-mobile-label {
+    flex: 0 0 auto;
+    color: var(--constitution-green);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .constitution-mobile-nav select {
+    min-width: 0;
+    flex: 1;
+    height: 38px;
+    padding: 0 10px;
+    border: 1px solid #cbd9d0;
+    border-radius: 9px;
+    background: white;
+    color: #25362b;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .constitution-layout {
+    display: block;
+    padding: 10px;
+  }
+
+  /* Hide desktop sidebar */
+  .constitution-sidebar {
+    display: none;
+  }
+
+  .constitution-hero {
+    border-radius: 18px;
+    padding: 27px 20px;
+    margin-bottom: 10px;
+  }
+
+  .constitution-eyebrow {
+    font-size: 9px;
+    margin-bottom: 10px;
+  }
+
+  .constitution-hero h1 {
+    font-size: 34px;
+    line-height: 1.03;
+  }
+
+  .constitution-hero p {
+    margin-top: 13px;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .constitution-badges {
+    margin-top: 17px;
+    gap: 6px;
+  }
+
+  .constitution-badge {
+    padding: 7px 9px;
+    font-size: 10px;
+  }
+
+  .constitution-notice {
+    padding: 13px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+
+  .constitution-quick {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .constitution-card {
+    padding: 15px;
+    border-radius: 14px;
+  }
+
+  .constitution-card-icon {
+    display: none;
+  }
+
+  .constitution-card b {
+    font-size: 14px;
+  }
+
+  .constitution-card p {
+    font-size: 13px;
+  }
+
+  .constitution-search-results {
+    align-items: flex-start;
+    padding: 12px;
+    font-size: 12px;
+  }
+
+  .constitution-chapter {
+    scroll-margin-top: 112px;
+    border-radius: 16px;
+    margin-bottom: 12px;
+  }
+
+  .constitution-chapter-header {
+    padding: 18px 15px 15px;
+  }
+
+  .constitution-chapter-heading {
+    gap: 9px;
+  }
+
+  .constitution-chapter-no {
+    font-size: 9px;
+    padding: 4px 6px;
+  }
+
+  .constitution-chapter h2 {
+    font-size: 20px;
+  }
+
+  .constitution-chapter-header p {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .constitution-clauses {
+    padding: 5px;
+  }
+
+  .constitution-clause-head {
+    min-height: 58px;
+    grid-template-columns: 44px minmax(0, 1fr) 30px;
+    gap: 7px;
+    padding: 10px 7px;
+  }
+
+  .constitution-clause-id {
+    font-size: 11px;
+  }
+
+  .constitution-clause-title {
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  .constitution-clause-body {
+    padding: 3px 12px 18px 51px;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .constitution-clause-body p {
+    margin-bottom: 12px;
+  }
+
+  .constitution-chapter-top {
+    margin-right: 12px;
+    margin-bottom: 14px;
+    font-size: 12px;
+  }
+
+  .constitution-footer {
+    margin: 15px 0 40px;
+    padding: 18px 8px;
+  }
+
+  .constitution-floating-top {
+    right: 14px;
+    bottom: 14px;
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* =========================================================
+   VERY SMALL PHONES
+========================================================= */
+
+@media (max-width: 430px) {
+  .constitution-topbar-inner {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .constitution-top-actions {
+    display: none;
+  }
+
+  .constitution-mobile-nav {
+    top: 61px;
+  }
+
+  .constitution-hero h1 {
+    font-size: 30px;
+  }
+
+  .constitution-clause-head {
+    grid-template-columns: 39px minmax(0, 1fr) 27px;
+  }
+
+  .constitution-clause-body {
+    padding-left: 46px;
+  }
+}
+
+/* =========================================================
+   PRINT
+========================================================= */
+
+@media print {
+  .constitution-topbar,
+  .constitution-sidebar,
+  .constitution-mobile-nav,
+  .constitution-floating-top,
+  .constitution-action,
+  .constitution-chapter-top,
+  .constitution-search-results,
+  .constitution-quick {
+    display: none !important;
+  }
+
+  .constitution-page {
+    background: white;
+  }
+
+  .constitution-layout {
+    display: block;
+    padding: 0;
+  }
+
+  .constitution-main {
+    width: 100%;
+  }
+
+  .constitution-hero {
+    color: black;
+    background: white;
+    box-shadow: none;
+    border-bottom: 2px solid #222;
+    border-radius: 0;
+    padding: 20px 0;
+  }
+
+  .constitution-hero h1 {
+    font-size: 32px;
+  }
+
+  .constitution-badge {
+    border: 1px solid #aaa;
+    color: black;
+    background: white;
+  }
+
+  .constitution-notice {
+    border: 1px solid #aaa;
+    background: white;
+  }
+
+  .constitution-chapter {
+    border: 0;
+    border-radius: 0;
+    margin-bottom: 28px;
+    page-break-inside: avoid;
+  }
+
+  .constitution-chapter-header {
+    border-bottom: 1px solid #aaa;
+  }
+
+  .constitution-clause {
+    page-break-inside: avoid;
+  }
+
+  .constitution-clause-body {
+    display: block !important;
+  }
+
+  .constitution-clause-head {
+    cursor: default;
+  }
+
+  .constitution-chevron {
+    display: none;
+  }
+
+  .constitution-footer {
+    margin-bottom: 0;
+  }
+}
