@@ -1059,3 +1059,46 @@
     margin-bottom: 0;
   }
 }
+.constitution-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  margin-bottom: 12px;
+  padding: 8px 13px;
+  border: 1px solid #d5e1d9;
+  border-radius: 11px;
+  background: #fff;
+  color: #126b36;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.constitution-back-button:hover {
+  background: #eef7f1;
+  border-color: #a9c5b3;
+}
+
+.constitution-back-button:active {
+  transform: scale(0.97);
+}
+
+.constitution-back-button span:first-child {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Mobile */
+@media (max-width: 700px) {
+  .constitution-back-button {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+    margin-bottom: 9px;
+  }
+}

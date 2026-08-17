@@ -1,16 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { constitutionChapters, constitutionMeta } from '../data/constitution.js';
-import './publicConstitution.css';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  constitutionChapters,
+  constitutionMeta,
+} from "../data/constitution.js";
+import "./publicConstitution.css";
 
 function ClauseBody({ blocks }) {
   return (
     <div className="constitution-clause-body">
       {blocks.map((block, index) => {
-        if (block.type === 'p') {
+        if (block.type === "p") {
           return <p key={index}>{block.text}</p>;
         }
 
-        if (block.type === 'ul') {
+        if (block.type === "ul") {
           return (
             <ul key={index}>
               {block.items.map((item, itemIndex) => (
@@ -20,7 +24,7 @@ function ClauseBody({ blocks }) {
           );
         }
 
-        if (block.type === 'ol') {
+        if (block.type === "ol") {
           return (
             <ol key={index}>
               {block.items.map((item, itemIndex) => (
@@ -37,7 +41,8 @@ function ClauseBody({ blocks }) {
 }
 
 export default function PublicConstitution() {
-  const [search, setSearch] = useState('');
+  const navigate = useNavigate();
+  const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [openClauses, setOpenClauses] = useState({});
   const [activeChapter, setActiveChapter] = useState(1);
@@ -66,7 +71,7 @@ export default function PublicConstitution() {
             chapter.title,
             chapter.description,
           ]
-            .join(' ')
+            .join(" ")
             .toLowerCase();
 
           return searchableText.includes(query);
@@ -77,7 +82,7 @@ export default function PublicConstitution() {
 
   const visibleClauseCount = filteredChapters.reduce(
     (total, chapter) => total + chapter.clauses.length,
-    0
+    0,
   );
 
   /*
@@ -131,7 +136,7 @@ export default function PublicConstitution() {
             chapter.title,
             chapter.description,
           ]
-            .join(' ')
+            .join(" ")
             .toLowerCase();
 
           if (searchableText.includes(value.trim().toLowerCase())) {
@@ -145,7 +150,7 @@ export default function PublicConstitution() {
   };
 
   const clearSearch = () => {
-    setSearch('');
+    setSearch("");
     setExpanded(false);
     setOpenClauses({});
   };
@@ -163,8 +168,8 @@ export default function PublicConstitution() {
     setActiveChapter(chapterNumber);
 
     element.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
+      behavior: "smooth",
+      block: "start",
     });
 
     /*
@@ -174,7 +179,7 @@ export default function PublicConstitution() {
     setTimeout(() => {
       window.scrollBy({
         top: -12,
-        behavior: 'smooth',
+        behavior: "smooth",
       });
     }, 300);
   };
@@ -197,7 +202,7 @@ export default function PublicConstitution() {
 
         if (visibleEntries.length) {
           const chapterNumber = Number(
-            visibleEntries[0].target.dataset.chapter
+            visibleEntries[0].target.dataset.chapter,
           );
 
           if (chapterNumber) {
@@ -207,9 +212,9 @@ export default function PublicConstitution() {
       },
       {
         root: null,
-        rootMargin: '-15% 0px -65% 0px',
+        rootMargin: "-15% 0px -65% 0px",
         threshold: 0,
-      }
+      },
     );
 
     elements.forEach((element) => observer.observe(element));
@@ -227,17 +232,17 @@ export default function PublicConstitution() {
       setShowTopButton(window.scrollY > 700);
     };
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
-      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener("scroll", handleScroll);
     };
   }, []);
 
   const scrollToTop = () => {
     window.scrollTo({
       top: 0,
-      behavior: 'smooth',
+      behavior: "smooth",
     });
   };
 
@@ -248,15 +253,15 @@ export default function PublicConstitution() {
    */
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && search) {
+      if (event.key === "Escape" && search) {
         clearSearch();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [search]);
 
@@ -270,6 +275,7 @@ export default function PublicConstitution() {
       {/* =====================================================
           TOP BAR
       ====================================================== */}
+
       <header className="constitution-topbar">
         <div className="constitution-topbar-inner">
           <button
@@ -315,7 +321,7 @@ export default function PublicConstitution() {
               className="constitution-action"
               onClick={() => setAllExpanded(!expanded)}
             >
-              {expanded ? 'Collapse all' : 'Expand all'}
+              {expanded ? "Collapse all" : "Expand all"}
             </button>
 
             <button
@@ -334,20 +340,16 @@ export default function PublicConstitution() {
       ====================================================== */}
       <div className="constitution-mobile-nav">
         <div className="constitution-mobile-nav-inner">
-          <span className="constitution-mobile-label">
-            Chapter
-          </span>
+          <span className="constitution-mobile-label">Chapter</span>
 
           <select
             value={activeChapter}
-            onChange={(event) =>
-              scrollToChapter(Number(event.target.value))
-            }
+            onChange={(event) => scrollToChapter(Number(event.target.value))}
             aria-label="Jump to chapter"
           >
             {constitutionChapters.map((chapter) => (
               <option key={chapter.number} value={chapter.number}>
-                {String(chapter.number).padStart(2, '0')} — {chapter.title}
+                {String(chapter.number).padStart(2, "0")} — {chapter.title}
               </option>
             ))}
           </select>
@@ -377,7 +379,7 @@ export default function PublicConstitution() {
               const isHiddenBySearch =
                 query &&
                 !filteredChapters.some(
-                  (item) => item.number === chapter.number
+                  (item) => item.number === chapter.number,
                 );
 
               return (
@@ -385,18 +387,16 @@ export default function PublicConstitution() {
                   type="button"
                   key={chapter.number}
                   className={[
-                    'constitution-nav-link',
-                    isActive ? 'is-active' : '',
-                    isHiddenBySearch
-                      ? 'constitution-nav-link-muted'
-                      : '',
+                    "constitution-nav-link",
+                    isActive ? "is-active" : "",
+                    isHiddenBySearch ? "constitution-nav-link-muted" : "",
                   ]
                     .filter(Boolean)
-                    .join(' ')}
+                    .join(" ")}
                   onClick={() => scrollToChapter(chapter.number)}
                 >
                   <span className="constitution-nav-number">
-                    {String(chapter.number).padStart(2, '0')}
+                    {String(chapter.number).padStart(2, "0")}
                   </span>
 
                   <span className="constitution-nav-title">
@@ -415,6 +415,21 @@ export default function PublicConstitution() {
           {/* =================================================
               HERO
           ================================================== */}
+          <button
+            type="button"
+            className="constitution-back-button"
+            onClick={() => {
+              if (window.history.length > 1) {
+                navigate(-1);
+              } else {
+                navigate("/");
+              }
+            }}
+            aria-label="Go back"
+          >
+            <span aria-hidden="true">←</span>
+            <span>Back</span>
+          </button>
           <section className="constitution-hero">
             <div className="constitution-eyebrow">
               {constitutionMeta.eyebrow}
@@ -442,8 +457,8 @@ export default function PublicConstitution() {
             </span>
 
             <div>
-              <b>Draft status:</b> publication supports member review.
-              The Constitution becomes binding only after lawful adoption,
+              <b>Draft status:</b> publication supports member review. The
+              Constitution becomes binding only after lawful adoption,
               signatures and any required regulatory filing.
             </div>
           </div>
@@ -456,8 +471,8 @@ export default function PublicConstitution() {
               <span className="constitution-card-icon">👥</span>
               <b>Membership</b>
               <p>
-                Chapter 3 covers admission, rights, duties,
-                resignation and discipline.
+                Chapter 3 covers admission, rights, duties, resignation and
+                discipline.
               </p>
             </div>
 
@@ -465,17 +480,15 @@ export default function PublicConstitution() {
               <span className="constitution-card-icon">💰</span>
               <b>Money &amp; controls</b>
               <p>
-                Chapters 7, 8, 13 and 14 cover contributions,
-                performance, banking and audit.
+                Chapters 7, 8, 13 and 14 cover contributions, performance,
+                banking and audit.
               </p>
             </div>
 
             <div className="constitution-card">
               <span className="constitution-card-icon">🔎</span>
               <b>Find anything</b>
-              <p>
-                Search by chapter, clause, topic or keyword.
-              </p>
+              <p>Search by chapter, clause, topic or keyword.</p>
             </div>
           </div>
 
@@ -487,12 +500,12 @@ export default function PublicConstitution() {
               <div>
                 <strong>
                   {visibleClauseCount === 1
-                    ? '1 matching clause'
+                    ? "1 matching clause"
                     : `${visibleClauseCount} matching clauses`}
                 </strong>
 
                 <span>
-                  {' '}
+                  {" "}
                   for <b>"{search}"</b>
                 </span>
               </div>
@@ -512,15 +525,11 @@ export default function PublicConstitution() {
           ================================================== */}
           {query && visibleClauseCount === 0 && (
             <div className="constitution-no-results">
-              <div className="constitution-no-results-icon">
-                🔎
-              </div>
+              <div className="constitution-no-results-icon">🔎</div>
 
               <h3>No matching clauses</h3>
 
-              <p>
-                Try a different keyword, chapter number or topic.
-              </p>
+              <p>Try a different keyword, chapter number or topic.</p>
 
               <button
                 type="button"
@@ -538,11 +547,11 @@ export default function PublicConstitution() {
           {filteredChapters.map((chapter) => (
             <section
               className={[
-                'constitution-chapter',
-                activeChapter === chapter.number ? 'is-active' : '',
+                "constitution-chapter",
+                activeChapter === chapter.number ? "is-active" : "",
               ]
                 .filter(Boolean)
-                .join(' ')}
+                .join(" ")}
               id={`chapter-${chapter.number}`}
               data-chapter={chapter.number}
               key={chapter.number}
@@ -553,7 +562,7 @@ export default function PublicConstitution() {
               <header className="constitution-chapter-header">
                 <div className="constitution-chapter-heading">
                   <span className="constitution-chapter-no">
-                    Chapter {String(chapter.number).padStart(2, '0')}
+                    Chapter {String(chapter.number).padStart(2, "0")}
                   </span>
 
                   <h2>{chapter.title}</h2>
@@ -570,11 +579,11 @@ export default function PublicConstitution() {
                   return (
                     <article
                       className={[
-                        'constitution-clause',
-                        isOpen ? 'is-open' : '',
+                        "constitution-clause",
+                        isOpen ? "is-open" : "",
                       ]
                         .filter(Boolean)
-                        .join(' ')}
+                        .join(" ")}
                       key={key}
                     >
                       <button
@@ -595,13 +604,11 @@ export default function PublicConstitution() {
                           className="constitution-chevron"
                           aria-hidden="true"
                         >
-                          {isOpen ? '−' : '+'}
+                          {isOpen ? "−" : "+"}
                         </span>
                       </button>
 
-                      {isOpen && (
-                        <ClauseBody blocks={clause.blocks} />
-                      )}
+                      {isOpen && <ClauseBody blocks={clause.blocks} />}
                     </article>
                   );
                 })}
