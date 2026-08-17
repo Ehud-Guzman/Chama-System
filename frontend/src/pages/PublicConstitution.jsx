@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { constitutionChapters, constitutionMeta } from '../data/constitution.js';
-import './PublicConstitution.css';
+import './publicConstitution.css';
 
 function ClauseBody({ blocks }) {
   return (
