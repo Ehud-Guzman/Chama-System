@@ -1,25 +1,65 @@
-// Incremental ledger import: appends weeks from the shared xlsx template
-// (data/ledger_weeks_62_84_template.xlsx by default) on top of the REAL,
-// already-live data from weeks 60-61 — it never wipes anything. Every write
-// is guarded by a lookup on a unique note/description string, so re-running
-// this script (e.g. after adding more weeks to the sheet) only creates
-// records for rows it hasn't already imported.
-//
-// Modeling choice vs. the old per-week scripts (importWeek60/61Ledger.js):
-// those logged Chai as an untied, member-less Expense (1,400 + 100 flat,
-// same for every member row, no memberId field on Expense at all) — that
-// has zero visible effect anywhere in the app (Weekly Contribution isn't a
-// tracksExpenses type) and doesn't match how the live weekly-logging screen
-// (BulkContributionGrid) works. From week 62 onward this instead logs each
-// member's 100 Chai as a real Contribution on the Chai type, same as every
-// other week logged through the app — visible on their ledger, correctly
-// excluded from their personal total (Chai isGroupFund), and counted by
-// fundBalance(). The "tea_balance" group row's own figure keeps meaning the
-// same as before: money collected *beyond* the per-member 100s.
-//
-//   node src/scripts/importLedgerIncremental.js                  (dry run)
-//   node src/scripts/importLedgerIncremental.js --confirm-import  (writes)
-//   node src/scripts/importLedgerIncremental.js --file=data/foo.xlsx
+/**
+ * Incremental Chama Ledger Importer
+ *
+ * PURPOSE
+ * -------
+ * Imports historical ledger data from an Excel/CSV file into the LIVE database
+ * without wiping existing data.
+ *
+ * Usage:
+ *
+ *   Dry run:
+ *   node src/scripts/importLedgerIncremental.js
+ *
+ *   Dry run with specific file:
+ *   node src/scripts/importLedgerIncremental.js --file="C:\path\ledger.xlsx"
+ *
+ *   Import:
+ *   node src/scripts/importLedgerIncremental.js --confirm-import
+ *
+ *   Import specific file:
+ *   node src/scripts/importLedgerIncremental.js --confirm-import --file="C:\path\ledger.xlsx"
+ *
+ *
+ * ACCOUNTING RULES
+ * ----------------
+ *
+ * MEMBER TOTAL:
+ *
+ *   Previous
+ *   + Weekly Contribution
+ *   + Extra
+ *   - Chai
+ *   = Current Member Total
+ *
+ * Welfare/debt is NOT deducted from the current member total.
+ * It is logged as a liability and, when the next week's row exists,
+ * a negative welfare contribution is created in the following week.
+ *
+ *
+ * GROUP EXPENSES:
+ *
+ *   Land Purchase
+ *   Dowry
+ *   Incentives
+ *   Transport
+ *   Equipment
+ *   etc.
+ *
+ * are GROUP expenses.
+ *
+ * They must NEVER be attached to a member's personal balance.
+ *
+ * Excel format:
+ *
+ *   rowType        = expense
+ *   name           = Land Purchase
+ *   expense_type   = Land Purchase
+ *   expense_amount = 2590000
+ *
+ * Legacy embedded expenses on member rows are also detected and logged
+ * as group expenses, so they are not lost if any old rows remain.
+ */
 
 require('dotenv').config();
 
@@ -27,26 +67,55 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const XLSX = require('xlsx');
+const { parse } = require('csv-parse/sync');
 
 const User = require('../models/User');
 const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const ContributionType = require('../models/ContributionType');
+const Fine = require('../models/Fine');
 const Expense = require('../models/Expense');
-const { logAudit, snapshot } = require('../utils/auditLogger');
+
+const {
+  logAudit,
+  snapshot,
+} = require('../utils/auditLogger');
+
+
+// ============================================================
+// CONFIGURATION
+// ============================================================
 
 const CONFIRMED = process.argv.includes('--confirm-import');
-const fileArg = process.argv.find((arg) => arg.startsWith('--file='));
-const DEFAULT_FILE = path.resolve(__dirname, '../../data/ledger_weeks_62_84_template.xlsx');
-const INPUT_FILE = path.resolve(fileArg ? fileArg.slice('--file='.length) : DEFAULT_FILE);
 
-// Weeks 60-61 are already real, imported by the dedicated one-off scripts —
-// any row for those weeks found in a shared sheet is intentionally ignored
-// here rather than risk a second, differently-shaped entry for the same week.
+const fileArg = process.argv.find(
+  (arg) => arg.startsWith('--file=')
+);
+
+const DEFAULT_FILE = path.resolve(
+  __dirname,
+  '../../data/ledger_weeks_62_84_template.xlsx'
+);
+
+const INPUT_FILE = path.resolve(
+  fileArg
+    ? fileArg.slice('--file='.length)
+    : DEFAULT_FILE
+);
+
+
+// Week 60 and 61 already exist in the live database.
+// Do not import them again.
 const FIRST_INCREMENTAL_WEEK = 62;
+
 const CHAI_WEEKLY_AMOUNT = 100;
+
 const SYSTEM_MEMBER_NAME = 'Opening Balances';
 
+const GROUP_EXPENSE_TYPE_NAME = 'Group Expenses';
+
+
+// Legacy group row mappings.
 const GROUP_TYPE_NAMES = {
   fines_penalties: 'Fines & Penalties',
   tea_balance: 'Chai',
@@ -54,254 +123,1724 @@ const GROUP_TYPE_NAMES = {
   resignation: 'Resignation Fines',
 };
 
+
+// ============================================================
+// BASIC HELPERS
+// ============================================================
+
 function cleanKey(key) {
-  return String(key || '').trim().toLowerCase().replace(/\s+/g, '');
+  return String(key || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '');
 }
+
 
 function toNumber(value) {
-  if (typeof value === 'number') return value;
-  const cleaned = String(value || '').replace(/,/g, '').trim();
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  const cleaned = String(value || '')
+    .replace(/,/g, '')
+    .trim();
+
+  if (!cleaned) {
+    return null;
+  }
+
+  const number = Number(cleaned);
+
+  return Number.isFinite(number)
+    ? number
+    : null;
 }
+
+
+function emptyToZero(value) {
+  const number = toNumber(value);
+
+  return number == null
+    ? 0
+    : number;
+}
+
+
+// ============================================================
+// CONTRIBUTION PARSER
+// ============================================================
 
 function parseAmountOrStatus(value) {
-  if (value == null || value === '') return { status: 'blank', amount: 0 };
-  if (typeof value === 'number') return { status: 'amount', amount: value };
-  const raw = String(value).trim();
-  if (!raw) return { status: 'blank', amount: 0 };
-  if (/^(nil|paid)$/i.test(raw)) return { status: raw.toLowerCase(), amount: 0 };
-  const n = toNumber(raw);
-  return n == null ? { status: 'invalid', amount: 0, raw } : { status: 'amount', amount: n };
-}
-
-function parseDate(value) {
-  if (value instanceof Date && !Number.isNaN(value.valueOf())) return value;
-  if (typeof value === 'number') {
-    const parsed = XLSX.SSF.parse_date_code(value);
-    if (parsed) return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d, 12));
+  if (value == null || value === '') {
+    return {
+      status: 'blank',
+      amount: 0,
+    };
   }
-  const raw = String(value || '').trim();
-  if (!raw) return null;
-  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slash) return new Date(Date.UTC(Number(slash[3]), Number(slash[2]) - 1, Number(slash[1]), 12));
-  const d = new Date(`${raw}T12:00:00Z`);
-  return Number.isNaN(d.valueOf()) ? null : d;
-}
 
-function normalizeRow(row) {
-  const out = {};
-  for (const [key, value] of Object.entries(row)) out[cleanKey(key)] = value;
+  if (typeof value === 'number') {
+    return {
+      status: 'amount',
+      amount: value,
+    };
+  }
+
+  const raw = String(value).trim();
+
+  if (!raw) {
+    return {
+      status: 'blank',
+      amount: 0,
+    };
+  }
+
+  if (/^(nil|paid)$/i.test(raw)) {
+    return {
+      status: raw.toLowerCase(),
+      amount: 0,
+    };
+  }
+
+  const number = toNumber(raw);
+
+  if (number == null) {
+    return {
+      status: 'invalid',
+      amount: 0,
+      raw,
+    };
+  }
+
   return {
-    week: toNumber(out.week),
-    date: parseDate(out.date),
-    rowType: String(out.rowtype || 'member').trim().toLowerCase(),
-    name: String(out.name || '').trim(),
-    contribution: parseAmountOrStatus(out.contribution),
-    chai: out.chai === '' || out.chai == null ? null : toNumber(out.chai),
-    debt: out.debt === '' || out.debt == null ? 0 : toNumber(out.debt) || 0,
-    extra: out.extra === '' || out.extra == null ? 0 : toNumber(out.extra) || 0,
-    previous: out.previous === '' || out.previous == null ? null : toNumber(out.previous),
-    total: out.total === '' || out.total == null ? null : toNumber(out.total),
-    note: String(out.note || '').trim(),
+    status: 'amount',
+    amount: number,
   };
 }
 
-function readRows(filePath) {
-  if (!fs.existsSync(filePath)) throw new Error(`Input file not found: ${filePath}`);
-  const workbook = XLSX.readFile(filePath, { cellDates: true });
-  const sheet = workbook.Sheets.Ledger || workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils
-    .sheet_to_json(sheet, { defval: '' })
-    .map(normalizeRow)
-    .filter((r) => r.week && (r.rowType === 'member' ? r.name : true) && (r.contribution.status !== 'blank' || r.debt || r.extra));
+
+// ============================================================
+// DATE PARSER
+// ============================================================
+
+function parseDate(value) {
+  if (
+    value instanceof Date &&
+    !Number.isNaN(value.valueOf())
+  ) {
+    return value;
+  }
+
+  // Excel serial date.
+  if (typeof value === 'number') {
+    const parsed = XLSX.SSF.parse_date_code(value);
+
+    if (parsed) {
+      return new Date(
+        Date.UTC(
+          parsed.y,
+          parsed.m - 1,
+          parsed.d,
+          12
+        )
+      );
+    }
+  }
+
+  const raw = String(value || '').trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  // dd/mm/yyyy
+  const slash = raw.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
+  );
+
+  if (slash) {
+    const first = Number(slash[1]);
+    const second = Number(slash[2]);
+    const year = Number(slash[3]);
+
+    /*
+     * The Excel workbook is expected to give us real Date objects.
+     * For string input we first interpret it as dd/mm/yyyy.
+     */
+    const day = first;
+    const month = second;
+
+    const date = new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day,
+        12
+      )
+    );
+
+    if (!Number.isNaN(date.valueOf())) {
+      return date;
+    }
+  }
+
+  const parsed = new Date(`${raw}T12:00:00Z`);
+
+  return Number.isNaN(parsed.valueOf())
+    ? null
+    : parsed;
 }
+
+
+// ============================================================
+// ROW NORMALIZATION
+// ============================================================
+
+function normalizeRow(row) {
+  const out = {};
+
+  for (const [key, value] of Object.entries(row)) {
+    out[cleanKey(key)] = value;
+  }
+
+  return {
+    week: toNumber(out.week),
+
+    date: parseDate(out.date),
+
+    rowType: String(
+      out.rowtype || 'member'
+    )
+      .trim()
+      .toLowerCase(),
+
+    name: String(
+      out.name || ''
+    ).trim(),
+
+    contribution:
+      parseAmountOrStatus(
+        out.contribution
+      ),
+
+    chai:
+      out.chai === '' ||
+      out.chai == null
+        ? null
+        : toNumber(out.chai),
+
+    debt:
+      out.debt === '' ||
+      out.debt == null
+        ? 0
+        : toNumber(out.debt) || 0,
+
+    extra:
+      out.extra === '' ||
+      out.extra == null
+        ? 0
+        : toNumber(out.extra) || 0,
+
+    previous:
+      out.previous === '' ||
+      out.previous == null
+        ? null
+        : toNumber(out.previous),
+
+    total:
+      out.total === '' ||
+      out.total == null
+        ? null
+        : toNumber(out.total),
+
+    threshold:
+      out.threshold === '' ||
+      out.threshold == null
+        ? null
+        : toNumber(out.threshold),
+
+    // NEW:
+    // Generic group expense fields.
+    expenseType: String(
+      out.expensetype || ''
+    ).trim(),
+
+    expenseAmount:
+      out.expenseamount === '' ||
+      out.expenseamount == null
+        ? 0
+        : toNumber(out.expenseamount) || 0,
+
+    note: String(
+      out.note || ''
+    ).trim(),
+  };
+}
+
+
+// ============================================================
+// READ XLSX / CSV
+// ============================================================
+
+function readRows(filePath) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(
+      `Input file not found: ${filePath}`
+    );
+  }
+
+  // CSV support.
+  if (
+    path.extname(filePath).toLowerCase() === '.csv'
+  ) {
+    const parsed = parse(
+      fs.readFileSync(
+        filePath,
+        'utf8'
+      ),
+      {
+        columns: true,
+        bom: true,
+        trim: true,
+        skip_empty_lines: true,
+        relax_column_count: true,
+      }
+    );
+
+    return parsed
+      .map(normalizeRow)
+      .filter(rowHasData);
+  }
+
+  // XLSX support.
+  const workbook = XLSX.readFile(
+    filePath,
+    {
+      cellDates: true,
+    }
+  );
+
+  const sheet =
+    workbook.Sheets.Ledger ||
+    workbook.Sheets[
+      workbook.SheetNames[0]
+    ];
+
+  if (!sheet) {
+    throw new Error(
+      'No Ledger sheet found in workbook.'
+    );
+  }
+
+  return XLSX.utils
+    .sheet_to_json(
+      sheet,
+      {
+        defval: '',
+      }
+    )
+    .map(normalizeRow)
+    .filter(rowHasData);
+}
+
+
+function rowHasData(row) {
+  if (!row.week) {
+    return false;
+  }
+
+  if (
+    row.rowType === 'member' &&
+    !row.name
+  ) {
+    return false;
+  }
+
+  return (
+    row.contribution.status !== 'blank' ||
+    row.debt > 0 ||
+    row.extra > 0 ||
+    row.expenseAmount > 0 ||
+    row.expenseType !== '' ||
+    row.previous != null ||
+    row.total != null
+  );
+}
+
+
+// ============================================================
+// VALIDATION
+// ============================================================
 
 function validateRows(rows) {
   const errors = [];
   const warnings = [];
   const ignoredWeeks = new Set();
 
-  for (const [index, row] of rows.entries()) {
+  for (
+    const [index, row]
+    of rows.entries()
+  ) {
     const line = index + 2;
-    if (row.week < FIRST_INCREMENTAL_WEEK) {
+
+    // Ignore already imported weeks.
+    if (
+      row.week <
+      FIRST_INCREMENTAL_WEEK
+    ) {
       ignoredWeeks.add(row.week);
       continue;
     }
-    if (!row.date) errors.push(`Row ${line} (week ${row.week}): date is required.`);
-    if (row.rowType === 'member' && !row.name) errors.push(`Row ${line}: member name is required.`);
-    if (row.contribution.status === 'invalid') {
-      errors.push(`Row ${line}: contribution "${row.contribution.raw}" is not a number, NIL, or PAID.`);
+
+    if (!row.date) {
+      errors.push(
+        `Row ${line} (week ${row.week}): date is required.`
+      );
     }
 
-    const chai = row.chai == null ? CHAI_WEEKLY_AMOUNT : row.chai;
-    if (row.rowType === 'member' && row.previous != null && row.total != null) {
-      const expected = row.previous + row.contribution.amount + row.extra - chai - row.debt;
-      if (expected !== row.total) {
-        warnings.push(`Row ${line} (${row.name}, week ${row.week}): expected total ${expected}, sheet says ${row.total} (diff ${row.total - expected}).`);
+    if (
+      row.rowType === 'member' &&
+      !row.name
+    ) {
+      errors.push(
+        `Row ${line}: member name is required.`
+      );
+    }
+
+    if (
+      row.contribution.status ===
+      'invalid'
+    ) {
+      errors.push(
+        `Row ${line}: contribution "${row.contribution.raw}" is not a number, NIL, or PAID.`
+      );
+    }
+
+
+    // --------------------------------------------------------
+    // MEMBER TOTAL
+    //
+    // Previous + Contribution + Extra - Chai
+    //
+    // Debt/welfare is NOT deducted here.
+    // --------------------------------------------------------
+
+    if (
+      row.rowType === 'member' &&
+      row.previous != null &&
+      row.total != null
+    ) {
+      const chai =
+        row.chai == null
+          ? CHAI_WEEKLY_AMOUNT
+          : row.chai;
+
+      const expected =
+        row.previous +
+        row.contribution.amount +
+        row.extra -
+        chai;
+
+      if (
+        expected !== row.total
+      ) {
+        warnings.push(
+          `Row ${line} (${row.name}, week ${row.week}): expected total ${expected}, sheet says ${row.total}, diff ${row.total - expected}.`
+        );
       }
     }
-    if (row.rowType !== 'member' && row.previous != null && row.total != null) {
-      const expected = row.previous + row.contribution.amount + row.extra - row.debt;
-      if (expected !== row.total) {
-        warnings.push(`Row ${line} (${row.name || row.rowType}, week ${row.week}): expected total ${expected}, sheet says ${row.total} (diff ${row.total - expected}).`);
+
+
+    // --------------------------------------------------------
+    // GROUP EXPENSE ROW
+    // --------------------------------------------------------
+
+    if (
+      row.rowType === 'expense'
+    ) {
+      const description =
+        row.expenseType ||
+        row.name ||
+        '';
+
+      if (!description) {
+        errors.push(
+          `Row ${line} (week ${row.week}): expense row needs a name or expense_type.`
+        );
+      }
+
+      if (
+        row.expenseAmount <= 0
+      ) {
+        errors.push(
+          `Row ${line} (week ${row.week}): expense_amount must be greater than zero.`
+        );
+      }
+
+      // Only validate arithmetic if
+      // previous and total were deliberately supplied.
+      if (
+        row.previous != null &&
+        row.total != null
+      ) {
+        const expected =
+          row.previous +
+          row.contribution.amount +
+          row.extra -
+          row.expenseAmount;
+
+        if (
+          expected !== row.total
+        ) {
+          warnings.push(
+            `Row ${line} (${description}, week ${row.week}): expected group total ${expected}, sheet says ${row.total}, diff ${row.total - expected}.`
+          );
+        }
+      }
+    }
+
+
+    // --------------------------------------------------------
+    // LEGACY GROUP ROWS
+    // --------------------------------------------------------
+
+    if (
+      row.rowType !== 'member' &&
+      row.rowType !== 'expense' &&
+      row.previous != null &&
+      row.total != null
+    ) {
+      const expected =
+        row.previous +
+        row.contribution.amount +
+        row.extra -
+        row.debt;
+
+      if (
+        expected !== row.total
+      ) {
+        warnings.push(
+          `Row ${line} (${row.name || row.rowType}, week ${row.week}): expected total ${expected}, sheet says ${row.total}, diff ${row.total - expected}.`
+        );
       }
     }
   }
 
-  return { errors, warnings, ignoredWeeks: [...ignoredWeeks].sort((a, b) => a - b) };
+  return {
+    errors,
+    warnings,
+    ignoredWeeks:
+      [...ignoredWeeks].sort(
+        (a, b) => a - b
+      ),
+  };
 }
 
-async function createLogged(Model, doc, entityType, admin) {
-  const record = await Model.create(doc);
-  await logAudit({ action: 'create', entityType, entityId: record._id, performedBy: admin._id, after: snapshot(record) });
+
+// ============================================================
+// AUDITED CREATE
+// ============================================================
+
+async function createLogged(
+  Model,
+  document,
+  entityType,
+  admin
+) {
+  const record =
+    await Model.create(
+      document
+    );
+
+  await logAudit({
+    action: 'create',
+    entityType,
+    entityId: record._id,
+    performedBy: admin._id,
+    after: snapshot(record),
+  });
+
   return record;
 }
 
-async function findOrCreateType(name, extra, admin) {
-  let type = await ContributionType.findOne({ name });
-  if (!type) type = await createLogged(ContributionType, { name, createdBy: admin._id, ...extra }, 'ContributionType', admin);
+
+// ============================================================
+// FIND OR CREATE CONTRIBUTION TYPE
+// ============================================================
+
+async function findOrCreateType(
+  name,
+  extra,
+  admin
+) {
+  let type =
+    await ContributionType.findOne({
+      name,
+    });
+
+  if (!type) {
+    type = await createLogged(
+      ContributionType,
+      {
+        name,
+        createdBy: admin._id,
+        ...extra,
+      },
+      'ContributionType',
+      admin
+    );
+  }
+
   return type;
 }
 
-// Creates the Contribution only if one with this exact memberId+typeId+note
-// doesn't already exist — the re-run safety net.
-async function logOnce(admin, { memberId, typeId, amount, date, note }) {
-  if (amount <= 0) return 'skipped-zero';
-  const existing = await Contribution.findOne({ memberId, typeId, note }).select('_id');
-  if (existing) return 'duplicate';
-  await createLogged(Contribution, { memberId, typeId, amount, date, method: 'cash', note, loggedBy: admin._id }, 'Contribution', admin);
+
+// ============================================================
+// DUPLICATE-SAFE CONTRIBUTION
+// ============================================================
+
+async function logContributionOnce(
+  admin,
+  {
+    memberId,
+    typeId,
+    amount,
+    date,
+    note,
+  }
+) {
+  if (amount <= 0) {
+    return 'skipped-zero';
+  }
+
+  const existing =
+    await Contribution.findOne({
+      memberId,
+      typeId,
+      note,
+    }).select('_id');
+
+  if (existing) {
+    return 'duplicate';
+  }
+
+  await createLogged(
+    Contribution,
+    {
+      memberId,
+      typeId,
+      amount,
+      date,
+      method: 'cash',
+      note,
+      loggedBy: admin._id,
+    },
+    'Contribution',
+    admin
+  );
+
   return 'created';
 }
 
-async function logExpenseOnce(admin, { typeId, amount, date, description }) {
-  if (amount <= 0) return 'skipped-zero';
-  const existing = await Expense.findOne({ typeId, description }).select('_id');
-  if (existing) return 'duplicate';
-  await createLogged(Expense, { typeId, amount, date, description, loggedBy: admin._id }, 'Expense', admin);
+
+// ============================================================
+// DUPLICATE-SAFE EXPENSE
+// ============================================================
+
+async function logExpenseOnce(
+  admin,
+  {
+    typeId,
+    amount,
+    date,
+    description,
+  }
+) {
+  if (amount <= 0) {
+    return 'skipped-zero';
+  }
+
+  /*
+   * Use all identifying fields so the same description can
+   * legally exist in different weeks/dates without being
+   * treated as the same transaction.
+   */
+  const existing =
+    await Expense.findOne({
+      typeId,
+      amount,
+      date,
+      description,
+    }).select('_id');
+
+  if (existing) {
+    return 'duplicate';
+  }
+
+  await createLogged(
+    Expense,
+    {
+      typeId,
+      amount,
+      date,
+      description,
+      loggedBy: admin._id,
+    },
+    'Expense',
+    admin
+  );
+
   return 'created';
 }
+
+
+// ============================================================
+// MAIN
+// ============================================================
 
 async function main() {
-  const allRows = readRows(INPUT_FILE);
-  const { errors, warnings, ignoredWeeks } = validateRows(allRows);
-  const rows = allRows.filter((r) => r.week >= FIRST_INCREMENTAL_WEEK);
-  const weeks = [...new Set(rows.map((r) => r.week))].sort((a, b) => a - b);
+  const allRows =
+    readRows(INPUT_FILE);
 
-  console.log(`Input: ${INPUT_FILE}`);
-  console.log(`Rows with data: ${rows.length} across week(s): ${weeks.join(', ') || '(none)'}`);
+  const {
+    errors,
+    warnings,
+    ignoredWeeks,
+  } =
+    validateRows(allRows);
+
+  const rows =
+    allRows.filter(
+      (row) =>
+        row.week >=
+        FIRST_INCREMENTAL_WEEK
+    );
+
+  const weeks =
+    [
+      ...new Set(
+        rows.map(
+          (row) => row.week
+        )
+      ),
+    ].sort(
+      (a, b) => a - b
+    );
+
+
+  // ----------------------------------------------------------
+  // DRY-RUN SUMMARY
+  // ----------------------------------------------------------
+
+  console.log(
+    `Input: ${INPUT_FILE}`
+  );
+
+  console.log(
+    `Rows with data: ${rows.length} across week(s): ${
+      weeks.join(', ') || '(none)'
+    }`
+  );
+
   if (ignoredWeeks.length) {
-    console.log(`Ignored (already real, before week ${FIRST_INCREMENTAL_WEEK}): week(s) ${ignoredWeeks.join(', ')}`);
+    console.log(
+      `Ignored (already imported before week ${FIRST_INCREMENTAL_WEEK}): ${ignoredWeeks.join(', ')}`
+    );
   }
+
+
+  // Count expense rows for visibility.
+  const expenseRows =
+    rows.filter(
+      (row) =>
+        row.rowType === 'expense'
+    );
+
+  if (expenseRows.length) {
+    console.log(
+      `Group expense rows detected: ${expenseRows.length}`
+    );
+
+    for (
+      const expense
+      of expenseRows
+    ) {
+      console.log(
+        `  - Week ${expense.week}: ${
+          expense.expenseType ||
+          expense.name ||
+          'Unnamed expense'
+        } = ${expense.expenseAmount}`
+      );
+    }
+  }
+
+
+  // Detect older embedded expenses
+  // on member rows.
+  const embeddedExpenses =
+    rows.filter(
+      (row) =>
+        row.rowType === 'member' &&
+        (
+          row.expenseAmount > 0 ||
+          row.expenseType !== ''
+        )
+    );
+
+  if (
+    embeddedExpenses.length
+  ) {
+    console.log(
+      `Embedded member-row expenses detected: ${embeddedExpenses.length}`
+    );
+
+    for (
+      const expense
+      of embeddedExpenses
+    ) {
+      console.log(
+        `  - Week ${expense.week}: ${
+          expense.expenseType ||
+          'Unnamed expense'
+        } = ${expense.expenseAmount} (original row: ${expense.name})`
+      );
+    }
+  }
+
+
   if (warnings.length) {
-    console.log('\nWarnings — arithmetic on the row doesn\'t reconcile, worth checking against the photo:');
-    warnings.forEach((w) => console.log(`  - ${w}`));
+    console.log(
+      '\nWarnings — historical arithmetic does not reconcile:'
+    );
+
+    warnings.forEach(
+      (warning) =>
+        console.log(
+          `  - ${warning}`
+        )
+    );
   }
+
+
   if (errors.length) {
-    console.log('\nErrors:');
-    errors.forEach((e) => console.log(`  - ${e}`));
+    console.log(
+      '\nErrors:'
+    );
+
+    errors.forEach(
+      (error) =>
+        console.log(
+          `  - ${error}`
+        )
+    );
+
     process.exit(1);
   }
+
+
   if (rows.length === 0) {
-    console.log('\nNothing to import yet — fill in some weeks first.');
+    console.log(
+      '\nNothing to import yet.'
+    );
+
     return;
   }
+
+
+  // ----------------------------------------------------------
+  // DRY RUN STOP
+  // ----------------------------------------------------------
+
   if (!CONFIRMED) {
-    console.log('\nDRY RUN ONLY. Nothing was written. Re-run with --confirm-import once this looks right.');
+    console.log(
+      '\nDRY RUN ONLY. Nothing was written.'
+    );
+
+    console.log(
+      'Re-run with --confirm-import once the output looks correct.'
+    );
+
     return;
   }
-  if (!process.env.MONGO_URI) throw new Error('MONGO_URI is not set.');
 
-  await mongoose.connect(process.env.MONGO_URI);
-  const admin = await User.findOne({ role: 'super_admin' });
-  if (!admin) throw new Error('No super admin found. Run seedSuperAdmin.js first.');
 
-  const weeklyType = await ContributionType.findOne({ name: 'Weekly Contribution' });
-  const chaiType = await ContributionType.findOne({ name: 'Chai' });
-  if (!weeklyType || !chaiType) throw new Error('Core contribution types not found — has week 60 been imported?');
-  const systemMember = await Member.findOne({ name: SYSTEM_MEMBER_NAME });
-  if (!systemMember) throw new Error(`"${SYSTEM_MEMBER_NAME}" system member not found — has week 60 been imported?`);
+  // ----------------------------------------------------------
+  // DATABASE
+  // ----------------------------------------------------------
 
-  const counts = { created: 0, duplicate: 0, 'skipped-zero': 0, warning: 0 };
-  const memberRowsByWeek = new Map();
-  for (const row of rows) {
-    if (row.rowType !== 'member') continue;
-    memberRowsByWeek.set(row.week, (memberRowsByWeek.get(row.week) || 0) + 1);
+  if (!process.env.MONGO_URI) {
+    throw new Error(
+      'MONGO_URI is not set.'
+    );
   }
 
-  for (const row of rows) {
-    if (row.rowType === 'member') {
-      const member = await Member.findOne({ name: row.name });
-      if (!member) {
-        console.warn(`  ⚠ Week ${row.week}: member not found "${row.name}" — skipped`);
+  await mongoose.connect(
+    process.env.MONGO_URI
+  );
+
+  const admin =
+    await User.findOne({
+      role: 'super_admin',
+    });
+
+  if (!admin) {
+    throw new Error(
+      'No super admin found. Run seedSuperAdmin.js first.'
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // EXISTING CORE TYPES
+  // ----------------------------------------------------------
+
+  const weeklyType =
+    await ContributionType.findOne({
+      name:
+        'Weekly Contribution',
+    });
+
+  const chaiType =
+    await ContributionType.findOne({
+      name: 'Chai',
+    });
+
+  if (
+    !weeklyType ||
+    !chaiType
+  ) {
+    throw new Error(
+      'Core contribution types not found. Week 60/61 setup may not have been completed.'
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // SYSTEM MEMBER
+  // ----------------------------------------------------------
+
+  const systemMember =
+    await Member.findOne({
+      name:
+        SYSTEM_MEMBER_NAME,
+    });
+
+  if (!systemMember) {
+    throw new Error(
+      `"${SYSTEM_MEMBER_NAME}" system member not found.`
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // GROUP EXPENSE TYPE
+  // ----------------------------------------------------------
+
+  let groupExpenseType = null;
+
+  const needsGenericExpenseType =
+    rows.some(
+      (row) =>
+        row.rowType === 'expense' ||
+        (
+          row.rowType === 'member' &&
+          row.expenseAmount > 0
+        ) ||
+        (
+          row.rowType === 'member' &&
+          row.expenseType !== ''
+        )
+    );
+
+  if (
+    needsGenericExpenseType
+  ) {
+    groupExpenseType =
+      await findOrCreateType(
+        GROUP_EXPENSE_TYPE_NAME,
+        {
+          description:
+            'General group-level expenses imported from the paper ledger',
+          isGroupFund: true,
+          tracksExpenses: true,
+        },
+        admin
+      );
+  }
+
+
+  // ----------------------------------------------------------
+  // COUNTERS
+  // ----------------------------------------------------------
+
+  const counts = {
+    created: 0,
+    duplicate: 0,
+    'skipped-zero': 0,
+    warning: 0,
+  };
+
+
+  // ----------------------------------------------------------
+  // MEMBER COUNT PER WEEK
+  //
+  // Used to calculate Tea Balance.
+  // ----------------------------------------------------------
+
+  const memberRowsByWeek =
+    new Map();
+
+  for (
+    const row of rows
+  ) {
+    if (
+      row.rowType !== 'member'
+    ) {
+      continue;
+    }
+
+    memberRowsByWeek.set(
+      row.week,
+      (
+        memberRowsByWeek.get(
+          row.week
+        ) || 0
+      ) + 1
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // IMPORT ROWS
+  // ----------------------------------------------------------
+
+  const sortedRows =
+    [...rows].sort(
+      (a, b) => {
+        if (
+          a.week !== b.week
+        ) {
+          return a.week - b.week;
+        }
+
+        const dateA =
+          a.date
+            ? a.date.getTime()
+            : 0;
+
+        const dateB =
+          b.date
+            ? b.date.getTime()
+            : 0;
+
+        return dateA - dateB;
+      }
+    );
+
+
+  for (
+    const row
+    of sortedRows
+  ) {
+
+
+    // ========================================================
+    // GROUP EXPENSE ROW
+    // ========================================================
+
+    if (
+      row.rowType === 'expense'
+    ) {
+      if (
+        row.expenseAmount <= 0
+      ) {
+        console.warn(
+          `  ⚠ Week ${row.week}: expense "${row.expenseType || row.name || 'unnamed'}" has no positive amount — skipped.`
+        );
+
         counts.warning++;
+
         continue;
       }
 
-      counts[await logOnce(admin, {
-        memberId: member._id, typeId: weeklyType._id, amount: row.contribution.amount,
-        date: row.date, note: `Week ${row.week} contribution (paper ledger)`,
-      })]++;
+      const description =
+        row.expenseType ||
+        row.name ||
+        `Week ${row.week} group expense`;
 
-      const chaiAmount = row.chai == null ? CHAI_WEEKLY_AMOUNT : row.chai;
-      counts[await logOnce(admin, {
-        memberId: member._id, typeId: chaiType._id, amount: chaiAmount,
-        date: row.date, note: `Week ${row.week} Chai (paper ledger)`,
-      })]++;
+      counts[
+        await logExpenseOnce(
+          admin,
+          {
+            typeId:
+              groupExpenseType._id,
+
+            amount:
+              row.expenseAmount,
+
+            date:
+              row.date,
+
+            description:
+              `Week ${row.week} ${description}${
+                row.note
+                  ? ` - ${row.note}`
+                  : ''
+              }`,
+          }
+        )
+      ]++;
+
+      continue;
+    }
+
+
+    // ========================================================
+    // MEMBER ROW
+    // ========================================================
+
+    if (
+      row.rowType === 'member'
+    ) {
+      const member =
+        await Member.findOne({
+          name: row.name,
+        });
+
+      if (!member) {
+        console.warn(
+          `  ⚠ Week ${row.week}: member not found "${row.name}" — skipped.`
+        );
+
+        counts.warning++;
+
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // WEEKLY CONTRIBUTION
+      // ------------------------------------------------------
+
+      counts[
+        await logContributionOnce(
+          admin,
+          {
+            memberId:
+              member._id,
+
+            typeId:
+              weeklyType._id,
+
+            amount:
+              row.contribution.amount,
+
+            date:
+              row.date,
+
+            note:
+              `Week ${row.week} contribution (paper ledger)`,
+          }
+        )
+      ]++;
+
+
+      // ------------------------------------------------------
+      // EXTRA CONTRIBUTION
+      // ------------------------------------------------------
 
       if (row.extra > 0) {
-        const extraType = await findOrCreateType('Extra Contributions', { description: 'Extra member savings from the paper ledger' }, admin);
-        counts[await logOnce(admin, {
-          memberId: member._id, typeId: extraType._id, amount: row.extra,
-          date: row.date, note: `Week ${row.week} extra contribution (paper ledger)`,
-        })]++;
+        const extraType =
+          await findOrCreateType(
+            'Extra Contributions',
+            {
+              description:
+                'Extra member savings from the paper ledger',
+            },
+            admin
+          );
+
+        counts[
+          await logContributionOnce(
+            admin,
+            {
+              memberId:
+                member._id,
+
+              typeId:
+                extraType._id,
+
+              amount:
+                row.extra,
+
+              date:
+                row.date,
+
+              note:
+                `Week ${row.week} extra contribution (paper ledger)`,
+            }
+          )
+        ]++;
       }
+
+
+      // ------------------------------------------------------
+      // WELFARE / DEBT LIABILITY
+      //
+      // This does NOT reduce the current member balance.
+      // ------------------------------------------------------
+
       if (row.debt > 0) {
-        console.warn(`  ⚠ Week ${row.week}: ${row.name} has a debt of ${row.debt} on their row — Expense records aren't per-member, log this manually if it's real`);
-        counts.warning++;
+        const welfareType =
+          await findOrCreateType(
+            'Welfare Contribution',
+            {
+              description:
+                'Welfare/liability contribution carried forward to the following week',
+            },
+            admin
+          );
+
+        counts[
+          await logContributionOnce(
+            admin,
+            {
+              memberId:
+                member._id,
+
+              typeId:
+                welfareType._id,
+
+              amount:
+                row.debt,
+
+              date:
+                row.date,
+
+              note:
+                `Week ${row.week} welfare liability (paper ledger)`,
+            }
+          )
+        ]++;
       }
+
+
+      // ------------------------------------------------------
+      // CHAI
+      // ------------------------------------------------------
+
+      const chaiAmount =
+        row.chai == null
+          ? CHAI_WEEKLY_AMOUNT
+          : row.chai;
+
+      if (
+        chaiAmount > 0
+      ) {
+        counts[
+          await logContributionOnce(
+            admin,
+            {
+              memberId:
+                member._id,
+
+              typeId:
+                chaiType._id,
+
+              amount:
+                chaiAmount,
+
+              date:
+                row.date,
+
+              note:
+                `Week ${row.week} Chai (paper ledger)`,
+            }
+          )
+        ]++;
+      }
+
+
+      // ------------------------------------------------------
+      // NIL FINE
+      //
+      // Only if threshold exists and
+      // historical total is below it.
+      // ------------------------------------------------------
+
+      if (
+        row.contribution.status ===
+          'nil' &&
+        row.threshold != null &&
+        row.total != null &&
+        row.total < row.threshold
+      ) {
+        const existingFine =
+          await Fine.findOne({
+            memberId:
+              member._id,
+
+            date:
+              row.date,
+
+            reason:
+              `Week ${row.week} - NIL contribution (total ${row.total} below threshold ${row.threshold})`,
+          }).select('_id');
+
+        if (!existingFine) {
+          await createLogged(
+            Fine,
+            {
+              memberId:
+                member._id,
+
+              amount: 50,
+
+              remaining: 50,
+
+              date:
+                row.date,
+
+              reason:
+                `Week ${row.week} - NIL contribution (total ${row.total} below threshold ${row.threshold})`,
+
+              issuedBy:
+                admin._id,
+            },
+            'Fine',
+            admin
+          );
+
+          counts.created++;
+        } else {
+          counts.duplicate++;
+        }
+      }
+
+
+      // ------------------------------------------------------
+      // SAFETY:
+      // If an old member row still has an expense embedded
+      // inside it, log the expense as GROUP expense.
+      //
+      // This prevents historical expenses from ever becoming
+      // part of the member's personal balance.
+      // ------------------------------------------------------
+
+      if (
+        row.expenseAmount > 0
+      ) {
+        const description =
+          row.expenseType ||
+          'Group expense';
+
+        counts[
+          await logExpenseOnce(
+            admin,
+            {
+              typeId:
+                groupExpenseType._id,
+
+              amount:
+                row.expenseAmount,
+
+              date:
+                row.date,
+
+              description:
+                `Week ${row.week} ${description} (originally recorded on ${row.name}'s ledger row)`,
+            }
+          )
+        ]++;
+      }
+
+
       continue;
     }
 
-    const typeName = GROUP_TYPE_NAMES[row.rowType];
-    if (!typeName) continue;
-    const type = await ContributionType.findOne({ name: typeName });
-    if (!type) {
-      console.warn(`  ⚠ Week ${row.week}: contribution type "${typeName}" not found — skipped`);
+
+    // ========================================================
+    // LEGACY GROUP ROW
+    // ========================================================
+
+    const typeName =
+      GROUP_TYPE_NAMES[
+        row.rowType
+      ];
+
+    if (!typeName) {
+      console.warn(
+        `  ⚠ Week ${row.week}: unknown rowType "${row.rowType}" — skipped.`
+      );
+
       counts.warning++;
+
       continue;
     }
 
-    if (row.rowType === 'tea_balance') {
-      const memberCount = memberRowsByWeek.get(row.week) || 0;
-      const total = row.contribution.amount + memberCount * CHAI_WEEKLY_AMOUNT;
-      counts[await logOnce(admin, {
-        memberId: systemMember._id, typeId: type._id, amount: total, date: row.date,
-        note: `Week ${row.week} tea: ${row.contribution.amount} collected + ${memberCount * CHAI_WEEKLY_AMOUNT} chai from members`,
-      })]++;
-    } else if (row.contribution.amount > 0) {
-      counts[await logOnce(admin, {
-        memberId: systemMember._id, typeId: type._id, amount: row.contribution.amount,
-        date: row.date, note: `Week ${row.week} ${row.name || row.rowType} collected`,
-      })]++;
+
+    const type =
+      await ContributionType.findOne({
+        name: typeName,
+      });
+
+    if (!type) {
+      console.warn(
+        `  ⚠ Week ${row.week}: contribution type "${typeName}" not found — skipped.`
+      );
+
+      counts.warning++;
+
+      continue;
     }
 
-    if (row.debt > 0) {
-      counts[await logExpenseOnce(admin, {
-        typeId: type._id, amount: row.debt, date: row.date,
-        description: `Week ${row.week} ${row.name || row.rowType} debt/expense from paper ledger`,
-      })]++;
+
+    // --------------------------------------------------------
+    // TEA BALANCE
+    // --------------------------------------------------------
+
+    if (
+      row.rowType ===
+      'tea_balance'
+    ) {
+      const memberCount =
+        memberRowsByWeek.get(
+          row.week
+        ) || 0;
+
+      const teaCollected =
+        row.contribution.amount;
+
+      const memberChai =
+        memberCount *
+        CHAI_WEEKLY_AMOUNT;
+
+      const total =
+        teaCollected +
+        memberChai;
+
+      counts[
+        await logContributionOnce(
+          admin,
+          {
+            memberId:
+              systemMember._id,
+
+            typeId:
+              type._id,
+
+            amount:
+              total,
+
+            date:
+              row.date,
+
+            note:
+              `Week ${row.week} tea: ${teaCollected} collected + ${memberChai} member Chai`,
+          }
+        )
+      ]++;
+    }
+
+
+    // --------------------------------------------------------
+    // FINES / REGISTRATION / RESIGNATION
+    // --------------------------------------------------------
+
+    else if (
+      row.contribution.amount > 0
+    ) {
+      counts[
+        await logContributionOnce(
+          admin,
+          {
+            memberId:
+              systemMember._id,
+
+            typeId:
+              type._id,
+
+            amount:
+              row.contribution.amount,
+
+            date:
+              row.date,
+
+            note:
+              `Week ${row.week} ${
+                row.name ||
+                row.rowType
+              } collected`,
+          }
+        )
+      ]++;
+    }
+
+
+    // --------------------------------------------------------
+    // LEGACY GROUP DEBT / EXPENSE
+    // --------------------------------------------------------
+
+    if (
+      row.debt > 0
+    ) {
+      counts[
+        await logExpenseOnce(
+          admin,
+          {
+            typeId:
+              type._id,
+
+            amount:
+              row.debt,
+
+            date:
+              row.date,
+
+            description:
+              `Week ${row.week} ${
+                row.name ||
+                row.rowType
+              } debt/expense from paper ledger`,
+          }
+        )
+      ]++;
     }
   }
 
-  console.log('\nImport complete.');
-  console.log(`Created: ${counts.created}  Already imported (skipped): ${counts.duplicate}  Zero-amount (skipped): ${counts['skipped-zero']}  Warnings: ${counts.warning}`);
+
+  // ==========================================================
+  // WELFARE DEDUCTIONS FOR NEXT WEEK
+  // ==========================================================
+
+  console.log(
+    '\nProcessing welfare deductions...'
+  );
+
+  const welfareByMember =
+    new Map();
+
+
+  for (
+    const row
+    of rows.filter(
+      (r) =>
+        r.rowType ===
+          'member' &&
+        r.debt > 0
+    )
+  ) {
+    if (
+      !welfareByMember.has(
+        row.name
+      )
+    ) {
+      welfareByMember.set(
+        row.name,
+        []
+      );
+    }
+
+    welfareByMember
+      .get(row.name)
+      .push({
+        date:
+          row.date,
+
+        amount:
+          row.debt,
+
+        week:
+          row.week,
+      });
+  }
+
+
+  let welfareDeductionCount = 0;
+
+
+  for (
+    const [
+      memberName,
+      welfareList,
+    ]
+    of welfareByMember.entries()
+  ) {
+    const member =
+      await Member.findOne({
+        name: memberName,
+      });
+
+    if (!member) {
+      console.warn(
+        `  ⚠ Welfare deduction skipped: member "${memberName}" not found.`
+      );
+
+      counts.warning++;
+
+      continue;
+    }
+
+
+    const welfareType =
+      await findOrCreateType(
+        'Welfare Contribution',
+        {
+          description:
+            'Welfare/liability contribution carried forward to the following week',
+        },
+        admin
+      );
+
+
+    for (
+      const welfare
+      of welfareList.sort(
+        (a, b) =>
+          a.week - b.week
+      )
+    ) {
+
+      const nextWeekRows =
+        rows.filter(
+          (r) =>
+            r.rowType ===
+              'member' &&
+            r.name ===
+              memberName &&
+            r.week ===
+              welfare.week + 1
+        );
+
+      if (
+        nextWeekRows.length === 0
+      ) {
+        console.warn(
+          `  ⚠ ${memberName}: Week ${welfare.week} welfare of ${welfare.amount} has no Week ${welfare.week + 1} row — no automatic deduction created.`
+        );
+
+        counts.warning++;
+
+        continue;
+      }
+
+
+      const nextRow =
+        nextWeekRows[0];
+
+      const deductionNote =
+        `Week ${welfare.week} welfare deduction (${welfare.amount}) - carried forward`;
+
+
+      const existing =
+        await Contribution.findOne({
+          memberId:
+            member._id,
+
+          typeId:
+            welfareType._id,
+
+          note:
+            deductionNote,
+        }).select('_id');
+
+
+      if (existing) {
+        counts.duplicate++;
+
+        continue;
+      }
+
+
+      await createLogged(
+        Contribution,
+        {
+          memberId:
+            member._id,
+
+          typeId:
+            welfareType._id,
+
+          amount:
+            -welfare.amount,
+
+          date:
+            nextRow.date,
+
+          method:
+            'system',
+
+          note:
+            deductionNote,
+
+          loggedBy:
+            admin._id,
+        },
+        'Contribution',
+        admin
+      );
+
+
+      counts.created++;
+      welfareDeductionCount++;
+    }
+  }
+
+
+  // ==========================================================
+  // FINAL SUMMARY
+  // ==========================================================
+
+  console.log(
+    '\nImport complete.'
+  );
+
+  console.log(
+    `Created: ${counts.created}`
+  );
+
+  console.log(
+    `Already imported (skipped): ${counts.duplicate}`
+  );
+
+  console.log(
+    `Zero-amount (skipped): ${counts['skipped-zero']}`
+  );
+
+  console.log(
+    `Warnings: ${counts.warning}`
+  );
+
+  console.log(
+    `Welfare deductions applied: ${welfareDeductionCount}`
+  );
+
+  console.log(
+    'No existing database collections were wiped.'
+  );
+
   await mongoose.disconnect();
 }
 
-main().catch(async (err) => {
-  console.error(err);
-  await mongoose.disconnect().catch(() => {});
-  process.exit(1);
-});
+
+// ============================================================
+// ERROR HANDLING
+// ============================================================
+
+main().catch(
+  async (error) => {
+    console.error(
+      '\nIMPORT FAILED:'
+    );
+
+    console.error(
+      error
+    );
+
+    await mongoose
+      .disconnect()
+      .catch(() => {});
+
+    process.exit(1);
+  }
+);
