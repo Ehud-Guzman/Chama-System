@@ -15,6 +15,7 @@ export default function TypeManager({ onChange }) {
     weeklyAmount: '',
     tracksExpenses: false,
     isGroupFund: false,
+    isRecoverable: false,
   });
   const [busy, setBusy] = useState(false);
   const [editingWeeklyId, setEditingWeeklyId] = useState(null);
@@ -49,6 +50,7 @@ export default function TypeManager({ onChange }) {
         weeklyAmount: '',
         tracksExpenses: false,
         isGroupFund: false,
+        isRecoverable: false,
       });
       load();
       onChange?.();
@@ -77,6 +79,21 @@ export default function TypeManager({ onChange }) {
         type.isGroupFund
           ? 'Now counts toward members’ personal totals'
           : 'Now excluded from members’ personal totals'
+      );
+      load();
+      onChange?.();
+    } catch (err) {
+      toast(apiMessage(err), 'error');
+    }
+  }
+
+  async function toggleRecoverable(type) {
+    try {
+      await api.patch(`/api/types/${type._id}`, { isRecoverable: !type.isRecoverable });
+      toast(
+        type.isRecoverable
+          ? 'Now counted as a real expense'
+          : 'Now excluded from expenses as a recoverable loan'
       );
       load();
       onChange?.();
@@ -136,10 +153,15 @@ export default function TypeManager({ onChange }) {
                         Group fund
                       </span>
                     )}
+                    {t.isRecoverable && (
+                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                        Loan (recoverable)
+                      </span>
+                    )}
                   </p>
                   {t.description && <p className="truncate text-xs text-muted">{t.description}</p>}
                 </div>
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 flex-wrap justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => toggleGroupFund(t)}
@@ -147,6 +169,15 @@ export default function TypeManager({ onChange }) {
                   >
                     {t.isGroupFund ? 'Unmark group fund' : 'Mark as group fund'}
                   </button>
+                  {t.tracksExpenses && (
+                    <button
+                      type="button"
+                      onClick={() => toggleRecoverable(t)}
+                      className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium"
+                    >
+                      {t.isRecoverable ? 'Mark as real expense' : 'Mark as recoverable loan'}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => toggleActive(t)}
@@ -159,6 +190,12 @@ export default function TypeManager({ onChange }) {
               {t.isGroupFund && (
                 <p className="mt-1 text-xs text-muted">
                   Belongs to the group — excluded from each member's personal contribution total.
+                </p>
+              )}
+              {t.isRecoverable && (
+                <p className="mt-1 text-xs text-muted">
+                  Money paid out here is a loan/advance, not spent — excluded from the group's
+                  total expenses since it's still owed back.
                 </p>
               )}
 
@@ -255,6 +292,16 @@ export default function TypeManager({ onChange }) {
           />
           Tracks expenses (e.g. Chai fund spent on refreshments)
         </label>
+        {form.tracksExpenses && (
+          <label className="ml-6 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.isRecoverable}
+              onChange={(e) => setForm({ ...form, isRecoverable: e.target.checked })}
+            />
+            Recoverable (loan/advance, not a real expense — e.g. member loans)
+          </label>
+        )}
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"

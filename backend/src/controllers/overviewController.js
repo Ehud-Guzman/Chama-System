@@ -96,7 +96,7 @@ async function publicOverview(req, res, next) {
     const totalContributed = byType.reduce((sum, t) => sum + t.totalContributed, 0);
     const thisWeekTotal = thisWeekAgg[0]?.total || 0;
 
-    const expenseTypes = types.filter((t) => t.tracksExpenses);
+    const expenseTypes = types.filter((t) => t.tracksExpenses && !t.isRecoverable);
     const fundBalances = await Promise.all(
       expenseTypes.map(async (t) => ({ name: t.name, ...(await fundBalance(t._id)) }))
     );

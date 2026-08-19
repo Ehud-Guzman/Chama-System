@@ -17,8 +17,14 @@ const ContributionTypeSchema = new Schema(
     // member's personal "total contributed" figure even though it's still
     // logged on their ledger.
     isGroupFund: { type: Boolean, default: false },
+    // Money paid out under this type is a loan/advance, not spent — it's still
+// owed back to the group. Excluded from "total expenses" so outstanding
+// loans don't make the group look like it's run a deficit.
+isRecoverable: { type: Boolean, default: false },
   },
+  
   { timestamps: true }
 );
+
 
 module.exports = model('ContributionType', ContributionTypeSchema);

@@ -122,10 +122,14 @@ async function summary(req, res, next) {
           { $group: { _id: null, total: { $sum: '$amount' } } },
         ]),
         totalFinesCollected(),
-        Expense.aggregate([
-          { $match: { deleted: false } },
-          { $group: { _id: null, total: { $sum: '$amount' } } },
-        ]),
+  Expense.aggregate([
+  { $match: { deleted: false } },
+  { $group: { _id: '$typeId', total: { $sum: '$amount' } } },
+  { $lookup: { from: 'contributiontypes', localField: '_id', foreignField: '_id', as: 'type' } },
+  { $unwind: '$type' },
+  { $match: { 'type.isRecoverable': { $ne: true } } },
+  { $group: { _id: null, total: { $sum: '$total' } } },
+]),
       ]);
 
     const totalContributed = byMethod.reduce((sum, m) => sum + m.total, 0);
