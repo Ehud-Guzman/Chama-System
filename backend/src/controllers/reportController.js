@@ -96,6 +96,8 @@ async function performance(req, res, next) {
   }
 }
 
+// GET /api/reports/summary — total, per-method breakdown, zero-contribution
+// member count, and net cash balance after tracked fund expenses.
 async function summary(req, res, next) {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -146,8 +148,12 @@ async function summary(req, res, next) {
       contributionCount: totalCount,
       activeMembers,
       membersWithZeroContributions: activeMembers - contributingActive,
-      byMethod: byMethod.map((m) => ({ method: m._id, total: m.total, count: m.count })).sort((a, b) => b.total - a.total),
+      byMethod: byMethod
+        .map((m) => ({ method: m._id, total: m.total, count: m.count }))
+        .sort((a, b) => b.total - a.total),
       byType: byTypeRaw,
+      // Cash collected against fines never shows up as a Contribution — kept
+      // separate from totalContributed so it isn't mistaken for total cash held.
       finesCollected,
     });
   } catch (err) {
@@ -256,41 +262,6 @@ async function exportMonthly(req, res, next) {
       sheetRows.push({ Month: m.month, Type: 'TOTAL (all types)', Total: m.total });
     }
     sendWorkbook(res, 'monthly-totals.xlsx', [{ name: 'Monthly totals', rows: sheetRows }]);
-  } catch (err) {
-    next(err);
-  }
-}
-
-// GET /api/reports/summary — total, per-method breakdown, zero-contribution member count
-// GET /api/reports/summary — total, per-method breakdown, zero-contribution member count
-async function summary(req, res, next) {
-  try {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected] = await Promise.all([
-      ...
-      totalFinesCollected(),
-    ]);
-
-    const totalContributed = byMethod.reduce((sum, m) => sum + m.total, 0);
-    const totalCount = byMethod.reduce((sum, m) => sum + m.count, 0);
-
-    const contributingActive = await Member.countDocuments({
-      _id: { $in: contributingIds },
-      active: true,
-    });
-
-    res.json({
-      totalContributed,
-      thisWeekTotal: thisWeekAgg[0]?.total || 0,
-      contributionCount: totalCount,
-      activeMembers,
-      membersWithZeroContributions: activeMembers - contributingActive,
-      byMethod: byMethod
-        .map((m) => ({ method: m._id, total: m.total, count: m.count }))
-        .sort((a, b) => b.total - a.total),
-      byType: byTypeRaw,
-      finesCollected,
-    });
   } catch (err) {
     next(err);
   }
