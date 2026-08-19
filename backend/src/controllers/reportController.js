@@ -8,6 +8,9 @@ const { buildWeeklySchedule } = require('../utils/weeklySchedule');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { totalFinesCollected } = require('../utils/finesCollected');
 const { computeWeeklyReconciliation } = require('../utils/weeklyReconciliation');
+const { totalFinesCollected } = require('../utils/finesCollected');
+const { computeWeeklyReconciliation } = require('../utils/weeklyReconciliation');
+const Expense = require('../models/Expense');
 
 // Shared by /performance and /performance/export: per active member, personal
 // total, weekly-schedule consistency (personal weekly types only — group
@@ -90,6 +93,65 @@ async function computePerformance() {
 async function performance(req, res, next) {
   try {
     res.json({ members: await computePerformance() });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function summary(req, res, next) {
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected, expensesAgg] =
+      await Promise.all([
+        Contribution.aggregate([
+          { $match: { deleted: false } },
+          { $group: { _id: '$method', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+        ]),
+        Contribution.aggregate([
+          { $match: { deleted: false } },
+          { $group: { _id: '$typeId', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+          { $lookup: { from: 'contributiontypes', localField: '_id', foreignField: '_id', as: 'type' } },
+          { $unwind: '$type' },
+          { $project: { _id: 0, typeId: '$_id', name: '$type.name', total: 1, count: 1 } },
+          { $sort: { total: -1 } },
+        ]),
+        Member.countDocuments({ active: true }),
+        Contribution.distinct('memberId', { deleted: false }),
+        Contribution.aggregate([
+          { $match: { deleted: false, date: { $gte: sevenDaysAgo } } },
+          { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]),
+        totalFinesCollected(),
+        Expense.aggregate([
+          { $match: { deleted: false } },
+          { $group: { _id: null, total: { $sum: '$amount' } } },
+        ]),
+      ]);
+
+    const totalContributed = byMethod.reduce((sum, m) => sum + m.total, 0);
+    const totalCount = byMethod.reduce((sum, m) => sum + m.count, 0);
+    const totalExpenses = expensesAgg[0]?.total || 0;
+
+    const contributingActive = await Member.countDocuments({
+      _id: { $in: contributingIds },
+      active: true,
+    });
+
+    res.json({
+      totalContributed,
+      totalExpenses,
+      // Cash actually on hand — contributions minus what's been spent from
+      // expense-tracking funds (e.g. Chai). This is what the dashboard
+      // headline should show, not raw totalContributed.
+      netBalance: totalContributed - totalExpenses,
+      thisWeekTotal: thisWeekAgg[0]?.total || 0,
+      contributionCount: totalCount,
+      activeMembers,
+      membersWithZeroContributions: activeMembers - contributingActive,
+      byMethod: byMethod.map((m) => ({ method: m._id, total: m.total, count: m.count })).sort((a, b) => b.total - a.total),
+      byType: byTypeRaw,
+      finesCollected,
+    });
   } catch (err) {
     next(err);
   }

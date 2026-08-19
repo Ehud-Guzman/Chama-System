@@ -64,13 +64,13 @@ export default function AdminDashboard() {
             aria-label="Chama summary"
             className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
           >
-            <div className="min-w-0 sm:col-span-2 lg:col-span-1">
-              <StatTile
-                label="Total contributed (all-time)"
-                value={money(summary.totalContributed)}
-                accent
-              />
-            </div>
+    <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+  <StatTile
+    label="Cash held (net of expenses)"
+    value={money(summary.netBalance)}
+    accent
+  />
+</div>
 
             <div className="min-w-0">
               <StatTile
