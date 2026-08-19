@@ -28,22 +28,26 @@ export default function GroupOverview({ onChamaName }) {
   return (
     <section>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatTile label="Active members" value={overview.activeMembers} />
-        <StatTile label="Registered all-time" value={overview.totalMembersEver} />
-        <StatTile
-          label="Total raised (all-time)"
-          value={money(overview.totalContributed)}
-          accent
-        />
-        <StatTile label="Raised this week" value={money(overview.thisWeekTotal)} />
-      </div>
-      <p className="mt-2 text-xs text-muted">
-        "All-time" is everyone's lifetime contributions added up — not cash currently held by the
-        group, since funds get paid out (loans, payouts) between meetings.
-        {overview.finesCollected > 0 && (
-          <> It also excludes {money(overview.finesCollected)} collected from fines, which the group holds but isn't logged as a contribution.</>
-        )}
-      </p>
+  <StatTile label="Active members" value={overview.activeMembers} />
+  <StatTile label="Registered all-time" value={overview.totalMembersEver} />
+  <StatTile
+    label="Total raised (all-time)"
+    value={money(overview.totalContributed)}
+  />
+  <StatTile
+    label="Cash held now"
+    value={money(overview.netBalance)}
+    accent
+  />
+</div>
+<p className="mt-2 text-xs text-muted">
+  "Total raised" is everyone's lifetime contributions added up. "Cash held now" is that total
+  minus {money(overview.totalExpenses)} spent from tracked funds — the closer answer to "how
+  much does the group actually have."
+  {overview.finesCollected > 0 && (
+    <> It also excludes {money(overview.finesCollected)} collected from fines, which the group holds but isn't logged as a contribution.</>
+  )}
+</p>
 
       {overview.byType.length > 0 && (
         <div className="mt-3 rounded-xl border border-rule bg-surface p-4 md:p-5">
