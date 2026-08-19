@@ -262,35 +262,12 @@ async function exportMonthly(req, res, next) {
 }
 
 // GET /api/reports/summary — total, per-method breakdown, zero-contribution member count
+// GET /api/reports/summary — total, per-method breakdown, zero-contribution member count
 async function summary(req, res, next) {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected] = await Promise.all([
-      Contribution.aggregate([
-        { $match: { deleted: false } },
-        { $group: { _id: '$method', total: { $sum: '$amount' }, count: { $sum: 1 } } },
-      ]),
-      Contribution.aggregate([
-        { $match: { deleted: false } },
-        { $group: { _id: '$typeId', total: { $sum: '$amount' }, count: { $sum: 1 } } },
-        {
-          $lookup: {
-            from: 'contributiontypes',
-            localField: '_id',
-            foreignField: '_id',
-            as: 'type',
-          },
-        },
-        { $unwind: '$type' },
-        { $project: { _id: 0, typeId: '$_id', name: '$type.name', total: 1, count: 1 } },
-        { $sort: { total: -1 } },
-      ]),
-      Member.countDocuments({ active: true }),
-      Contribution.distinct('memberId', { deleted: false }),
-      Contribution.aggregate([
-        { $match: { deleted: false, date: { $gte: sevenDaysAgo } } },
-        { $group: { _id: null, total: { $sum: '$amount' } } },
-      ]),
+      ...
       totalFinesCollected(),
     ]);
 
@@ -312,8 +289,6 @@ async function summary(req, res, next) {
         .map((m) => ({ method: m._id, total: m.total, count: m.count }))
         .sort((a, b) => b.total - a.total),
       byType: byTypeRaw,
-      // Cash collected against fines never shows up as a Contribution — kept
-      // separate from totalContributed so it isn't mistaken for total cash held.
       finesCollected,
     });
   } catch (err) {
