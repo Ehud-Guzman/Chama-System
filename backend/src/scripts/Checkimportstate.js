@@ -12,6 +12,7 @@ const User = require('../models/User');
 const Member = require('../models/Member');
 const ContributionType = require('../models/ContributionType');
 const Contribution = require('../models/Contribution');
+const Expense = require('../models/Expense');
 
 async function main() {
   if (!process.env.MONGO_URI) {
@@ -53,6 +54,12 @@ async function main() {
 
   const totalContributions = await Contribution.countDocuments({});
   console.log(`\nContributions total: ${totalContributions}`);
+
+  const week61Contributions = await Contribution.countDocuments({ note: /Week 61/i });
+  const week61Expenses = await Expense.countDocuments({ description: /Week 61/i });
+  console.log(`\nWeek 61 evidence:`);
+  console.log(`  Contributions mentioning "Week 61": ${week61Contributions}`);
+  console.log(`  Expenses mentioning "Week 61": ${week61Expenses}`);
 
   console.log('\n--- Summary ---');
   if (totalMembers === 0) {

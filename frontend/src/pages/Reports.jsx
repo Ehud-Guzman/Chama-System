@@ -165,6 +165,16 @@ export default function Reports() {
             {money(summary.totalContributed)}
           </p>
           <p className="amount mt-1 text-sm text-muted">{money(summary.thisWeekTotal)} this week</p>
+
+          {summary.totalExpenses > 0 && (
+            <p className="amount mt-1 text-sm text-alert">
+              − {money(summary.totalExpenses)} spent from tracked funds
+            </p>
+          )}
+          <p className="amount mt-1 text-lg font-semibold">
+            {money(summary.netBalance)} <span className="text-xs font-normal text-muted">net balance</span>
+          </p>
+
           {summary.finesCollected > 0 && (
             <p className="amount mt-1 text-xs text-muted">
               + {money(summary.finesCollected)} collected from fines (not counted above — fines

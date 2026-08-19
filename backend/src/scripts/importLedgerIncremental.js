@@ -36,6 +36,10 @@
  * It is logged as a liability and, when the next week's row exists,
  * a negative welfare contribution is created in the following week.
  *
+ * The "fines" column is likewise NOT deducted from the current member
+ * total — it's logged as a standalone Fine record, same as the existing
+ * auto-generated NIL/threshold fine below.
+ *
  *
  * GROUP EXPENSES:
  *
@@ -74,6 +78,7 @@ const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const ContributionType = require('../models/ContributionType');
 const Fine = require('../models/Fine');
+const FineType = require('../models/FineType');
 const Expense = require('../models/Expense');
 
 const {
@@ -132,6 +137,11 @@ function cleanKey(key) {
   return String(key || '')
     .trim()
     .toLowerCase()
+    // FIXED: was `.replace(/\s+/g, '')` — only stripped whitespace, so a
+    // header like "expense_type" normalized to "expense_type" (underscore
+    // intact) while normalizeRow() below reads `out.expensetype` (no
+    // underscore). That mismatch meant expense_type/expense_amount were
+    // always undefined, and rowHasData() silently dropped every expense row.
     .replace(/[\s_]+/g, '');
 }
 
@@ -328,6 +338,10 @@ function normalizeRow(row) {
         ? null
         : toNumber(out.chai),
 
+    // NEW: the "fines" column existed in the sheet but was never read
+    // into the row object at all, so it was silently ignored end-to-end.
+    fines: emptyToZero(out.fines),
+
     debt:
       out.debt === '' ||
       out.debt == null
@@ -358,7 +372,6 @@ function normalizeRow(row) {
         ? null
         : toNumber(out.threshold),
 
-    // NEW:
     // Generic group expense fields.
     expenseType: String(
       out.expensetype || ''
@@ -459,6 +472,7 @@ function rowHasData(row) {
     row.contribution.status !== 'blank' ||
     row.debt > 0 ||
     row.extra > 0 ||
+    row.fines > 0 ||
     row.expenseAmount > 0 ||
     row.expenseType !== '' ||
     row.previous != null ||
@@ -521,7 +535,7 @@ function validateRows(rows) {
     //
     // Previous + Contribution + Extra - Chai
     //
-    // Debt/welfare is NOT deducted here.
+    // Debt/welfare and fines are NOT deducted here.
     // --------------------------------------------------------
 
     if (
@@ -794,6 +808,55 @@ async function logExpenseOnce(
 
 
 // ============================================================
+// DUPLICATE-SAFE FINE
+// ============================================================
+
+async function logFineOnce(
+  admin,
+  {
+    memberId,
+    typeId,
+    amount,
+    date,
+    reason,
+  }
+) {
+  if (amount <= 0) {
+    return 'skipped-zero';
+  }
+
+  const existing =
+    await Fine.findOne({
+      memberId,
+      typeId,
+      date,
+      reason,
+    }).select('_id');
+
+  if (existing) {
+    return 'duplicate';
+  }
+
+  await createLogged(
+    Fine,
+    {
+      memberId,
+      typeId,
+      amount,
+      remaining: amount,
+      date,
+      reason,
+      issuedBy: admin._id,
+    },
+    'Fine',
+    admin
+  );
+
+  return 'created';
+}
+
+
+// ============================================================
 // MAIN
 // ============================================================
 
@@ -872,6 +935,21 @@ async function main() {
         } = ${expense.expenseAmount}`
       );
     }
+  }
+
+
+  // Count manual "fines" column entries for visibility.
+  const finesRows =
+    rows.filter(
+      (row) =>
+        row.rowType === 'member' &&
+        row.fines > 0
+    );
+
+  if (finesRows.length) {
+    console.log(
+      `Manual fine values detected in 'fines' column: ${finesRows.length}`
+    );
   }
 
 
@@ -1029,6 +1107,59 @@ async function main() {
     throw new Error(
       `"${SYSTEM_MEMBER_NAME}" system member not found.`
     );
+  }
+
+
+  // ----------------------------------------------------------
+  // FINE TYPES
+  //
+  // "NILL Contribution Fine" must already exist — it's the app's own
+  // fixed-KES-50 auto fine type, used elsewhere by the live app too.
+  // "Manual Fine (paper ledger)" is created here on first use — it's
+  // specifically for the sheet's "fines" column, which holds variable,
+  // hand-entered amounts that don't fit the NIL-fine type's meaning.
+  // ----------------------------------------------------------
+
+  const nilFineType =
+    await FineType.findOne({
+      name: 'NILL Contribution Fine',
+    });
+
+  if (!nilFineType) {
+    throw new Error(
+      '"NILL Contribution Fine" FineType not found.'
+    );
+  }
+
+  let manualFineType = null;
+
+  const needsManualFineType =
+    rows.some(
+      (row) =>
+        row.rowType === 'member' &&
+        row.fines > 0
+    );
+
+  if (needsManualFineType) {
+    manualFineType =
+      await FineType.findOne({
+        name: 'Manual Fine (paper ledger)',
+      });
+
+    if (!manualFineType) {
+      manualFineType =
+        await createLogged(
+          FineType,
+          {
+            name: 'Manual Fine (paper ledger)',
+            description: 'Fine amount transcribed directly from the paper ledger\'s "fines" column — not auto-generated.',
+            active: true,
+            createdBy: admin._id,
+          },
+          'FineType',
+          admin
+        );
+    }
   }
 
 
@@ -1362,6 +1493,45 @@ async function main() {
 
 
       // ------------------------------------------------------
+      // MANUAL FINE (from the ledger's "fines" column)
+      //
+      // NEW — this column was present in the sheet but never read
+      // anywhere in the original script, so these values were
+      // silently dropped. Logged here as a standalone Fine record,
+      // separate from the auto NIL/threshold fine below.
+      //
+      // ASSUMPTION TO CONFIRM: this treats each "fines" value as a
+      // manual fine issued that week, not deducted from the running
+      // total (same treatment as welfare/debt). If it's meant to mean
+      // something else, tell me before running --confirm-import.
+      // ------------------------------------------------------
+
+      if (row.fines > 0) {
+        counts[
+          await logFineOnce(
+            admin,
+            {
+              memberId:
+                member._id,
+
+              typeId:
+                manualFineType._id,
+
+              amount:
+                row.fines,
+
+              date:
+                row.date,
+
+              reason:
+                `Week ${row.week} - manual fine (paper ledger)`,
+            }
+          )
+        ]++;
+      }
+
+
+      // ------------------------------------------------------
       // NIL FINE
       //
       // Only if threshold exists and
@@ -1375,46 +1545,26 @@ async function main() {
         row.total != null &&
         row.total < row.threshold
       ) {
-        const existingFine =
-          await Fine.findOne({
-            memberId:
-              member._id,
-
-            date:
-              row.date,
-
-            reason:
-              `Week ${row.week} - NIL contribution (total ${row.total} below threshold ${row.threshold})`,
-          }).select('_id');
-
-        if (!existingFine) {
-          await createLogged(
-            Fine,
+        counts[
+          await logFineOnce(
+            admin,
             {
               memberId:
                 member._id,
 
-              amount: 50,
+              typeId:
+                nilFineType._id,
 
-              remaining: 50,
+              amount: 50,
 
               date:
                 row.date,
 
               reason:
                 `Week ${row.week} - NIL contribution (total ${row.total} below threshold ${row.threshold})`,
-
-              issuedBy:
-                admin._id,
-            },
-            'Fine',
-            admin
-          );
-
-          counts.created++;
-        } else {
-          counts.duplicate++;
-        }
+            }
+          )
+        ]++;
       }
 
 
@@ -1610,11 +1760,22 @@ async function main() {
 
 
   // ==========================================================
-  // WELFARE DEDUCTIONS FOR NEXT WEEK
+  // WELFARE LIABILITIES — REPORT ONLY
+  //
+  // The original design here tried to log a negative Contribution the
+  // following week to represent a welfare liability being "repaid". That's
+  // incompatible with the actual schema: Contribution.amount has min: 0,
+  // and there's no settlement/remaining concept on Contribution the way
+  // there is on Fine. Per this script's own documented accounting rule,
+  // welfare/debt was never part of a member's core savings total anyway —
+  // it's a separate liability, already logged as a positive Contribution
+  // above. This step is now just a report of which liabilities have a
+  // following week's row (so you can see what "should" be considered
+  // repaid) — it makes no writes, so it can't fail the import.
   // ==========================================================
 
   console.log(
-    '\nProcessing welfare deductions...'
+    '\nWelfare liabilities (report only — no writes):'
   );
 
   const welfareByMember =
@@ -1656,7 +1817,8 @@ async function main() {
   }
 
 
-  let welfareDeductionCount = 0;
+  let welfareWithFollowUp = 0;
+  let welfareWithoutFollowUp = 0;
 
 
   for (
@@ -1666,33 +1828,6 @@ async function main() {
     ]
     of welfareByMember.entries()
   ) {
-    const member =
-      await Member.findOne({
-        name: memberName,
-      });
-
-    if (!member) {
-      console.warn(
-        `  ⚠ Welfare deduction skipped: member "${memberName}" not found.`
-      );
-
-      counts.warning++;
-
-      continue;
-    }
-
-
-    const welfareType =
-      await findOrCreateType(
-        'Welfare Contribution',
-        {
-          description:
-            'Welfare/liability contribution carried forward to the following week',
-        },
-        admin
-      );
-
-
     for (
       const welfare
       of welfareList.sort(
@@ -1716,75 +1851,25 @@ async function main() {
         nextWeekRows.length === 0
       ) {
         console.warn(
-          `  ⚠ ${memberName}: Week ${welfare.week} welfare of ${welfare.amount} has no Week ${welfare.week + 1} row — no automatic deduction created.`
+          `  ⚠ ${memberName}: Week ${welfare.week} welfare of ${welfare.amount} has no Week ${welfare.week + 1} row.`
         );
 
-        counts.warning++;
+        welfareWithoutFollowUp++;
 
         continue;
       }
 
-
-      const nextRow =
-        nextWeekRows[0];
-
-      const deductionNote =
-        `Week ${welfare.week} welfare deduction (${welfare.amount}) - carried forward`;
-
-
-      const existing =
-        await Contribution.findOne({
-          memberId:
-            member._id,
-
-          typeId:
-            welfareType._id,
-
-          note:
-            deductionNote,
-        }).select('_id');
-
-
-      if (existing) {
-        counts.duplicate++;
-
-        continue;
-      }
-
-
-      await createLogged(
-        Contribution,
-        {
-          memberId:
-            member._id,
-
-          typeId:
-            welfareType._id,
-
-          amount:
-            -welfare.amount,
-
-          date:
-            nextRow.date,
-
-          method:
-            'system',
-
-          note:
-            deductionNote,
-
-          loggedBy:
-            admin._id,
-        },
-        'Contribution',
-        admin
+      console.log(
+        `  ${memberName}: Week ${welfare.week} welfare of ${welfare.amount} — Week ${welfare.week + 1} row exists.`
       );
 
-
-      counts.created++;
-      welfareDeductionCount++;
+      welfareWithFollowUp++;
     }
   }
+
+  console.log(
+    `\nWelfare liabilities: ${welfareWithFollowUp} with a following week, ${welfareWithoutFollowUp} without.`
+  );
 
 
   // ==========================================================
@@ -1809,10 +1894,6 @@ async function main() {
 
   console.log(
     `Warnings: ${counts.warning}`
-  );
-
-  console.log(
-    `Welfare deductions applied: ${welfareDeductionCount}`
   );
 
   console.log(
