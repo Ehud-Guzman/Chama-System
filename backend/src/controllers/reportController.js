@@ -8,8 +8,6 @@ const { buildWeeklySchedule } = require('../utils/weeklySchedule');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { totalFinesCollected } = require('../utils/finesCollected');
 const { computeWeeklyReconciliation } = require('../utils/weeklyReconciliation');
-const { totalFinesCollected } = require('../utils/finesCollected');
-const { computeWeeklyReconciliation } = require('../utils/weeklyReconciliation');
 const Expense = require('../models/Expense');
 
 // Shared by /performance and /performance/export: per active member, personal
