@@ -29,7 +29,11 @@ async function blobErrorMessage(err, fallback) {
 // caller when the underlying member changes so the reveal animation replays.
 // `statementUrl` (relative, e.g. /api/public/lookup/statement?phone=...) is
 // optional — omit it if the caller has no way to re-identify this member.
-export default function PassbookCard({ result, statementUrl }) {
+export default function PassbookCard({
+  result,
+  statementUrl,
+  statementExcelUrl,
+}) {
   const toast = useToast();
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
@@ -61,6 +65,73 @@ export default function PassbookCard({ result, statementUrl }) {
       setExporting(false);
     }
   }
+  async function exportStatementExcel() {
+  setExporting(true);
+
+  try {
+    const res = await api.get(statementExcelUrl, {
+      responseType: 'blob',
+    });
+
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+
+    a.href = url;
+    a.download = `statement-${result.regNumber || result.name}.xlsx`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    toast(
+      await blobErrorMessage(
+        err,
+        'Could not export the Excel statement. Please try again.'
+      ),
+      'error'
+    );
+  } finally {
+    setExporting(false);
+  }
+}
+
+  async function exportStatementExcel() {
+  setExporting(true);
+
+  try {
+    const excelUrl = statementUrl
+      ? statementUrl.replace('/statement?', '/statement/excel?')
+      : statementUrl;
+
+    const res = await api.get(excelUrl, {
+      responseType: 'blob',
+    });
+
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+
+    a.href = url;
+    a.download = `statement-${result.regNumber || result.name}.xlsx`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    toast(
+      await blobErrorMessage(
+        err,
+        'Could not export the Excel statement. Please try again.'
+      ),
+      'error'
+    );
+  } finally {
+    setExporting(false);
+  }
+}
 
   return (
     <div className="space-y-4">
@@ -75,16 +146,27 @@ export default function PassbookCard({ result, statementUrl }) {
             </p>
           )}
         </div>
-        {statementUrl && (
-          <button
-            type="button"
-            onClick={exportStatement}
-            disabled={exporting}
-            className="shrink-0 rounded-lg border border-rule px-3 py-2 text-xs font-medium text-primary disabled:opacity-60"
-          >
-            {exporting ? 'Exporting…' : 'Export statement'}
-          </button>
-        )}
+     {statementUrl && (
+  <div className="flex shrink-0 gap-2">
+    <button
+      type="button"
+      onClick={exportStatement}
+      disabled={exporting}
+      className="rounded-lg border border-rule px-3 py-2 text-xs font-medium text-primary disabled:opacity-60"
+    >
+      {exporting ? 'Exporting…' : 'PDF'}
+    </button>
+
+    <button
+      type="button"
+      onClick={exportStatementExcel}
+      disabled={exporting}
+      className="rounded-lg border border-rule px-3 py-2 text-xs font-medium text-primary disabled:opacity-60"
+    >
+      {exporting ? 'Exporting…' : 'Excel'}
+    </button>
+  </div>
+)}
       </header>
 
       {/* Open book: pledged vs. contributed per type, shown whether or not

@@ -117,6 +117,33 @@ export default function MemberDetail() {
     }
   }
 
+async function exportStatementExcel() {
+  console.log('🔥 EXCEL BUTTON CLICKED');
+
+  try {
+    const res = await api.get(`/api/members/${id}/statement/excel`, {
+      responseType: 'blob',
+    });
+
+    console.log('🔥 EXCEL RESPONSE:', res.status, res.data);
+
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+
+    a.href = url;
+    a.download = `statement-${member.regNumber || member.name}.xlsx`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('🔥 EXCEL EXPORT ERROR:', err);
+    console.error('🔥 RESPONSE:', err.response);
+  }
+}
+
   async function removeContribution() {
     setBusy(true);
     try {
@@ -186,32 +213,43 @@ export default function MemberDetail() {
             {member.resignationReason ? ` — ${member.resignationReason}` : ''}
           </p>
         )}
-        <div className="mt-3 flex gap-3">
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={exportStatement}
-            className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
-          >
-            Export statement
-          </button>
-          {member.active && (
-            <button
-              type="button"
-              onClick={() => setConfirmingResign(true)}
-              className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium text-alert"
-            >
-              Resign member
-            </button>
-          )}
-        </div>
+<div className="mt-3 flex gap-3">
+  <button
+    type="button"
+    onClick={() => setEditing(true)}
+    className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
+  >
+    Edit
+  </button>
+
+  <button
+    type="button"
+    onClick={exportStatement}
+    className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
+  >
+    PDF
+  </button>
+
+  <button
+    type="button"
+    onClick={exportStatementExcel}
+    className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
+  >
+    Excel
+  </button>
+
+  {member.active && (
+    <button
+      type="button"
+      onClick={() => setConfirmingResign(true)}
+      className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium text-alert"
+    >
+      Resign member
+    </button>
+  )}
+</div>
       </section>
+
 
       <div className="md:grid md:grid-cols-[320px_1fr] md:items-start md:gap-6">
         <section className="space-y-4">

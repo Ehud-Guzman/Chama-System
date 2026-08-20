@@ -521,6 +521,190 @@ async function sendStatement(res, profile) {
   const settings = await getOrCreateSettings();
   renderStatementPdf(res, profile, settings.chamaName);
 }
+// Renders a member's statement as an Excel workbook.
+async function sendStatementExcel(res, profile) {
+  const settings = await getOrCreateSettings();
+
+  const summaryRows = [
+    {
+      Field: 'Chama',
+      Value: settings.chamaName || '',
+    },
+    {
+      Field: 'Member Name',
+      Value: profile.name || '',
+    },
+    {
+      Field: 'Registration Number',
+      Value: profile.regNumber || '',
+    },
+    {
+      Field: 'Total Contributed',
+      Value: profile.totalContributed || 0,
+    },
+    {
+      Field: 'Total Pledged',
+      Value: profile.totalPledged || 0,
+    },
+    {
+      Field: 'Outstanding Fines',
+      Value: profile.fines?.totalOwed || 0,
+    },
+    {
+      Field: 'Generated On',
+      Value: new Date(),
+    },
+  ];
+
+  const contributionRows = (profile.contributions || []).map((c, index) => ({
+    '#': index + 1,
+    Date: c.date || '',
+    'Contribution Type': c.type || '',
+    Amount: c.amount || 0,
+    'Payment Method': c.method || '',
+    'Fine Deducted': c.fineDeducted || 0,
+    'Gross Amount': c.grossAmount || c.amount || 0,
+    'Group Fund': c.isGroupFund ? 'Yes' : 'No',
+    'Running Balance': c.runningBalance || 0,
+  }));
+
+  const breakdownRows = (profile.byType || []).map((b) => ({
+    'Contribution Type': b.type || '',
+    Pledged: b.pledged || 0,
+    Contributed: b.contributed || 0,
+    Balance: Math.max((b.pledged || 0) - (b.contributed || 0), 0),
+  }));
+
+  const fineRows = [
+    ...(profile.fines?.pending || []).map((f) => ({
+      Date: f.date || '',
+      Type: f.type || '',
+      Amount: f.amount || 0,
+      Remaining: f.remaining || 0,
+      Reason: f.reason || '',
+      Status: 'Pending',
+    })),
+    ...(profile.fines?.settled || []).map((f) => ({
+      Date: f.date || '',
+      Type: f.type || '',
+      Amount: f.amount || 0,
+      Remaining: f.remaining || 0,
+      Reason: f.reason || '',
+      Status: 'Settled',
+    })),
+  ];
+
+  sendWorkbook(res, 'contribution-statement.xlsx', [
+    {
+      name: 'Summary',
+      rows: summaryRows,
+    },
+    {
+      name: 'Contribution History',
+      rows: contributionRows,
+    },
+    {
+      name: 'Contribution Breakdown',
+      rows: breakdownRows,
+    },
+    {
+      name: 'Fines',
+      rows: fineRows,
+    },
+  ]);
+}
+// Renders a buildPublicProfile() result as a downloadable Excel statement.
+async function sendStatementExcel(res, profile) {
+  const settings = await getOrCreateSettings();
+
+  const summaryRows = [
+    { Field: 'Chama', Value: settings.chamaName || '' },
+    { Field: 'Member Name', Value: profile.name || '' },
+    { Field: 'Registration Number', Value: profile.regNumber || '' },
+    { Field: 'Total Contributed', Value: profile.totalContributed || 0 },
+    { Field: 'Total Pledged', Value: profile.totalPledged || 0 },
+    { Field: 'Outstanding Fines', Value: profile.fines?.totalOwed || 0 },
+    { Field: 'Generated On', Value: new Date() },
+  ];
+
+  const contributionRows = (profile.contributions || []).map((c, index) => ({
+    '#': index + 1,
+    Date: c.date || '',
+    'Contribution Type': c.type || '',
+    Amount: c.amount || 0,
+    'Payment Method': c.method || '',
+    'Fine Deducted': c.fineDeducted || 0,
+    'Group Fund': c.isGroupFund ? 'Yes' : 'No',
+    'Running Balance': c.runningBalance || 0,
+  }));
+
+  const breakdownRows = (profile.byType || []).map((b) => ({
+    'Contribution Type': b.type || '',
+    Pledged: b.pledged || 0,
+    Contributed: b.contributed || 0,
+    Balance: Math.max((b.pledged || 0) - (b.contributed || 0), 0),
+  }));
+
+  const pendingFineRows = (profile.fines?.pending || []).map((f) => ({
+    Date: f.date || '',
+    Type: f.type || '',
+    Amount: f.amount || 0,
+    Remaining: f.remaining || 0,
+    Reason: f.reason || '',
+    Status: 'Pending',
+  }));
+
+  const settledFineRows = (profile.fines?.settled || []).map((f) => ({
+    Date: f.date || '',
+    Type: f.type || '',
+    Amount: f.amount || 0,
+    Remaining: f.remaining || 0,
+    Reason: f.reason || '',
+    Status: 'Settled',
+  }));
+
+  const fineRows = [...pendingFineRows, ...settledFineRows];
+
+  const weeklyRows = [];
+
+  for (const schedule of profile.weeklySchedules || []) {
+    for (const week of schedule.weeks || []) {
+      weeklyRows.push({
+        'Contribution Type': schedule.typeName || '',
+        'Weekly Amount': schedule.weeklyAmount || 0,
+        Week: week.week || '',
+        Date: week.date || '',
+        Due: week.due || 0,
+        Contributed: week.contributed || 0,
+        Balance: week.balance || 0,
+        Status: week.status || '',
+      });
+    }
+  }
+
+  sendWorkbook(res, 'contribution-statement.xlsx', [
+    {
+      name: 'Summary',
+      rows: summaryRows,
+    },
+    {
+      name: 'Contribution History',
+      rows: contributionRows,
+    },
+    {
+      name: 'Contribution Breakdown',
+      rows: breakdownRows,
+    },
+    {
+      name: 'Fines',
+      rows: fineRows,
+    },
+    {
+      name: 'Weekly Schedule',
+      rows: weeklyRows,
+    },
+  ]);
+}
 
 // GET /api/public/lookup/statement?phone= — PUBLIC, same access rule as publicLookup.
 async function publicLookupStatement(req, res, next) {
@@ -532,6 +716,82 @@ async function publicLookupStatement(req, res, next) {
     const member = await Member.findOne({ phone: normalized, active: true }).lean();
     if (!member) return res.status(404).json({ message: 'not_found' });
     await sendStatement(res, await buildPublicProfile(member));
+  } catch (err) {
+    next(err);
+  }
+}
+// GET /api/public/lookup/statement/excel?phone= — PUBLIC
+async function publicLookupStatementExcel(req, res, next) {
+  try {
+    const normalized = normalizePhone(String(req.query.phone || ''));
+
+    if (!normalized) {
+      return res.status(400).json({
+        message: 'Enter a valid phone number (e.g. 0712 345 678)',
+      });
+    }
+
+    const member = await Member.findOne({
+      phone: normalized,
+      active: true,
+    }).lean();
+
+    if (!member) {
+      return res.status(404).json({ message: 'not_found' });
+    }
+
+    await sendStatementExcel(
+      res,
+      await buildPublicProfile(member)
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+// GET /api/public/lookup/statement/excel?phone= — PUBLIC
+async function publicLookupStatementExcel(req, res, next) {
+  try {
+    const normalized = normalizePhone(String(req.query.phone || ''));
+
+    if (!normalized) {
+      return res.status(400).json({
+        message: 'Enter a valid phone number (e.g. 0712 345 678)',
+      });
+    }
+
+    const member = await Member.findOne({
+      phone: normalized,
+      active: true,
+    }).lean();
+
+    if (!member) {
+      return res.status(404).json({ message: 'not_found' });
+    }
+
+    await sendStatementExcel(
+      res,
+      await buildPublicProfile(member)
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+// GET /api/public/directory/:id/statement/excel — PUBLIC
+async function publicMemberStatementExcel(req, res, next) {
+  try {
+    const member = await Member.findOne({
+      _id: req.params.id,
+      active: true,
+    }).lean();
+
+    if (!member) {
+      return res.status(404).json({ message: 'not_found' });
+    }
+
+    await sendStatementExcel(
+      res,
+      await buildPublicProfile(member)
+    );
   } catch (err) {
     next(err);
   }
@@ -583,6 +843,47 @@ async function publicLookup(req, res, next) {
 // 10-char normalized format (0[17]XXXXXXXX), so slicing at fixed offsets is safe.
 function maskPhone(phone) {
   return `${phone.slice(0, 2)}XX XXX ${phone.slice(7)}`;
+}
+
+// GET /api/public/directory/:id/statement/excel — PUBLIC
+async function publicMemberStatementExcel(req, res, next) {
+  try {
+    const member = await Member.findOne({
+      _id: req.params.id,
+      active: true,
+    }).lean();
+
+    if (!member) {
+      return res.status(404).json({ message: 'not_found' });
+    }
+
+    await sendStatementExcel(
+      res,
+      await buildPublicProfile(member)
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/members/:id/statement/excel — ADMIN
+async function memberStatementExcel(req, res, next) {
+  try {
+    const member = await Member.findById(req.params.id).lean();
+
+    if (!member) {
+      return res.status(404).json({
+        message: 'Member not found',
+      });
+    }
+
+    await sendStatementExcel(
+      res,
+      await buildPublicProfile(member)
+    );
+  } catch (err) {
+    next(err);
+  }
 }
 
 // GET /api/public/directory?search=&page=&limit= — PUBLIC, open member list.
@@ -700,10 +1001,13 @@ module.exports = {
   importTemplate,
   exportMembers,
   memberStatement,
+  memberStatementExcel,
   publicLookup,
   publicLookupStatement,
+  publicLookupStatementExcel,
   publicDirectory,
   publicMemberProfile,
   publicMemberStatement,
+  publicMemberStatementExcel,
   publicResigned,
 };

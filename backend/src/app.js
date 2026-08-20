@@ -10,9 +10,11 @@ const { notFound, errorHandler } = require('./middleware/errorHandler');
 const {
   publicLookup,
   publicLookupStatement,
+  publicLookupStatementExcel,
   publicDirectory,
   publicMemberProfile,
   publicMemberStatement,
+  publicMemberStatementExcel,
   publicResigned,
 } = require('./controllers/memberController');
 const { publicOverview } = require('./controllers/overviewController');
@@ -34,12 +36,31 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(helmet());
+
+// --- CORS -------------------------------------------------------------
+// Supports multiple allowed origins via a comma-separated FRONTEND_URL env var,
+// e.g. FRONTEND_URL="https://chama-contribution-manager.netlify.app,http://localhost:5173"
+// Set credentials: true ONLY if you switch auth to cookie/session-based.
+// If auth stays Bearer-token (JWT in Authorization header), leave it false.
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-    credentials: false,
+    origin: (origin, callback) => {
+      // allow requests with no origin (curl, Postman, mobile apps, server-to-server)
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked: ${origin} not allowed`));
+    },
+    credentials: false, // set true only if switching to cookie-based auth
   })
 );
+// -----------------------------------------------------------------------
+
 app.use(express.json({ limit: '2mb' })); // CSV import arrives as JSON text
 app.use(mongoSanitize());
 
@@ -48,12 +69,14 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 // Public member lookup — rate-limited, exact match only
 app.get('/api/public/lookup', lookupLimiter, publicLookup);
 app.get('/api/public/lookup/statement', lookupLimiter, publicLookupStatement);
+app.get('/api/public/lookup/statement/excel', lookupLimiter, publicLookupStatementExcel);
+app.get('/api/public/directory/:id/statement', directoryLimiter, publicMemberStatement);
+app.get('/api/public/directory/:id/statement/excel', directoryLimiter, publicMemberStatementExcel);
 // Public group overview — chama name, membership size, totals by type
 app.get('/api/public/overview', overviewLimiter, publicOverview);
 // Public member directory — full openness by design; phone numbers are masked
 app.get('/api/public/directory', directoryLimiter, publicDirectory);
 app.get('/api/public/directory/:id', directoryLimiter, publicMemberProfile);
-app.get('/api/public/directory/:id/statement', directoryLimiter, publicMemberStatement);
 // Public resigned-members list — same openness policy as the active directory
 app.get('/api/public/resigned', directoryLimiter, publicResigned);
 
