@@ -311,18 +311,20 @@ export default function PublicLookup() {
               MEMBER RESULT
           ================================================== */}
 
-          {status === 'found' && result && (
-            <section
-              className="mt-5"
-              aria-label="Your contribution record"
-            >
-              <PassbookCard
-                key={result.regNumber || result.name}
-                result={result}
-                statementUrl={`/api/public/lookup/statement?phone=${lookedUpPhone}`}
-              />
-            </section>
-          )}
+   {status === 'found' && result && (
+  <section
+    className="mt-5"
+    aria-label="Your contribution record"
+  >
+    <PassbookCard
+      key={result.regNumber || result.name}
+      result={result}
+      statementUrl={`/api/public/lookup/statement?phone=${lookedUpPhone}`}
+      statementExcelUrl={`/api/public/lookup/statement/excel?phone=${lookedUpPhone}`}
+    />
+  </section>
+)}
+
 
         </header>
 
