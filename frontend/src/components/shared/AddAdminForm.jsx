@@ -101,7 +101,7 @@ export default function AddAdminForm() {
                 </p>
                 <p className="truncate text-xs text-muted">{a.email}</p>
               </div>
-              // In AddAdminForm, replace the button container:
+            
               {a.id !== user.id && (
                 <div className="flex shrink-0 flex-wrap justify-end gap-2">
                   {" "}
