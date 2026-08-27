@@ -14,12 +14,12 @@ export default function AdminLayout({ children }) {
         <button
           type="button"
           onClick={logout}
-          className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted"
+          className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted hover:bg-elevation"
         >
           Sign out
         </button>
       </header>
-      <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6 md:max-w-6xl md:px-8 md:pb-10">
+      <main className="mx-auto w-full max-w-3xl px-4 pb-40 pt-6 md:max-w-6xl md:px-8 md:pb-10">
         {children}
       </main>
       <BottomNav />
