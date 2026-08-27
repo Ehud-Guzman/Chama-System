@@ -4,8 +4,8 @@ import { NAV_ITEMS } from './navItems';
 export default function BottomNav() {
   return (
     <nav
-      aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-rule bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
+      aria-label="Main navigation"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-rule bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       <ul className="grid grid-cols-5">
         {NAV_ITEMS.map((item) => (
@@ -13,13 +13,16 @@ export default function BottomNav() {
             <NavLink
               to={item.to}
               className={({ isActive }) =>
-                `flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${
-                  isActive ? 'text-primary' : 'text-muted'
+                `flex min-h-16 flex-col items-center justify-center gap-1 text-[10px] font-medium transition ${
+                  isActive
+                    ? 'text-primary'
+                    : 'text-muted hover:text-muted/80'
                 }`
               }
+              aria-current={({ isActive }) => (isActive ? 'page' : undefined)}
             >
               <span className="h-5 w-5">{item.icon}</span>
-              {item.label}
+              <span className="text-center">{item.label}</span>
             </NavLink>
           </li>
         ))}
