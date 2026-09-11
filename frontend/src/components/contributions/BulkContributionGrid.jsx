@@ -186,6 +186,20 @@ export default function BulkContributionGrid({ onLogged }) {
     reader.readAsArrayBuffer(file);
   }
 
+  async function downloadTemplate() {
+    try {
+      const res = await api.get('/api/contributions/bulk/template', { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'contributions-import-template.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast(apiMessage(err, 'Could not download the template'), 'error');
+    }
+  }
+
   const entries = useMemo(() => {
     const list = [];
     for (const m of members) {
@@ -291,13 +305,22 @@ export default function BulkContributionGrid({ onLogged }) {
         </div>
         <div>
           <span className="mb-1 block text-xs font-medium">Or upload a spreadsheet</span>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="min-h-11 rounded-lg border border-rule px-3 text-xs font-semibold text-primary"
-          >
-            Upload .xlsx / .csv
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="min-h-11 rounded-lg border border-rule px-3 text-xs font-semibold text-primary"
+            >
+              Upload .xlsx / .csv
+            </button>
+            <button
+              type="button"
+              onClick={downloadTemplate}
+              className="min-h-11 rounded-lg border border-rule px-3 text-xs font-semibold text-muted"
+            >
+              Download template
+            </button>
+          </div>
           <input
             ref={fileInputRef}
             type="file"
