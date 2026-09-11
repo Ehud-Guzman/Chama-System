@@ -121,14 +121,10 @@ export default function MemberDetail() {
   }
 
 async function exportStatementExcel() {
-  console.log('🔥 EXCEL BUTTON CLICKED');
-
   try {
     const res = await api.get(`/api/members/${id}/statement/excel`, {
       responseType: 'blob',
     });
-
-    console.log('🔥 EXCEL RESPONSE:', res.status, res.data);
 
     const url = URL.createObjectURL(res.data);
     const a = document.createElement('a');
@@ -142,8 +138,7 @@ async function exportStatementExcel() {
 
     URL.revokeObjectURL(url);
   } catch (err) {
-    console.error('🔥 EXCEL EXPORT ERROR:', err);
-    console.error('🔥 RESPONSE:', err.response);
+    toast(apiMessage(err, 'Export failed'), 'error');
   }
 }
 
@@ -264,6 +259,10 @@ async function exportStatementExcel() {
             </h2>
             {canEdit ? (
               <PledgeEditor memberId={member._id} byType={byType} onSaved={load} />
+            ) : byType.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-rule px-5 py-6 text-center text-sm text-muted">
+                No contribution types set up yet.
+              </p>
             ) : (
               <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
                 {byType.map((entry) => (

@@ -7,6 +7,17 @@ function toDTO(user) {
   return { id: user._id, name: user.name, email: user.email, role: user.role, active: user.active };
 }
 
+// At least 8 characters with a mix of letters and numbers — stops trivial
+// all-digit or all-letter passwords without demanding a full complexity policy.
+function weakPasswordMessage(password) {
+  const value = String(password || '');
+  if (value.length < 8) return 'Password must be at least 8 characters';
+  if (!/[a-zA-Z]/.test(value) || !/[0-9]/.test(value)) {
+    return 'Password must include both letters and numbers';
+  }
+  return null;
+}
+
 function signToken(user) {
   return jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '8h',
@@ -45,8 +56,9 @@ async function changeOwnPassword(req, res, next) {
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ message: 'Current and new password are required' });
     }
-    if (String(newPassword).length < 8) {
-      return res.status(400).json({ message: 'New password must be at least 8 characters' });
+    const weakMessage = weakPasswordMessage(newPassword);
+    if (weakMessage) {
+      return res.status(400).json({ message: weakMessage });
     }
     const user = await User.findById(req.user._id).select('+password');
     if (!(await bcrypt.compare(currentPassword, user.password))) {
@@ -89,8 +101,9 @@ async function createAdmin(req, res, next) {
     if (role === 'admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ message: 'Only the super admin can create an admin account' });
     }
-    if (String(password).length < 8) {
-      return res.status(400).json({ message: 'Password must be at least 8 characters' });
+    const weakMessage = weakPasswordMessage(password);
+    if (weakMessage) {
+      return res.status(400).json({ message: weakMessage });
     }
     const hashed = await bcrypt.hash(String(password), 10);
     const user = await User.create({
@@ -154,8 +167,9 @@ async function updateAdmin(req, res, next) {
 async function resetAdminPassword(req, res, next) {
   try {
     const { password } = req.body || {};
-    if (!password || String(password).length < 8) {
-      return res.status(400).json({ message: 'New password must be at least 8 characters' });
+    const weakMessage = weakPasswordMessage(password);
+    if (!password || weakMessage) {
+      return res.status(400).json({ message: weakMessage || 'New password must be at least 8 characters' });
     }
     if (String(req.params.id) === String(req.user._id)) {
       return res.status(400).json({ message: 'Use "Change my password" for your own account' });
