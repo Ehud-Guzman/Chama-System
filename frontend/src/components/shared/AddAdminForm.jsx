@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api, { apiMessage } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from './Toast';
+import { weakPasswordMessage } from '../../utils/password';
 
 // Admin/super-admin: create admin or secretary accounts, deactivate/
 // reactivate them, and reset a locked-out account's password (there's no
@@ -39,6 +40,11 @@ export default function AddAdminForm() {
 
   async function onSubmit(e) {
     e.preventDefault();
+    const weakMessage = weakPasswordMessage(form.password);
+    if (weakMessage) {
+      toast(weakMessage, 'error');
+      return;
+    }
     setBusy(true);
     try {
       await api.post('/api/auth/admins', form);
@@ -63,8 +69,9 @@ export default function AddAdminForm() {
   }
 
   async function saveReset(admin) {
-    if (resetValue.length < 8) {
-      toast('New password must be at least 8 characters', 'error');
+    const weakMessage = weakPasswordMessage(resetValue);
+    if (weakMessage) {
+      toast(weakMessage, 'error');
       return;
     }
     setBusy(true);
@@ -139,7 +146,7 @@ export default function AddAdminForm() {
                   type="password"
                   autoFocus
                   minLength={8}
-                  placeholder="New password (min 8 characters)"
+                  placeholder="New password (letters & numbers, min 8 chars)"
                   value={resetValue}
                   onChange={(e) => setResetValue(e.target.value)}
                   className="h-11 w-full rounded-lg border border-rule px-3 text-sm sm:flex-1"
@@ -203,7 +210,7 @@ export default function AddAdminForm() {
           type="password"
           required
           minLength={8}
-          placeholder="Password (min 8 characters)"
+          placeholder="Password (letters & numbers, min 8 chars)"
           value={form.password}
           onChange={(e) => setForm({ ...form, password: e.target.value })}
           className="h-12 w-full rounded-xl border border-rule px-4 text-sm transition focus:border-primary focus:outline-none"

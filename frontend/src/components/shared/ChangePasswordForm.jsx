@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import api, { apiMessage } from '../../services/api';
 import { useToast } from './Toast';
+import { weakPasswordMessage } from '../../utils/password';
 
 // Every admin can change their own password — this is account hygiene, not
 // account management (that's AddAdminForm, super-admin only).
@@ -11,8 +12,9 @@ export default function ChangePasswordForm() {
 
   async function onSubmit(e) {
     e.preventDefault();
-    if (form.newPassword.length < 8) {
-      toast('New password must be at least 8 characters', 'error');
+    const weakMessage = weakPasswordMessage(form.newPassword);
+    if (weakMessage) {
+      toast(weakMessage, 'error');
       return;
     }
     setBusy(true);
@@ -46,7 +48,7 @@ export default function ChangePasswordForm() {
           required
           minLength={8}
           autoComplete="new-password"
-          placeholder="New password (min 8 characters)"
+          placeholder="New password (letters & numbers, min 8 chars)"
           value={form.newPassword}
           onChange={(e) => setForm({ ...form, newPassword: e.target.value })}
           className="h-12 w-full rounded-xl border border-rule px-4 text-sm"
