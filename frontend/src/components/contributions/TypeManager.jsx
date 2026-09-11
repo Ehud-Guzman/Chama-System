@@ -129,7 +129,7 @@ export default function TypeManager({ onChange }) {
         <ul className="mt-3 divide-y divide-rule">
           {types.map((t) => (
             <li key={t._id} className="py-3">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">
                     {t.name}
@@ -161,11 +161,11 @@ export default function TypeManager({ onChange }) {
                   </p>
                   {t.description && <p className="truncate text-xs text-muted">{t.description}</p>}
                 </div>
-                <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                <div className="flex flex-wrap gap-2 sm:shrink-0 sm:justify-end">
                   <button
                     type="button"
                     onClick={() => toggleGroupFund(t)}
-                    className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium"
+                    className="min-h-11 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
                   >
                     {t.isGroupFund ? 'Unmark group fund' : 'Mark as group fund'}
                   </button>
@@ -173,7 +173,7 @@ export default function TypeManager({ onChange }) {
                     <button
                       type="button"
                       onClick={() => toggleRecoverable(t)}
-                      className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium"
+                      className="min-h-11 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
                     >
                       {t.isRecoverable ? 'Mark as real expense' : 'Mark as recoverable loan'}
                     </button>
@@ -181,7 +181,7 @@ export default function TypeManager({ onChange }) {
                   <button
                     type="button"
                     onClick={() => toggleActive(t)}
-                    className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium"
+                    className="min-h-11 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
                   >
                     {t.active ? 'Deactivate' : 'Reactivate'}
                   </button>
