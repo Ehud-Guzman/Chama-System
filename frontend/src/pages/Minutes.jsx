@@ -160,60 +160,44 @@ export default function Minutes() {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between gap-2 flex-wrap">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted">Minutes</p>
-          <h1 className="mt-1 text-2xl font-bold">Meeting minutes</h1>
-        </div>
-        <div className="flex gap-2">
-          {selectedId && (
-            <button
-              type="button"
-              onClick={() => exportMinuteAsDocx(form)}
-              className="min-h-12 rounded-xl border border-rule px-4 text-sm font-semibold hover:bg-canvas transition-colors"
-              title="Download as Word document"
-            >
-              ↓ Export
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={importFromDocx}
-            disabled={importing}
-            className="min-h-12 rounded-xl border border-rule px-4 text-sm font-semibold disabled:opacity-40"
-          >
-            {importing ? 'Importing…' : 'Import from Word'}
-          </button>
-          <button
-            type="button"
-            onClick={startNew}
-            className="min-h-12 rounded-xl bg-primary px-4 text-sm font-semibold text-white"
-          >
-            New minute
-          </button>
-        </div>
+      <header>
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted">Minutes</p>
+        <h1 className="mt-1 text-2xl font-bold">Meeting minutes</h1>
       </header>
 
-      <div className="md:grid md:grid-cols-[320px_1fr] md:items-start md:gap-6">
-        <section className="space-y-3">
-          <div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] lg:items-start">
+        <section className="overflow-hidden rounded-xl border border-rule bg-surface">
+          <div className="border-b border-rule p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold">Documents</h2>
+              <span className="text-xs text-muted">{filteredMinutes.length} shown</span>
+            </div>
             <input
               type="text"
               placeholder="Search minutes…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-10 rounded-lg border border-rule px-3 text-sm"
+              className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
               aria-label="Search minutes"
             />
+            <button
+              type="button"
+              onClick={startNew}
+              className="mt-3 min-h-11 w-full rounded-lg bg-primary text-sm font-semibold text-white"
+            >
+              New minute
+            </button>
           </div>
           {loading ? (
-            <Loader />
+            <div className="p-4">
+              <Loader />
+            </div>
           ) : filteredMinutes.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-rule px-4 py-6 text-center text-sm text-muted">
+            <p className="px-4 py-8 text-center text-sm text-muted">
               {search ? 'No matches found.' : 'No minutes yet.'}
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="max-h-[38rem] overflow-y-auto">
               {filteredMinutes.map((m) => {
                 const contentPreview = m.content
                   ? m.content
@@ -228,15 +212,15 @@ export default function Minutes() {
                     key={m._id}
                     type="button"
                     onClick={() => select(m)}
-                    className={`w-full text-left p-3 rounded-lg border transition-all ${
+                    className={`w-full border-b border-rule p-4 text-left transition-colors last:border-b-0 ${
                       selectedId === m._id
-                        ? 'border-primary bg-primary/5 shadow-sm'
-                        : 'border-rule bg-surface hover:border-primary/30 hover:shadow-sm'
+                        ? 'bg-primary/10'
+                        : 'hover:bg-elevation'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <p className="text-sm font-semibold line-clamp-2 text-ink">{m.title}</p>
-                      <div className="flex gap-1 flex-shrink-0">
+                    <div className="mb-1 flex items-start justify-between gap-2">
+                      <p className="line-clamp-2 text-sm font-semibold text-ink">{m.title}</p>
+                      <div className="flex flex-shrink-0 gap-1">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -244,7 +228,7 @@ export default function Minutes() {
                             exportMinuteAsDocx(m);
                           }}
                           title="Download as Word"
-                          className="min-h-7 min-w-7 text-xs rounded text-muted hover:text-primary hover:bg-primary/10 transition-colors"
+                          className="min-h-8 min-w-8 rounded text-xs text-muted transition-colors hover:bg-primary/10 hover:text-primary"
                         >
                           ↓
                         </button>
@@ -255,13 +239,13 @@ export default function Minutes() {
                             setDeleting(m);
                           }}
                           title="Delete"
-                          className="min-h-7 min-w-7 text-xs rounded text-muted hover:text-alert hover:bg-alert/10 transition-colors"
+                          className="min-h-8 min-w-8 rounded text-xs text-muted transition-colors hover:bg-alert/10 hover:text-alert"
                         >
                           ✕
                         </button>
                       </div>
                     </div>
-                    <p className="text-xs text-muted mb-1">
+                    <p className="mb-1 text-xs text-muted">
                       {new Date(m.date).toLocaleDateString('en-KE', {
                         month: 'short',
                         day: 'numeric',
@@ -278,44 +262,93 @@ export default function Minutes() {
           )}
         </section>
 
-        <section className="mt-5 md:mt-0">
+        <section>
           {selectedId === null ? (
             <p className="rounded-xl border border-dashed border-rule px-5 py-10 text-center text-sm text-muted">
               Select a minute, or start a new one.
             </p>
           ) : (
-            <div className="space-y-3 rounded-xl border border-rule bg-surface p-5">
-              {isDirty && (
-                <p className="text-xs font-medium text-alert">Unsaved changes</p>
-              )}
-              <input
-                type="text"
-                required
-                placeholder="Title, e.g. Weekly meeting — 21 May 2026"
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="h-12 w-full rounded-xl border border-rule px-4 text-sm font-semibold"
-                aria-label="Minute title"
-              />
-              <input
-                type="date"
-                max={todayISO()}
-                value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
-                className="h-12 rounded-xl border border-rule px-3 text-sm"
-              />
+            <div className="rounded-xl border border-rule bg-surface">
+              <div className="border-b border-rule p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-muted">
+                      {selectedId === 'new' ? 'New minute' : 'Minute details'}
+                    </p>
+                    <h2 className="mt-1 truncate text-lg font-bold">
+                      {form.title.trim() || 'Untitled minute'}
+                    </h2>
+                    {isDirty && <p className="mt-1 text-xs font-medium text-alert">Unsaved changes</p>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedId && (
+                      <button
+                        type="button"
+                        onClick={() => exportMinuteAsDocx(form)}
+                        className="min-h-11 rounded-lg border border-rule px-3 text-sm font-semibold transition-colors hover:bg-canvas"
+                        title="Download as Word document"
+                      >
+                        ↓ Export
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={importFromDocx}
+                      disabled={importing}
+                      className="min-h-11 rounded-lg border border-rule px-3 text-sm font-semibold disabled:opacity-40"
+                    >
+                      {importing ? 'Importing…' : 'Import Word'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem]">
+                  <div>
+                    <label htmlFor="minute-title" className="mb-1 block text-xs font-medium">
+                      Title
+                    </label>
+                    <input
+                      id="minute-title"
+                      type="text"
+                      required
+                      placeholder="Title, e.g. Weekly meeting - 21 May 2026"
+                      value={form.title}
+                      onChange={(e) => setForm({ ...form, title: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm font-semibold"
+                      aria-label="Minute title"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="minute-date" className="mb-1 block text-xs font-medium">
+                      Date
+                    </label>
+                    <input
+                      id="minute-date"
+                      type="date"
+                      max={todayISO()}
+                      value={form.date}
+                      onChange={(e) => setForm({ ...form, date: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4">
               <RichTextEditor
                 key={selectedId}
                 value={form.content}
                 onChange={(html) => setForm({ ...form, content: html })}
                 placeholder="Attendees, agenda, decisions, action items…"
               />
-              <div className="flex flex-wrap gap-3">
+              </div>
+
+              <div className="flex flex-wrap gap-3 border-t border-rule p-4">
                 <button
                   type="button"
                   onClick={save}
                   disabled={busy}
-                  className="min-h-12 flex-1 rounded-xl bg-primary text-sm font-semibold text-white disabled:opacity-60"
+                  className="min-h-12 flex-1 rounded-lg bg-primary text-sm font-semibold text-white disabled:opacity-60"
                 >
                   {busy ? 'Saving…' : 'Save'}
                 </button>
@@ -323,7 +356,7 @@ export default function Minutes() {
                   <button
                     type="button"
                     onClick={() => setDeleting(minutes.find((m) => m._id === selectedId))}
-                    className="min-h-12 rounded-xl border border-rule px-4 text-sm font-medium text-alert"
+                    className="min-h-12 rounded-lg border border-rule px-4 text-sm font-medium text-alert"
                   >
                     Delete
                   </button>
