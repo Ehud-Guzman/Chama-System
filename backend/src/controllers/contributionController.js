@@ -4,6 +4,7 @@ const Member = require('../models/Member');
 const ContributionType = require('../models/ContributionType');
 const Fine = require('../models/Fine');
 const { logAudit, snapshot } = require('../utils/auditLogger');
+const { sendWorkbook } = require('../utils/xlsxExport');
 
 const METHODS = ['cash', 'bank', 'mobile', 'other'];
 const DUPLICATE_WINDOW_MS = 10 * 1000;
@@ -478,10 +479,39 @@ async function deleteContribution(req, res, next) {
   }
 }
 
+// GET /api/contributions/import-template — one row per active member (Name,
+// Reg number), one column per active contribution type using its exact name.
+// Weekly types are pre-filled with their default amount, same as the grid's
+// own defaults, so the treasurer only has to touch cells that differ.
+// Shaped to be filled offline and re-uploaded via the weekly grid's
+// "Upload .xlsx / .csv" — bulkCreateContributions never sees this file
+// directly, the grid parses it client-side first.
+async function bulkImportTemplate(req, res, next) {
+  try {
+    const [members, types] = await Promise.all([
+      Member.find({ active: true }).sort({ name: 1 }).lean(),
+      ContributionType.find({ active: true }).sort({ name: 1 }).lean(),
+    ]);
+
+    const sheetRows = members.map((m) => {
+      const row = { Name: m.name, 'Reg number': m.regNumber || '' };
+      for (const t of types) {
+        row[t.name] = t.isWeekly && t.weeklyAmount > 0 ? t.weeklyAmount : '';
+      }
+      return row;
+    });
+
+    sendWorkbook(res, 'contributions-import-template.xlsx', [{ name: 'Week', rows: sheetRows }]);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   listContributions,
   createContribution,
   bulkCreateContributions,
+  bulkImportTemplate,
   updateContribution,
   deleteContribution,
 };
