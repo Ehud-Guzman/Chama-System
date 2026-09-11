@@ -176,8 +176,8 @@ export default function AdminDashboard() {
           <ChangePasswordForm />
         </div>
 
-        {/* Super admin */}
-        {user?.role === 'super_admin' && (
+        {/* Admin accounts */}
+        {['super_admin', 'admin'].includes(user?.role) && (
           <div className="min-w-0">
             <AddAdminForm />
           </div>

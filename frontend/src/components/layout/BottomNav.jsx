@@ -1,15 +1,20 @@
 import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS } from './navItems';
+import { useAuth } from '../../context/AuthContext';
 
 export default function BottomNav() {
+  const { user } = useAuth();
+  const items = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user?.role));
+
   return (
     <nav
       aria-label="Main navigation"
       className="fixed inset-x-0 bottom-0 z-50 border-t border-rule bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
     >
-      <ul className="grid grid-cols-5">
-        {NAV_ITEMS.map((item) => (
-          <li key={item.to}>
+      {/* grid-cols count follows the item list so it stays balanced as roles add/remove items */}
+      <ul className="grid" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+        {items.map((item) => (
+          <li key={item.to} className="min-w-0">
             <NavLink
               to={item.to}
               className={({ isActive }) =>
@@ -21,8 +26,8 @@ export default function BottomNav() {
               }
               aria-current={({ isActive }) => (isActive ? 'page' : undefined)}
             >
-              <span className="h-5 w-5">{item.icon}</span>
-              <span className="text-center">{item.label}</span>
+              <span className="[&>svg]:h-5 [&>svg]:w-5">{item.icon}</span>
+              <span className="w-full truncate px-1 text-center">{item.label}</span>
             </NavLink>
           </li>
         ))}

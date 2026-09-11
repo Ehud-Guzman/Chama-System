@@ -14,9 +14,9 @@ const { loginLimiter, passwordChangeLimiter } = require('../middleware/rateLimit
 router.post('/login', loginLimiter, login);
 router.get('/me', requireAuth, me);
 router.patch('/me/password', requireAuth, passwordChangeLimiter, changeOwnPassword);
-router.get('/admins', requireAuth, requireRole('super_admin'), listAdmins);
-router.post('/admins', requireAuth, requireRole('super_admin'), createAdmin);
-router.patch('/admins/:id', requireAuth, requireRole('super_admin'), updateAdmin);
-router.post('/admins/:id/reset-password', requireAuth, requireRole('super_admin'), resetAdminPassword);
+router.get('/admins', requireAuth, requireRole('super_admin', 'admin'), listAdmins);
+router.post('/admins', requireAuth, requireRole('super_admin', 'admin'), createAdmin);
+router.patch('/admins/:id', requireAuth, requireRole('super_admin', 'admin'), updateAdmin);
+router.post('/admins/:id/reset-password', requireAuth, requireRole('super_admin', 'admin'), resetAdminPassword);
 
 module.exports = router;

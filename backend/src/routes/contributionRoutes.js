@@ -6,9 +6,9 @@ const {
   updateContribution,
   deleteContribution,
 } = require('../controllers/contributionController');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use(requireAuth, requireRole('super_admin', 'admin'));
 
 router.get('/', listContributions);
 router.post('/', createContribution);
