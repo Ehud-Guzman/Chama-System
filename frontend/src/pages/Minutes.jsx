@@ -239,9 +239,25 @@ export default function Minutes() {
                             setDeleting(m);
                           }}
                           title="Delete"
+                          aria-label={`Delete ${m.title}`}
                           className="min-h-8 min-w-8 rounded text-xs text-muted transition-colors hover:bg-alert/10 hover:text-alert"
                         >
-                          ✕
+                          <svg
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                            className="mx-auto h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                          >
+                            <path d="M3 6h18" />
+                            <path d="M8 6V4h8v2" />
+                            <path d="M19 6l-1 14H6L5 6" />
+                            <path d="M10 11v5" />
+                            <path d="M14 11v5" />
+                          </svg>
                         </button>
                       </div>
                     </div>

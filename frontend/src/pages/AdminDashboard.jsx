@@ -14,6 +14,34 @@ import ExpensesPanel from '../components/shared/ExpensesPanel';
 import StatTile from '../components/shared/StatTile';
 import Loader from '../components/shared/Loader';
 
+function QuickAction({ to, label, description, primary }) {
+  return (
+    <Link
+      to={to}
+      className={`group flex min-h-24 items-start justify-between gap-4 rounded-xl border p-4 transition active:scale-[0.99] ${
+        primary
+          ? 'border-primary bg-primary text-white shadow-sm hover:bg-primary-dark'
+          : 'border-rule bg-surface hover:border-primary/40 hover:bg-elevation'
+      }`}
+    >
+      <span className="min-w-0">
+        <span className="block text-sm font-bold">{label}</span>
+        <span className={`mt-1 block text-xs leading-5 ${primary ? 'text-white/80' : 'text-muted'}`}>
+          {description}
+        </span>
+      </span>
+      <span
+        aria-hidden="true"
+        className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border text-lg ${
+          primary ? 'border-white/25 text-white' : 'border-rule text-primary group-hover:bg-primary/10'
+        }`}
+      >
+        +
+      </span>
+    </Link>
+  );
+}
+
 export default function AdminDashboard() {
   const { user } = useAuth();
   const [summary, setSummary] = useState(null);
@@ -30,49 +58,47 @@ export default function AdminDashboard() {
   const firstName = user?.name?.split(' ')[0] || 'Admin';
 
   return (
-    <div className="min-w-0 space-y-5 sm:space-y-6">
+    <div className="min-w-0 space-y-6">
+      <header className="overflow-hidden rounded-xl border border-rule bg-surface">
+        <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:p-6">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted sm:text-xs">
+              Dashboard
+            </p>
+            <h1 className="mt-2 break-words text-2xl font-bold leading-tight sm:text-3xl">
+              Hello, {firstName}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              A clean view of money, members, records, and the admin tools that keep the chama running.
+            </p>
+          </div>
 
-      {/* =====================================================
-          HEADER
-          ===================================================== */}
-      <header className="min-w-0">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted sm:text-xs">
-          Dashboard
-        </p>
-
-        <h1 className="mt-1 break-words text-2xl font-bold leading-tight sm:text-3xl">
-          Hello, {firstName}
-        </h1>
-
-        <p className="mt-1 text-sm text-muted">
-          Here's what's happening with the chama.
-        </p>
+          {summary && (
+            <div className="rounded-xl border border-primary/20 bg-primary/10 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-primary">
+                Cash held
+              </p>
+              <p className="amount mt-2 break-words text-3xl font-bold text-primary">
+                {money(summary.netBalance)}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-muted">
+                Net of logged expenses.
+              </p>
+            </div>
+          )}
+        </div>
       </header>
 
-      {/* =====================================================
-          STATISTICS
-          Mobile: 1 column
-          Small screens: 2 columns
-          Desktop: 5 columns
-          ===================================================== */}
       {loading ? (
-        <div className="rounded-2xl border border-rule bg-surface p-6">
+        <div className="rounded-xl border border-rule bg-surface p-6">
           <Loader />
         </div>
       ) : (
         summary && (
           <section
             aria-label="Chama summary"
-            className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
+            className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
           >
-    <div className="min-w-0 sm:col-span-2 lg:col-span-1">
-  <StatTile
-    label="Cash held (net of expenses)"
-    value={money(summary.netBalance)}
-    accent
-  />
-</div>
-
             <div className="min-w-0">
               <StatTile
                 label="This week's total"
@@ -96,7 +122,7 @@ export default function AdminDashboard() {
 
             <div className="min-w-0">
               <StatTile
-                label="Entries"
+                label="Contribution entries"
                 value={summary.contributionCount}
               />
             </div>
@@ -104,92 +130,63 @@ export default function AdminDashboard() {
         )
       )}
 
-      {/* =====================================================
-          QUICK ACTIONS
-          ===================================================== */}
-      <section aria-label="Quick actions">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:max-w-xl">
-          <Link
+      <section aria-label="Quick actions" className="space-y-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted">Workflows</p>
+            <h2 className="mt-1 text-lg font-bold">Quick actions</h2>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <QuickAction
             to="/admin/log"
-            className="
-              flex min-h-[52px] w-full items-center justify-center
-              rounded-xl bg-primary px-4 py-3
-              text-sm font-semibold text-white
-              shadow-sm transition
-              active:scale-[0.98]
-              hover:opacity-95
-            "
-          >
-            Log contribution
-          </Link>
-
-          <Link
+            label="Log contribution"
+            description="Record payments one by one or in bulk."
+            primary
+          />
+          <QuickAction
             to="/admin/members"
-            className="
-              flex min-h-[52px] w-full items-center justify-center
-              rounded-xl border border-rule bg-surface px-4 py-3
-              text-sm font-semibold
-              transition
-              active:scale-[0.98]
-              hover:bg-muted/5
-            "
-          >
-            Members
-          </Link>
+            label="Members"
+            description="Add, update, view statements, and resign members."
+          />
+          <QuickAction
+            to="/admin/reports"
+            label="Reports"
+            description="Review summaries, performance, audit, and exports."
+          />
+          <QuickAction
+            to="/admin/minutes"
+            label="Minutes"
+            description="Write, import, export, and manage meeting records."
+          />
         </div>
       </section>
 
-      {/* =====================================================
-          ADMIN MANAGEMENT PANELS
-          Mobile: one column
-          Desktop: two columns
-          ===================================================== */}
       <section
         aria-label="Administration"
-        className="
-          grid min-w-0 grid-cols-1 gap-4
-          lg:grid-cols-2
-          lg:items-start
-        "
+        className="space-y-3"
       >
-        {/* Chama settings */}
-        <div className="min-w-0">
-          <ChamaSettingsForm />
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted">Management</p>
+          <h2 className="mt-1 text-lg font-bold">System controls</h2>
         </div>
 
-        {/* Contribution types */}
-        <div className="min-w-0">
-          <TypeManager />
-        </div>
-
-        {/* Fine types */}
-        <div className="min-w-0">
-          <FineTypeManager />
-        </div>
-
-        {/* Expenses */}
-        <div className="min-w-0">
-          <ExpensesPanel />
-        </div>
-
-        {/* Password */}
-        <div className="min-w-0">
-          <ChangePasswordForm />
-        </div>
-
-        {/* Full system backup */}
-        {user?.role === 'super_admin' && (
-          <div className="min-w-0">
-            <BackupPanel />
+        <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] xl:items-start">
+          <div className="min-w-0 space-y-4">
+            <ChamaSettingsForm />
+            <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
+              <TypeManager />
+              <FineTypeManager />
+            </div>
           </div>
-        )}
 
-        {/* Admin accounts */}
-        {['super_admin', 'admin'].includes(user?.role) && (
-          <div className="min-w-0">
-            <AddAdminForm />
+          <div className="min-w-0 space-y-4">
+            <ExpensesPanel />
+            <ChangePasswordForm />
+            {user?.role === 'super_admin' && <BackupPanel />}
+            {['super_admin', 'admin'].includes(user?.role) && <AddAdminForm />}
           </div>
-        )}
+        </div>
       </section>
     </div>
   );
