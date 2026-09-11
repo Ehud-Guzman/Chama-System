@@ -16,8 +16,8 @@ export default function AdminLogin() {
     setBusy(true);
     setError('');
     try {
-      await login(email, password);
-      navigate('/admin/dashboard', { replace: true });
+      const user = await login(email, password);
+      navigate(user.role === 'secretary' ? '/admin/minutes' : '/admin/dashboard', { replace: true });
     } catch (err) {
       setError(apiMessage(err, 'Could not sign in. Please try again.'));
     } finally {
