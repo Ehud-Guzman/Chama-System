@@ -174,7 +174,7 @@ export default function AdminDashboard() {
         <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] xl:items-start">
           <div className="min-w-0 space-y-4">
             <ChamaSettingsForm />
-            <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
               <TypeManager />
               <FineTypeManager />
             </div>
