@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
-import { useAuth } from '../context/AuthContext';
 import MemberCards from '../components/members/MemberCards';
 import MemberForm from '../components/members/MemberForm';
 import CSVImportModal from '../components/members/CSVImportModal';
@@ -9,8 +8,6 @@ import Loader from '../components/shared/Loader';
 
 export default function MembersList() {
   const toast = useToast();
-  const { user } = useAuth();
-  const canEdit = user?.role !== 'secretary';
   const [members, setMembers] = useState([]);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
@@ -91,15 +88,13 @@ export default function MembersList() {
             {total} member{total === 1 ? '' : 's'}
           </h1>
         </div>
-        {canEdit && (
-          <button
-            type="button"
-            onClick={() => setShowForm(true)}
-            className="min-h-12 rounded-xl bg-primary px-4 text-sm font-semibold text-white"
-          >
-            Add member
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setShowForm(true)}
+          className="min-h-12 rounded-xl bg-primary px-4 text-sm font-semibold text-white"
+        >
+          Add member
+        </button>
       </header>
 
       <input
@@ -112,15 +107,13 @@ export default function MembersList() {
       />
 
       <div className="flex gap-3">
-        {canEdit && (
-          <button
-            type="button"
-            onClick={() => setShowImport(true)}
-            className="min-h-11 flex-1 rounded-lg border border-rule bg-surface text-sm font-medium"
-          >
-            Import
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setShowImport(true)}
+          className="min-h-11 flex-1 rounded-lg border border-rule bg-surface text-sm font-medium"
+        >
+          Import
+        </button>
         <button
           type="button"
           onClick={exportExcel}

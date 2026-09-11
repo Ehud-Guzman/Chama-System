@@ -29,25 +29,39 @@ export default function App() {
             <Route path="/constitution" element={<PublicConstitution />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route element={<ProtectedRoute />}>
-              <Route path="/admin/dashboard" element={<AdminDashboard />} />
-              <Route path="/admin/members" element={<MembersList />} />
-              <Route path="/admin/members/:id" element={<MemberDetail />} />
+              <Route
+                path="/admin/dashboard"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin']} redirectTo="/admin/minutes">
+                    <AdminDashboard />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/members"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin']} redirectTo="/admin/minutes">
+                    <MembersList />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/members/:id"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin']} redirectTo="/admin/minutes">
+                    <MemberDetail />
+                  </RoleGuard>
+                }
+              />
               <Route
                 path="/admin/log"
                 element={
-                  <RoleGuard roles={['super_admin', 'admin']}>
+                  <RoleGuard roles={['super_admin', 'admin']} redirectTo="/admin/minutes">
                     <ContributionsLog />
                   </RoleGuard>
                 }
               />
-              <Route
-                path="/admin/reports"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin']}>
-                    <Reports />
-                  </RoleGuard>
-                }
-              />
+              <Route path="/admin/reports" element={<Reports />} />
               <Route path="/admin/minutes" element={<Minutes />} />
             </Route>
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
