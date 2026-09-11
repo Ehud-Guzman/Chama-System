@@ -154,18 +154,28 @@ export default function Minutes() {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-muted">Minutes</p>
           <h1 className="mt-1 text-2xl font-bold">Meeting minutes</h1>
         </div>
-        <button
-          type="button"
-          onClick={startNew}
-          className="min-h-12 rounded-xl bg-primary px-4 text-sm font-semibold text-white"
-        >
-          New minute
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={importFromDocx}
+            disabled={importing}
+            className="min-h-12 rounded-xl border border-rule px-4 text-sm font-semibold disabled:opacity-40"
+          >
+            {importing ? 'Importing…' : 'Import from Word'}
+          </button>
+          <button
+            type="button"
+            onClick={startNew}
+            className="min-h-12 rounded-xl bg-primary px-4 text-sm font-semibold text-white"
+          >
+            New minute
+          </button>
+        </div>
       </header>
 
       <div className="md:grid md:grid-cols-[280px_1fr] md:items-start md:gap-6">
@@ -179,18 +189,41 @@ export default function Minutes() {
           ) : (
             <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
               {minutes.map((m) => (
-                <li key={m._id} className="border-b border-rule last:border-b-0">
-                  <button
-                    type="button"
-                    onClick={() => select(m)}
-                    aria-pressed={selectedId === m._id}
-                    className={`block w-full px-4 py-3 text-left ${
-                      selectedId === m._id ? 'bg-primary/5' : ''
-                    }`}
-                  >
-                    <p className="truncate text-sm font-semibold">{m.title}</p>
-                    <p className="text-xs text-muted">{shortDate(m.date)}</p>
-                  </button>
+                <li key={m._id} className={`border-b border-rule last:border-b-0 transition-colors ${selectedId === m._id ? 'bg-primary/5' : 'hover:bg-canvas'}`}>
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => select(m)}
+                      className="flex-1 px-4 py-3 text-left"
+                    >
+                      <p className="truncate text-sm font-semibold">{m.title}</p>
+                      <p className="text-xs text-muted">{shortDate(m.date)}</p>
+                    </button>
+                    <div className="flex items-center gap-1 px-2 opacity-0 hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          exportMinuteAsDocx(m);
+                        }}
+                        title="Download as Word"
+                        className="min-h-9 min-w-9 rounded-lg text-muted hover:text-primary hover:bg-primary/10"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleting(m);
+                        }}
+                        title="Delete"
+                        className="min-h-9 min-w-9 rounded-lg text-muted hover:text-alert hover:bg-alert/10"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -237,22 +270,6 @@ export default function Minutes() {
                   className="min-h-12 flex-1 rounded-xl bg-primary text-sm font-semibold text-white disabled:opacity-60"
                 >
                   {busy ? 'Saving…' : 'Save'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => exportMinuteAsDocx(form)}
-                  disabled={!form.content && !form.title}
-                  className="min-h-12 rounded-xl border border-rule px-4 text-sm font-medium disabled:opacity-40"
-                >
-                  Download as .docx
-                </button>
-                <button
-                  type="button"
-                  onClick={importFromDocx}
-                  disabled={importing}
-                  className="min-h-12 rounded-xl border border-rule px-4 text-sm font-medium disabled:opacity-40"
-                >
-                  {importing ? 'Importing…' : 'Import from Word'}
                 </button>
                 {selectedId !== 'new' && (
                   <button
