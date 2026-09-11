@@ -3,20 +3,54 @@ import api, { apiMessage } from '../../services/api';
 import { useToast } from '../shared/Toast';
 import { money } from '../../utils/format';
 
+const EMPTY_FORM = {
+  name: '',
+  description: '',
+  isWeekly: false,
+  weeklyAmount: '',
+  tracksExpenses: false,
+  isGroupFund: false,
+  isRecoverable: false,
+};
+
+function Badge({ children, tone = 'muted' }) {
+  const colors = {
+    primary: 'bg-primary/10 text-primary',
+    accent: 'bg-accent/10 text-accent',
+    alert: 'bg-alert/10 text-alert',
+    muted: 'bg-canvas text-muted',
+  };
+  return (
+    <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-widest ${colors[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+function ToggleRow({ label, description, checked, onChange, disabled }) {
+  return (
+    <label className={`flex gap-3 rounded-lg border border-rule p-3 ${disabled ? 'opacity-50' : ''}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        disabled={disabled}
+        className="mt-1"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{label}</span>
+        <span className="mt-0.5 block text-xs leading-5 text-muted">{description}</span>
+      </span>
+    </label>
+  );
+}
+
 // Any admin can manage contribution types — this is operational data
 // (what the group is collecting for), not an account-management action.
 export default function TypeManager({ onChange }) {
   const toast = useToast();
   const [types, setTypes] = useState([]);
-  const [form, setForm] = useState({
-    name: '',
-    description: '',
-    isWeekly: false,
-    weeklyAmount: '',
-    tracksExpenses: false,
-    isGroupFund: false,
-    isRecoverable: false,
-  });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [editingWeeklyId, setEditingWeeklyId] = useState(null);
   const [weeklyValue, setWeeklyValue] = useState('');
@@ -41,17 +75,10 @@ export default function TypeManager({ onChange }) {
       await api.post('/api/types', {
         ...form,
         weeklyAmount: form.isWeekly ? Number(form.weeklyAmount) || 0 : 0,
+        isRecoverable: form.tracksExpenses && form.isRecoverable,
       });
       toast('Contribution type added');
-      setForm({
-        name: '',
-        description: '',
-        isWeekly: false,
-        weeklyAmount: '',
-        tracksExpenses: false,
-        isGroupFund: false,
-        isRecoverable: false,
-      });
+      setForm(EMPTY_FORM);
       load();
       onChange?.();
     } catch (err) {
@@ -118,86 +145,74 @@ export default function TypeManager({ onChange }) {
     }
   }
 
-  return (
-    <section className="rounded-xl border border-rule bg-surface p-5">
-      <h2 className="text-base font-semibold">Contribution types</h2>
-      <p className="mt-1 text-xs text-muted">
-        What members are contributing towards — e.g. Welfare, Development, Monthly Savings.
-      </p>
+  const activeCount = types.filter((t) => t.active).length;
+  const weeklyCount = types.filter((t) => t.isWeekly).length;
+  const fundCount = types.filter((t) => t.tracksExpenses).length;
 
-      {types.length > 0 && (
-        <ul className="mt-3 divide-y divide-rule">
-          {types.map((t) => (
-            <li key={t._id} className="py-3">
+  return (
+    <section className="overflow-hidden rounded-xl border border-rule bg-surface">
+      <div className="border-b border-rule p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold">Contribution types</h2>
+            <p className="mt-1 text-xs leading-5 text-muted">
+              Define what members pay into, what repeats weekly, and what belongs to the group.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="primary">{activeCount} active</Badge>
+            <Badge>{weeklyCount} weekly</Badge>
+            <Badge tone="accent">{fundCount} funds</Badge>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(19rem,22rem)]">
+        <div className="min-w-0">
+          {types.length === 0 ? (
+            <p className="p-5 text-sm text-muted">No contribution types yet.</p>
+          ) : (
+            <ul className="divide-y divide-rule">
+              {types.map((t) => (
+            <li key={t._id} className={`p-4 ${t.active ? '' : 'bg-canvas/60'}`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {t.name}
-                    {!t.active && (
-                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                        Inactive
-                      </span>
-                    )}
-                    {t.isWeekly && (
-                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-primary">
-                        Weekly
-                      </span>
-                    )}
-                    {t.tracksExpenses && (
-                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-accent">
-                        Fund
-                      </span>
-                    )}
-                    {t.isGroupFund && (
-                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-alert">
-                        Group fund
-                      </span>
-                    )}
-                    {t.isRecoverable && (
-                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                        Loan (recoverable)
-                      </span>
-                    )}
-                  </p>
-                  {t.description && <p className="truncate text-xs text-muted">{t.description}</p>}
+                  <p className="truncate text-sm font-bold">{t.name}</p>
+                  {t.description && <p className="mt-0.5 truncate text-xs text-muted">{t.description}</p>}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {!t.active && <Badge>Inactive</Badge>}
+                    {t.isWeekly && <Badge tone="primary">Weekly</Badge>}
+                    {t.tracksExpenses && <Badge tone="accent">Tracks expenses</Badge>}
+                    {t.isGroupFund && <Badge tone="alert">Group fund</Badge>}
+                    {t.isRecoverable && <Badge>Recoverable</Badge>}
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2 sm:shrink-0 sm:justify-end">
                   <button
                     type="button"
                     onClick={() => toggleGroupFund(t)}
-                    className="min-h-11 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
+                    className="min-h-10 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
                   >
-                    {t.isGroupFund ? 'Unmark group fund' : 'Mark as group fund'}
+                    {t.isGroupFund ? 'Personal total' : 'Group fund'}
                   </button>
                   {t.tracksExpenses && (
                     <button
                       type="button"
                       onClick={() => toggleRecoverable(t)}
-                      className="min-h-11 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
+                      className="min-h-10 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
                     >
-                      {t.isRecoverable ? 'Mark as real expense' : 'Mark as recoverable loan'}
+                      {t.isRecoverable ? 'Real expense' : 'Recoverable'}
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={() => toggleActive(t)}
-                    className="min-h-11 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
+                    className="min-h-10 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
                   >
                     {t.active ? 'Deactivate' : 'Reactivate'}
                   </button>
                 </div>
               </div>
-              {t.isGroupFund && (
-                <p className="mt-1 text-xs text-muted">
-                  Belongs to the group — excluded from each member's personal contribution total.
-                </p>
-              )}
-              {t.isRecoverable && (
-                <p className="mt-1 text-xs text-muted">
-                  Money paid out here is a loan/advance, not spent — excluded from the group's
-                  total expenses since it's still owed back.
-                </p>
-              )}
 
               {t.isWeekly && (
                 <div className="mt-2">
@@ -209,7 +224,7 @@ export default function TypeManager({ onChange }) {
                         autoFocus
                         value={weeklyValue}
                         onChange={(e) => setWeeklyValue(e.target.value)}
-                        className="amount h-10 w-28 rounded-lg border border-rule px-3 text-sm"
+                        className="amount h-10 w-32 rounded-lg border border-rule bg-canvas px-3 text-sm"
                         aria-label={`Weekly amount for ${t.name}`}
                       />
                       <button
@@ -234,27 +249,31 @@ export default function TypeManager({ onChange }) {
                         setEditingWeeklyId(t._id);
                         setWeeklyValue(String(t.weeklyAmount || ''));
                       }}
-                      className="amount text-xs font-medium text-primary"
+                      className="amount rounded-lg bg-primary/10 px-2 py-1 text-xs font-semibold text-primary"
                     >
-                      {money(t.weeklyAmount)} / week — edit
+                      {money(t.weeklyAmount)} / week - edit
                     </button>
                   )}
                 </div>
               )}
             </li>
-          ))}
-        </ul>
-      )}
+              ))}
+            </ul>
+          )}
+        </div>
 
-      <form onSubmit={onSubmit} className="mt-4 space-y-3 border-t border-rule pt-4">
-        <p className="text-sm font-medium">Add type</p>
+      <form onSubmit={onSubmit} className="space-y-3 border-t border-rule bg-canvas p-4 xl:border-l xl:border-t-0">
+        <div>
+          <p className="text-sm font-bold">Add type</p>
+          <p className="mt-1 text-xs text-muted">Set the rules once, then the logs and reports follow them.</p>
+        </div>
         <input
           type="text"
           required
           placeholder="Name, e.g. Development Fund"
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
-          className="h-12 w-full rounded-xl border border-rule px-4 text-sm"
+          className="h-11 w-full rounded-lg border border-rule bg-surface px-3 text-sm"
           aria-label="Type name"
         />
         <input
@@ -262,17 +281,15 @@ export default function TypeManager({ onChange }) {
           placeholder="Description (optional)"
           value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
-          className="h-12 w-full rounded-xl border border-rule px-4 text-sm"
+          className="h-11 w-full rounded-lg border border-rule bg-surface px-3 text-sm"
           aria-label="Type description"
         />
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.isWeekly}
-            onChange={(e) => setForm({ ...form, isWeekly: e.target.checked })}
-          />
-          Fixed weekly due (e.g. the 1,400 contribution, the 100 Chai fee)
-        </label>
+        <ToggleRow
+          label="Fixed weekly due"
+          description="Use for recurring amounts like weekly contribution or chai."
+          checked={form.isWeekly}
+          onChange={(checked) => setForm({ ...form, isWeekly: checked })}
+        />
         {form.isWeekly && (
           <input
             type="text"
@@ -280,44 +297,40 @@ export default function TypeManager({ onChange }) {
             placeholder="Amount due per week, e.g. 1400"
             value={form.weeklyAmount}
             onChange={(e) => setForm({ ...form, weeklyAmount: e.target.value })}
-            className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm"
+            className="amount h-11 w-full rounded-lg border border-rule bg-surface px-3 text-sm"
             aria-label="Weekly amount"
           />
         )}
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.tracksExpenses}
-            onChange={(e) => setForm({ ...form, tracksExpenses: e.target.checked })}
-          />
-          Tracks expenses (e.g. Chai fund spent on refreshments)
-        </label>
-        {form.tracksExpenses && (
-          <label className="ml-6 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.isRecoverable}
-              onChange={(e) => setForm({ ...form, isRecoverable: e.target.checked })}
-            />
-            Recoverable (loan/advance, not a real expense — e.g. member loans)
-          </label>
-        )}
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.isGroupFund}
-            onChange={(e) => setForm({ ...form, isGroupFund: e.target.checked })}
-          />
-          Belongs to the group, not the individual (e.g. Chai) — excluded from personal totals
-        </label>
+        <ToggleRow
+          label="Tracks expenses"
+          description="Use when money collected under this type can be spent from the fund."
+          checked={form.tracksExpenses}
+          onChange={(checked) =>
+            setForm({ ...form, tracksExpenses: checked, isRecoverable: checked ? form.isRecoverable : false })
+          }
+        />
+        <ToggleRow
+          label="Recoverable"
+          description="Use for loans or advances that should not count as real expenses."
+          checked={form.isRecoverable}
+          disabled={!form.tracksExpenses}
+          onChange={(checked) => setForm({ ...form, isRecoverable: checked })}
+        />
+        <ToggleRow
+          label="Group fund"
+          description="Exclude this type from members' personal contribution totals."
+          checked={form.isGroupFund}
+          onChange={(checked) => setForm({ ...form, isGroupFund: checked })}
+        />
         <button
           type="submit"
           disabled={busy}
-          className="min-h-12 w-full rounded-xl bg-primary text-sm font-semibold text-white disabled:opacity-60"
+          className="min-h-12 w-full rounded-lg bg-primary text-sm font-semibold text-white disabled:opacity-60"
         >
           {busy ? 'Adding…' : 'Add type'}
         </button>
       </form>
+      </div>
     </section>
   );
 }
