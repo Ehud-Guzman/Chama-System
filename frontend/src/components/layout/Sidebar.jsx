@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
+  const items = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user?.role));
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-rule bg-surface md:flex">
@@ -15,7 +16,7 @@ export default function Sidebar() {
       </div>
       <nav aria-label="Main" className="flex-1 px-3 py-4">
         <ul className="space-y-1">
-          {NAV_ITEMS.map((item) => (
+          {items.map((item) => (
             <li key={item.to}>
               <NavLink
                 to={item.to}
@@ -25,7 +26,7 @@ export default function Sidebar() {
                   }`
                 }
               >
-                <span className="h-5 w-5">{item.icon}</span>
+                <span className="[&>svg]:h-5 [&>svg]:w-5">{item.icon}</span>
                 {item.label}
               </NavLink>
             </li>

@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const { listExpenses, createExpense, updateExpense, deleteExpense } = require('../controllers/expenseController');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use(requireAuth, requireRole('super_admin', 'admin'));
 
 router.get('/', listExpenses);
 router.post('/', createExpense);

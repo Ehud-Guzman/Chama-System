@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const { listTypes, createType, updateType } = require('../controllers/typeController');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use(requireAuth, requireRole('super_admin', 'admin'));
 
 router.get('/', listTypes);
 router.post('/', createType);

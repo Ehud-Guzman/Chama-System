@@ -6,6 +6,7 @@ import PublicConstitution from './pages/PublicConstitution.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './components/shared/Toast.jsx';
 import Loader from './components/shared/Loader.jsx';
+import RoleGuard from './components/layout/RoleGuard.jsx';
 
 // Admin code is lazy-loaded — the public lookup bundle stays lean
 const AdminLogin = lazy(() => import('./pages/AdminLogin.jsx'));
@@ -31,8 +32,22 @@ export default function App() {
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/members" element={<MembersList />} />
               <Route path="/admin/members/:id" element={<MemberDetail />} />
-              <Route path="/admin/log" element={<ContributionsLog />} />
-              <Route path="/admin/reports" element={<Reports />} />
+              <Route
+                path="/admin/log"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin']}>
+                    <ContributionsLog />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/reports"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin']}>
+                    <Reports />
+                  </RoleGuard>
+                }
+              />
               <Route path="/admin/minutes" element={<Minutes />} />
             </Route>
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />

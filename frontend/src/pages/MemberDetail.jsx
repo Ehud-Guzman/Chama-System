@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
+import { useAuth } from '../context/AuthContext';
 import { money, shortDate } from '../utils/format';
 import MemberForm from '../components/members/MemberForm';
 import PledgeEditor from '../components/members/PledgeEditor';
@@ -18,6 +19,8 @@ import Loader from '../components/shared/Loader';
 export default function MemberDetail() {
   const { id } = useParams();
   const toast = useToast();
+  const { user } = useAuth();
+  const canEdit = user?.role !== 'secretary';
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -214,13 +217,15 @@ async function exportStatementExcel() {
           </p>
         )}
 <div className="mt-3 flex gap-3">
-  <button
-    type="button"
-    onClick={() => setEditing(true)}
-    className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
-  >
-    Edit
-  </button>
+  {canEdit && (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
+    >
+      Edit
+    </button>
+  )}
 
   <button
     type="button"
@@ -238,7 +243,7 @@ async function exportStatementExcel() {
     Excel
   </button>
 
-  {member.active && (
+  {canEdit && member.active && (
     <button
       type="button"
       onClick={() => setConfirmingResign(true)}
@@ -257,13 +262,24 @@ async function exportStatementExcel() {
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
               Pledges
             </h2>
-            <PledgeEditor memberId={member._id} byType={byType} onSaved={load} />
+            {canEdit ? (
+              <PledgeEditor memberId={member._id} byType={byType} onSaved={load} />
+            ) : (
+              <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
+                {byType.map((entry) => (
+                  <li key={entry.typeId} className="flex items-center justify-between border-b border-rule px-4 py-3 text-sm last:border-b-0">
+                    <span>{entry.name}</span>
+                    <span className="amount">{money(entry.contributed)} of {entry.pledged > 0 ? money(entry.pledged) : 'no pledge set'}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div>
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">Fines</h2>
-              {!issuingFine && (
+              {canEdit && !issuingFine && (
                 <button
                   type="button"
                   onClick={() => setIssuingFine(true)}
@@ -283,7 +299,7 @@ async function exportStatementExcel() {
                 onCancel={() => setIssuingFine(false)}
               />
             ) : (
-              <FinesPanel fines={fines} onVoid={setVoidingFine} />
+              <FinesPanel fines={fines} onVoid={canEdit ? setVoidingFine : undefined} />
             )}
           </div>
 
@@ -297,8 +313,8 @@ async function exportStatementExcel() {
             </h2>
             <LedgerRows
               contributions={contributions}
-              onEdit={setEditingContribution}
-              onDelete={setDeletingContribution}
+              onEdit={canEdit ? setEditingContribution : undefined}
+              onDelete={canEdit ? setDeletingContribution : undefined}
             />
           </div>
 

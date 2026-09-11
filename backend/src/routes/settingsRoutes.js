@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const { getSettings, updateSettings } = require('../controllers/settingsController');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
-router.use(requireAuth);
+router.use(requireAuth, requireRole('super_admin', 'admin'));
 
 router.get('/', getSettings);
 router.patch('/', updateSettings);

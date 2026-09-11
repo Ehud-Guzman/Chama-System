@@ -67,7 +67,7 @@ async function changeOwnPassword(req, res, next) {
   }
 }
 
-// GET /api/auth/admins (super_admin)
+// GET /api/auth/admins (super_admin, admin)
 async function listAdmins(req, res, next) {
   try {
     const admins = await User.find().sort({ createdAt: 1 });
@@ -77,12 +77,17 @@ async function listAdmins(req, res, next) {
   }
 }
 
-// POST /api/auth/admins (super_admin) — always creates role 'admin'
+// POST /api/auth/admins (super_admin, admin) — super_admin may create an
+// 'admin' or 'secretary'; a plain admin may only create a 'secretary'.
 async function createAdmin(req, res, next) {
   try {
     const { name, email, password } = req.body || {};
+    const role = req.body?.role === 'secretary' ? 'secretary' : 'admin';
     if (!name || !String(name).trim() || !email || !password) {
       return res.status(400).json({ message: 'Name, email and password are required' });
+    }
+    if (role === 'admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Only the super admin can create an admin account' });
     }
     if (String(password).length < 8) {
       return res.status(400).json({ message: 'Password must be at least 8 characters' });
@@ -92,7 +97,7 @@ async function createAdmin(req, res, next) {
       name: String(name).trim(),
       email: String(email).toLowerCase().trim(),
       password: hashed,
-      role: 'admin',
+      role,
     });
     await logAudit({
       action: 'create',
@@ -107,7 +112,8 @@ async function createAdmin(req, res, next) {
   }
 }
 
-// PATCH /api/auth/admins/:id (super_admin) — deactivate/reactivate only
+// PATCH /api/auth/admins/:id (super_admin, admin) — deactivate/reactivate
+// only. A plain admin may only act on 'secretary' accounts.
 async function updateAdmin(req, res, next) {
   try {
     const { active } = req.body || {};
@@ -121,6 +127,9 @@ async function updateAdmin(req, res, next) {
     if (!target) return res.status(404).json({ message: 'Admin not found' });
     if (target.role === 'super_admin') {
       return res.status(400).json({ message: 'The super admin account cannot be deactivated' });
+    }
+    if (req.user.role === 'admin' && target.role !== 'secretary') {
+      return res.status(403).json({ message: 'You can only manage secretary accounts' });
     }
     const before = toDTO(target);
     target.active = active;
@@ -139,9 +148,9 @@ async function updateAdmin(req, res, next) {
   }
 }
 
-// POST /api/auth/admins/:id/reset-password (super_admin) — there is no
-// self-serve "forgot password" flow (no email delivery in this system, by
-// design), so a locked-out admin needs the super admin to set a new one.
+// POST /api/auth/admins/:id/reset-password (super_admin, admin) — there is
+// no self-serve "forgot password" flow (no email delivery in this system,
+// by design). A plain admin may only reset a 'secretary' account's password.
 async function resetAdminPassword(req, res, next) {
   try {
     const { password } = req.body || {};
@@ -153,6 +162,9 @@ async function resetAdminPassword(req, res, next) {
     }
     const target = await User.findById(req.params.id);
     if (!target) return res.status(404).json({ message: 'Admin not found' });
+    if (req.user.role === 'admin' && target.role !== 'secretary') {
+      return res.status(403).json({ message: 'You can only manage secretary accounts' });
+    }
 
     target.password = await bcrypt.hash(String(password), 10);
     await target.save();
