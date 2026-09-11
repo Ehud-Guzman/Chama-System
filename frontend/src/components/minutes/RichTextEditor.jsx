@@ -2,6 +2,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
+import Link from '@tiptap/extension-link';
 
 // Plain text saved before this editor existed doesn't carry line breaks in
 // HTML, so turn bare newlines into paragraphs the first time it's opened.
@@ -14,10 +15,10 @@ export function toEditorHtml(content) {
     .join('');
 }
 
-const TOOLBAR_BUTTON =
-  'min-h-8 min-w-8 rounded-lg px-2 text-sm font-semibold text-ink hover:bg-primary/10 aria-pressed:bg-primary/15 aria-pressed:text-primary disabled:opacity-30';
+const TOOLBAR_BTN = 'min-h-10 min-w-10 rounded-lg px-2.5 text-xs font-bold text-ink hover:bg-primary/10 aria-pressed:bg-primary aria-pressed:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed';
+const TOOLBAR_DIVIDER = 'h-6 w-px bg-rule';
 
-function ToolbarButton({ onClick, active, disabled, label, children }) {
+function ToolbarButton({ onClick, active, disabled, label, icon, children }) {
   return (
     <button
       type="button"
@@ -26,11 +27,15 @@ function ToolbarButton({ onClick, active, disabled, label, children }) {
       aria-pressed={!!active}
       aria-label={label}
       title={label}
-      className={TOOLBAR_BUTTON}
+      className={TOOLBAR_BTN}
     >
-      {children}
+      {icon ? <span className="text-base leading-none">{icon}</span> : children}
     </button>
   );
+}
+
+function ToolbarGroup({ children }) {
+  return <div className="flex items-center gap-1">{children}</div>;
 }
 
 function Toolbar({ editor }) {
@@ -113,27 +118,39 @@ function Toolbar({ editor }) {
   );
 }
 
-// A Word-like WYSIWYG box for meeting minutes: a formatting toolbar above a
-// page-styled editable area, storing content as HTML (exported to real
-// .doc files by exportMinuteAsWord).
 export default function RichTextEditor({ value, onChange, placeholder }) {
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        hardBreak: {
+          keepMarks: true,
+        },
+      }),
       Underline,
-      Placeholder.configure({ placeholder: placeholder || 'Start typing…' }),
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+      }),
+      Placeholder.configure({
+        placeholder: placeholder || 'Start typing…',
+        emptyEditorClass: 'is-editor-empty',
+      }),
     ],
     content: toEditorHtml(value),
     onUpdate: ({ editor: ed }) => onChange(ed.getHTML()),
     editorProps: {
       attributes: {
-        class: 'minute-editor min-h-[18rem] rounded-b-xl border border-rule bg-white px-4 py-3 text-sm leading-relaxed focus:outline-none',
+        class:
+          'minute-editor min-h-96 rounded-b-xl border border-rule bg-white px-4 py-3 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/30',
+      },
+      handlePaste: (view, event) => {
+        return false;
       },
     },
   });
 
   return (
-    <div>
+    <div className="rounded-xl overflow-hidden border border-rule">
       <Toolbar editor={editor} />
       <EditorContent editor={editor} />
     </div>
