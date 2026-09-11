@@ -4,12 +4,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from './Toast';
 import { weakPasswordMessage } from '../../utils/password';
 
-// Admin/super-admin: create admin or secretary accounts, deactivate/
-// reactivate them, and reset a locked-out account's password (there's no
-// self-serve "forgot password" flow — no email delivery in this system, by
-// design). A plain admin can only manage secretary accounts; only the super
-// admin can create or manage another admin. Deliberately a small form, not
-// a management page — this system will only ever have a handful of accounts.
+// Admin/super-admin: create admin, secretary or disciplinary accounts,
+// deactivate/reactivate them, and reset a locked-out account's password
+// (there's no self-serve "forgot password" flow — no email delivery in this
+// system, by design). A plain admin can only manage secretary/disciplinary
+// accounts; only the super admin can create or manage another admin.
+// Deliberately a small form, not a management page — this system will only
+// ever have a handful of accounts.
 export default function AddAdminForm() {
   const { user } = useAuth();
   const toast = useToast();
@@ -20,9 +21,9 @@ export default function AddAdminForm() {
   const [resettingId, setResettingId] = useState(null);
   const [resetValue, setResetValue] = useState('');
 
-  // A plain admin can only manage secretary accounts, not other admins.
+  // A plain admin can only manage secretary/disciplinary accounts, not other admins.
   function canManage(admin) {
-    return isSuperAdmin || admin.role === 'secretary';
+    return isSuperAdmin || ['secretary', 'disciplinary'].includes(admin.role);
   }
 
   async function loadAdmins() {
@@ -48,7 +49,7 @@ export default function AddAdminForm() {
     setBusy(true);
     try {
       await api.post('/api/auth/admins', form);
-      toast(form.role === 'admin' ? 'Admin added' : 'Secretary added');
+      toast(form.role === 'admin' ? 'Admin added' : form.role === 'disciplinary' ? 'Disciplinary officer added' : 'Secretary added');
       setForm({ name: '', email: '', password: '', role: 'secretary' });
       loadAdmins();
     } catch (err) {
@@ -89,7 +90,7 @@ export default function AddAdminForm() {
 
   return (
     <section className="relative z-40 rounded-xl border border-rule bg-surface p-5">
-      <h2 className="text-base font-semibold">Admin &amp; secretary accounts</h2>
+      <h2 className="text-base font-semibold">Admin &amp; other accounts</h2>
 
       <ul className="mt-3 divide-y divide-rule">
         {admins.map((a) => (
@@ -106,6 +107,11 @@ export default function AddAdminForm() {
                   {a.role === 'secretary' && (
                     <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-primary">
                       Secretary
+                    </span>
+                  )}
+                  {a.role === 'disciplinary' && (
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-alert">
+                      Disciplinary
                     </span>
                   )}
                   {!a.active && (
@@ -185,6 +191,7 @@ export default function AddAdminForm() {
             aria-label="Role"
           >
             <option value="secretary">Secretary</option>
+            <option value="disciplinary">Disciplinary officer</option>
             <option value="admin">Admin</option>
           </select>
         )}
@@ -221,7 +228,7 @@ export default function AddAdminForm() {
           disabled={busy}
           className="min-h-12 w-full rounded-xl bg-primary text-sm font-semibold text-white transition disabled:opacity-60 hover:bg-opacity-90"
         >
-          {busy ? 'Adding…' : form.role === 'admin' ? 'Add admin' : 'Add secretary'}
+          {busy ? 'Adding…' : form.role === 'admin' ? 'Add admin' : form.role === 'disciplinary' ? 'Add disciplinary officer' : 'Add secretary'}
         </button>
       </form>
     </section>

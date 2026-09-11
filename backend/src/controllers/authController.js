@@ -90,11 +90,12 @@ async function listAdmins(req, res, next) {
 }
 
 // POST /api/auth/admins (super_admin, admin) — super_admin may create an
-// 'admin' or 'secretary'; a plain admin may only create a 'secretary'.
+// 'admin', 'secretary' or 'disciplinary'; a plain admin may only create a
+// 'secretary' or 'disciplinary' account.
 async function createAdmin(req, res, next) {
   try {
     const { name, email, password } = req.body || {};
-    const role = req.body?.role === 'secretary' ? 'secretary' : 'admin';
+    const role = ['secretary', 'disciplinary'].includes(req.body?.role) ? req.body.role : 'admin';
     if (!name || !String(name).trim() || !email || !password) {
       return res.status(400).json({ message: 'Name, email and password are required' });
     }
@@ -126,7 +127,7 @@ async function createAdmin(req, res, next) {
 }
 
 // PATCH /api/auth/admins/:id (super_admin, admin) — deactivate/reactivate
-// only. A plain admin may only act on 'secretary' accounts.
+// only. A plain admin may only act on 'secretary'/'disciplinary' accounts.
 async function updateAdmin(req, res, next) {
   try {
     const { active } = req.body || {};
@@ -141,8 +142,8 @@ async function updateAdmin(req, res, next) {
     if (target.role === 'super_admin') {
       return res.status(400).json({ message: 'The super admin account cannot be deactivated' });
     }
-    if (req.user.role === 'admin' && target.role !== 'secretary') {
-      return res.status(403).json({ message: 'You can only manage secretary accounts' });
+    if (req.user.role === 'admin' && !['secretary', 'disciplinary'].includes(target.role)) {
+      return res.status(403).json({ message: 'You can only manage secretary and disciplinary accounts' });
     }
     const before = toDTO(target);
     target.active = active;
@@ -176,8 +177,8 @@ async function resetAdminPassword(req, res, next) {
     }
     const target = await User.findById(req.params.id);
     if (!target) return res.status(404).json({ message: 'Admin not found' });
-    if (req.user.role === 'admin' && target.role !== 'secretary') {
-      return res.status(403).json({ message: 'You can only manage secretary accounts' });
+    if (req.user.role === 'admin' && !['secretary', 'disciplinary'].includes(target.role)) {
+      return res.status(403).json({ message: 'You can only manage secretary and disciplinary accounts' });
     }
 
     target.password = await bcrypt.hash(String(password), 10);
