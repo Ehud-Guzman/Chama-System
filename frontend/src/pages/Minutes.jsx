@@ -3,7 +3,9 @@ import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import Loader from '../components/shared/Loader';
+import RichTextEditor from '../components/minutes/RichTextEditor';
 import { shortDate, todayISO } from '../utils/format';
+import { exportMinuteAsWord } from '../utils/exportWord';
 
 const BLANK = { title: '', date: todayISO(), content: '' };
 
@@ -208,14 +210,13 @@ export default function Minutes() {
                 onChange={(e) => setForm({ ...form, date: e.target.value })}
                 className="h-12 rounded-xl border border-rule px-3 text-sm"
               />
-              <textarea
-                rows={14}
-                placeholder="Attendees, agenda, decisions, action items…"
+              <RichTextEditor
+                key={selectedId}
                 value={form.content}
-                onChange={(e) => setForm({ ...form, content: e.target.value })}
-                className="w-full rounded-xl border border-rule px-4 py-3 text-sm leading-relaxed"
+                onChange={(html) => setForm({ ...form, content: html })}
+                placeholder="Attendees, agenda, decisions, action items…"
               />
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
                   onClick={save}
@@ -223,6 +224,14 @@ export default function Minutes() {
                   className="min-h-12 flex-1 rounded-xl bg-primary text-sm font-semibold text-white disabled:opacity-60"
                 >
                   {busy ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => exportMinuteAsWord(form)}
+                  disabled={!form.content && !form.title}
+                  className="min-h-12 rounded-xl border border-rule px-4 text-sm font-medium disabled:opacity-40"
+                >
+                  Download as Word
                 </button>
                 {selectedId !== 'new' && (
                   <button
