@@ -190,16 +190,16 @@ export default function Minutes() {
             <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
               {minutes.map((m) => (
                 <li key={m._id} className={`border-b border-rule last:border-b-0 transition-colors ${selectedId === m._id ? 'bg-primary/5' : 'hover:bg-canvas'}`}>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between px-4 py-3">
                     <button
                       type="button"
                       onClick={() => select(m)}
-                      className="flex-1 px-4 py-3 text-left"
+                      className="flex-1 text-left"
                     >
                       <p className="truncate text-sm font-semibold">{m.title}</p>
                       <p className="text-xs text-muted">{shortDate(m.date)}</p>
                     </button>
-                    <div className="flex items-center gap-1 px-2 opacity-0 hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-2 ml-2">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -207,7 +207,7 @@ export default function Minutes() {
                           exportMinuteAsDocx(m);
                         }}
                         title="Download as Word"
-                        className="min-h-9 min-w-9 rounded-lg text-muted hover:text-primary hover:bg-primary/10"
+                        className="min-h-8 min-w-8 rounded-lg text-sm text-muted hover:text-primary hover:bg-primary/10 transition-colors"
                       >
                         ↓
                       </button>
@@ -218,7 +218,7 @@ export default function Minutes() {
                           setDeleting(m);
                         }}
                         title="Delete"
-                        className="min-h-9 min-w-9 rounded-lg text-muted hover:text-alert hover:bg-alert/10"
+                        className="min-h-8 min-w-8 rounded-lg text-sm text-muted hover:text-alert hover:bg-alert/10 transition-colors"
                       >
                         ✕
                       </button>
