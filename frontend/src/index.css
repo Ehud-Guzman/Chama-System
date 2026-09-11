@@ -74,3 +74,44 @@ body {
     transform: none;
   }
 }
+
+/* The rich text editor for meeting minutes, styled to read like a
+   Word document rather than a plain textarea. */
+.minute-editor h1,
+.minute-editor h2 {
+  margin: 1em 0 0.4em;
+  font-weight: 700;
+}
+.minute-editor h1 {
+  font-size: 1.25rem;
+}
+.minute-editor h2 {
+  font-size: 1.1rem;
+}
+.minute-editor p {
+  margin: 0.6em 0;
+}
+.minute-editor ul,
+.minute-editor ol {
+  margin: 0.6em 0;
+  padding-left: 1.5em;
+}
+.minute-editor ul {
+  list-style: disc;
+}
+.minute-editor ol {
+  list-style: decimal;
+}
+.minute-editor blockquote {
+  margin: 0.6em 0;
+  padding-left: 1em;
+  border-left: 3px solid var(--color-rule);
+  color: var(--color-muted);
+}
+.minute-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--color-muted);
+  pointer-events: none;
+}
