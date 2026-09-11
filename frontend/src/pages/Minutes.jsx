@@ -26,8 +26,14 @@ export default function Minutes() {
   const [deleting, setDeleting] = useState(null);
   const [pendingSwitch, setPendingSwitch] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [search, setSearch] = useState('');
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(baseline);
+
+  const filteredMinutes = minutes.filter((m) =>
+    m.title.toLowerCase().includes(search.toLowerCase()) ||
+    new Date(m.date).toLocaleDateString('en-KE').includes(search)
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,6 +166,16 @@ export default function Minutes() {
           <h1 className="mt-1 text-2xl font-bold">Meeting minutes</h1>
         </div>
         <div className="flex gap-2">
+          {selectedId && (
+            <button
+              type="button"
+              onClick={() => exportMinuteAsDocx(form)}
+              className="min-h-12 rounded-xl border border-rule px-4 text-sm font-semibold hover:bg-canvas transition-colors"
+              title="Download as Word document"
+            >
+              ↓ Export
+            </button>
+          )}
           <button
             type="button"
             onClick={importFromDocx}
@@ -178,55 +194,87 @@ export default function Minutes() {
         </div>
       </header>
 
-      <div className="md:grid md:grid-cols-[280px_1fr] md:items-start md:gap-6">
-        <section>
+      <div className="md:grid md:grid-cols-[320px_1fr] md:items-start md:gap-6">
+        <section className="space-y-3">
+          <div>
+            <input
+              type="text"
+              placeholder="Search minutes…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full h-10 rounded-lg border border-rule px-3 text-sm"
+              aria-label="Search minutes"
+            />
+          </div>
           {loading ? (
             <Loader />
-          ) : minutes.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
-              No minutes yet.
+          ) : filteredMinutes.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-rule px-4 py-6 text-center text-sm text-muted">
+              {search ? 'No matches found.' : 'No minutes yet.'}
             </p>
           ) : (
-            <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
-              {minutes.map((m) => (
-                <li key={m._id} className={`border-b border-rule last:border-b-0 transition-colors ${selectedId === m._id ? 'bg-primary/5' : 'hover:bg-canvas'}`}>
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => select(m)}
-                      className="flex-1 text-left"
-                    >
-                      <p className="truncate text-sm font-semibold">{m.title}</p>
-                      <p className="text-xs text-muted">{shortDate(m.date)}</p>
-                    </button>
-                    <div className="flex items-center gap-2 ml-2">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          exportMinuteAsDocx(m);
-                        }}
-                        title="Download as Word"
-                        className="min-h-8 min-w-8 rounded-lg text-sm text-muted hover:text-primary hover:bg-primary/10 transition-colors"
-                      >
-                        ↓
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleting(m);
-                        }}
-                        title="Delete"
-                        className="min-h-8 min-w-8 rounded-lg text-sm text-muted hover:text-alert hover:bg-alert/10 transition-colors"
-                      >
-                        ✕
-                      </button>
+            <div className="space-y-2">
+              {filteredMinutes.map((m) => {
+                const contentPreview = m.content
+                  ? m.content
+                      .replace(/<[^>]*>/g, '')
+                      .trim()
+                      .substring(0, 60)
+                      .replace(/\s+/g, ' ')
+                  : '';
+
+                return (
+                  <button
+                    key={m._id}
+                    type="button"
+                    onClick={() => select(m)}
+                    className={`w-full text-left p-3 rounded-lg border transition-all ${
+                      selectedId === m._id
+                        ? 'border-primary bg-primary/5 shadow-sm'
+                        : 'border-rule bg-surface hover:border-primary/30 hover:shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <p className="text-sm font-semibold line-clamp-2 text-ink">{m.title}</p>
+                      <div className="flex gap-1 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            exportMinuteAsDocx(m);
+                          }}
+                          title="Download as Word"
+                          className="min-h-7 min-w-7 text-xs rounded text-muted hover:text-primary hover:bg-primary/10 transition-colors"
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleting(m);
+                          }}
+                          title="Delete"
+                          className="min-h-7 min-w-7 text-xs rounded text-muted hover:text-alert hover:bg-alert/10 transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <p className="text-xs text-muted mb-1">
+                      {new Date(m.date).toLocaleDateString('en-KE', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </p>
+                    {contentPreview && (
+                      <p className="text-xs text-muted line-clamp-1">{contentPreview}…</p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           )}
         </section>
 
