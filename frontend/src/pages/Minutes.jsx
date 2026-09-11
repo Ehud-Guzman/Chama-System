@@ -5,7 +5,8 @@ import ConfirmDialog from '../components/shared/ConfirmDialog';
 import Loader from '../components/shared/Loader';
 import RichTextEditor from '../components/minutes/RichTextEditor';
 import { shortDate, todayISO } from '../utils/format';
-import { exportMinuteAsWord } from '../utils/exportWord';
+import { exportMinuteAsDocx } from '../utils/exportDocx';
+import { promptForDocxImport } from '../utils/importDocx';
 
 const BLANK = { title: '', date: todayISO(), content: '' };
 
@@ -23,9 +24,8 @@ export default function Minutes() {
   const [baseline, setBaseline] = useState(BLANK);
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(null);
-  // The switch the admin tried to make while there were unsaved changes —
-  // either 'new' or a minute to select — held until they confirm discarding.
   const [pendingSwitch, setPendingSwitch] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(baseline);
 
@@ -139,6 +139,19 @@ export default function Minutes() {
     }
   }
 
+  async function importFromDocx() {
+    setImporting(true);
+    try {
+      const html = await promptForDocxImport();
+      setForm({ ...form, content: html });
+      toast('Word document imported');
+    } catch (err) {
+      toast(apiMessage(err) || 'Failed to import document', 'error');
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between">
@@ -227,11 +240,19 @@ export default function Minutes() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => exportMinuteAsWord(form)}
+                  onClick={() => exportMinuteAsDocx(form)}
                   disabled={!form.content && !form.title}
                   className="min-h-12 rounded-xl border border-rule px-4 text-sm font-medium disabled:opacity-40"
                 >
-                  Download as Word
+                  Download as .docx
+                </button>
+                <button
+                  type="button"
+                  onClick={importFromDocx}
+                  disabled={importing}
+                  className="min-h-12 rounded-xl border border-rule px-4 text-sm font-medium disabled:opacity-40"
+                >
+                  {importing ? 'Importing…' : 'Import from Word'}
                 </button>
                 {selectedId !== 'new' && (
                   <button
