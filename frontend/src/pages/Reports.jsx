@@ -227,15 +227,15 @@ export default function Reports() {
                 {summary.byMethod.map((m) => (
                   <li
                     key={m.method}
-                    className="flex items-baseline justify-between border-b border-rule py-2 last:border-b-0"
+                    className="flex flex-col sm:flex-row sm:items-baseline justify-between border-b border-rule py-2 last:border-b-0 gap-1 sm:gap-2"
                   >
                     <span className="text-sm">
                       {METHOD_LABELS[m.method] || m.method}
-                      <span className="amount ml-2 text-xs text-muted">
-                        ×{m.count}
-                      </span>
                     </span>
-                    <span className="amount text-sm font-semibold">
+                    <span className="amount text-xs text-muted">
+                      ×{m.count}
+                    </span>
+                    <span className="amount text-sm font-semibold ml-auto">
                       {money(m.total)}
                     </span>
                   </li>
@@ -251,15 +251,15 @@ export default function Reports() {
                     {summary.byType.map((t) => (
                       <li
                         key={t.typeId}
-                        className="flex items-baseline justify-between border-b border-rule py-2 last:border-b-0"
+                        className="flex flex-col sm:flex-row sm:items-baseline justify-between border-b border-rule py-2 last:border-b-0 gap-1 sm:gap-2"
                       >
                         <span className="text-sm">
                           {t.name}
-                          <span className="amount ml-2 text-xs text-muted">
-                            ×{t.count}
-                          </span>
                         </span>
-                        <span className="amount text-sm font-semibold">
+                        <span className="amount text-xs text-muted">
+                          ×{t.count}
+                        </span>
+                        <span className="amount text-sm font-semibold ml-auto">
                           {money(t.total)}
                         </span>
                       </li>
