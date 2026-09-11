@@ -43,6 +43,7 @@ const fineTypeRoutes = require('./routes/fineTypeRoutes');
 const fineRoutes = require('./routes/fineRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const minuteRoutes = require('./routes/minuteRoutes');
+const backupRoutes = require('./routes/backupRoutes');
 
 const app = express();
 
@@ -62,6 +63,7 @@ app.use(
   cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     credentials: false,
+    exposedHeaders: ['Content-Disposition'],
   })
 );
 
@@ -168,6 +170,8 @@ app.use('/api/fines', fineRoutes);
 app.use('/api/expenses', expenseRoutes);
 
 app.use('/api/minutes', minuteRoutes);
+
+app.use('/api/backup', backupRoutes);
 
 // -----------------------------------------------------------------------------
 // Error handling

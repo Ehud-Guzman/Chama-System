@@ -7,6 +7,7 @@ import { money } from '../utils/format';
 import AddAdminForm from '../components/shared/AddAdminForm';
 import ChangePasswordForm from '../components/shared/ChangePasswordForm';
 import ChamaSettingsForm from '../components/shared/ChamaSettingsForm';
+import BackupPanel from '../components/shared/BackupPanel';
 import TypeManager from '../components/contributions/TypeManager';
 import FineTypeManager from '../components/contributions/FineTypeManager';
 import ExpensesPanel from '../components/shared/ExpensesPanel';
@@ -175,6 +176,13 @@ export default function AdminDashboard() {
         <div className="min-w-0">
           <ChangePasswordForm />
         </div>
+
+        {/* Full system backup */}
+        {user?.role === 'super_admin' && (
+          <div className="min-w-0">
+            <BackupPanel />
+          </div>
+        )}
 
         {/* Admin accounts */}
         {['super_admin', 'admin'].includes(user?.role) && (
