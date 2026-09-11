@@ -17,6 +17,7 @@ const MemberDetail = lazy(() => import('./pages/MemberDetail.jsx'));
 const ContributionsLog = lazy(() => import('./pages/ContributionsLog.jsx'));
 const Reports = lazy(() => import('./pages/Reports.jsx'));
 const Minutes = lazy(() => import('./pages/Minutes.jsx'));
+const DisciplinaryFines = lazy(() => import('./pages/DisciplinaryFines.jsx'));
 
 export default function App() {
   return (
@@ -32,7 +33,7 @@ export default function App() {
               <Route
                 path="/admin/dashboard"
                 element={
-                  <RoleGuard roles={['super_admin', 'admin']} redirectTo="/admin/minutes">
+                  <RoleGuard roles={['super_admin', 'admin']}>
                     <AdminDashboard />
                   </RoleGuard>
                 }
@@ -40,7 +41,7 @@ export default function App() {
               <Route
                 path="/admin/members"
                 element={
-                  <RoleGuard roles={['super_admin', 'admin']} redirectTo="/admin/minutes">
+                  <RoleGuard roles={['super_admin', 'admin']}>
                     <MembersList />
                   </RoleGuard>
                 }
@@ -48,7 +49,7 @@ export default function App() {
               <Route
                 path="/admin/members/:id"
                 element={
-                  <RoleGuard roles={['super_admin', 'admin']} redirectTo="/admin/minutes">
+                  <RoleGuard roles={['super_admin', 'admin']}>
                     <MemberDetail />
                   </RoleGuard>
                 }
@@ -56,13 +57,35 @@ export default function App() {
               <Route
                 path="/admin/log"
                 element={
-                  <RoleGuard roles={['super_admin', 'admin']} redirectTo="/admin/minutes">
+                  <RoleGuard roles={['super_admin', 'admin']}>
                     <ContributionsLog />
                   </RoleGuard>
                 }
               />
-              <Route path="/admin/reports" element={<Reports />} />
-              <Route path="/admin/minutes" element={<Minutes />} />
+              <Route
+                path="/admin/reports"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin', 'secretary']}>
+                    <Reports />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/minutes"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin', 'secretary']}>
+                    <Minutes />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/disciplinary"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin', 'disciplinary']}>
+                    <DisciplinaryFines />
+                  </RoleGuard>
+                }
+              />
             </Route>
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -6,6 +6,7 @@ const cors = require('cors');
 const mongoSanitize = require('express-mongo-sanitize');
 
 const connectDB = require('./config/db');
+const { seedDisciplinaryFineTypes } = require('./utils/seedDisciplinaryFineTypes');
 
 const {
   lookupLimiter,
@@ -192,6 +193,7 @@ if (require.main === module) {
   }
 
   connectDB()
+    .then(() => seedDisciplinaryFineTypes())
     .then(() => {
       app.listen(PORT, '0.0.0.0', () => {
         console.log(`API running on port ${PORT}`);

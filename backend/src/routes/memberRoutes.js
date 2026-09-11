@@ -15,9 +15,13 @@ const {
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { setPledge } = require('../controllers/pledgeController');
 
-router.use(requireAuth, requireRole('super_admin', 'admin'));
+router.use(requireAuth);
 
-router.get('/', listMembers);
+// Bare member list (name/phone) only — the disciplinary role needs this to
+// pick who to fine, nothing else about a member.
+router.get('/', requireRole('super_admin', 'admin', 'disciplinary'), listMembers);
+
+router.use(requireRole('super_admin', 'admin'));
 router.get('/export', exportMembers);
 router.get('/import-template', importTemplate);
 router.get('/:id', getMember);

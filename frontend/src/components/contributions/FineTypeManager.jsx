@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react';
 import api, { apiMessage } from '../../services/api';
 import { useToast } from '../shared/Toast';
+import { money } from '../../utils/format';
 
 // Same pattern as TypeManager, against fine types instead of contribution
-// types — e.g. Late payment, Absence, Misconduct.
+// types. Two categories: 'financial' (treasurer-issued, e.g. Late payment)
+// and 'disciplinary' (the disciplinary officer's fixed infraction list —
+// Lateness, Absence, etc.), each with its own default penalty amount.
 export default function FineTypeManager({ onChange }) {
   const toast = useToast();
   const [types, setTypes] = useState([]);
-  const [form, setForm] = useState({ name: '', description: '' });
+  const [form, setForm] = useState({ name: '', description: '', category: 'financial', defaultAmount: '' });
   const [busy, setBusy] = useState(false);
+  const [editingAmountId, setEditingAmountId] = useState(null);
+  const [amountValue, setAmountValue] = useState('');
 
   async function load() {
     try {
@@ -29,7 +34,7 @@ export default function FineTypeManager({ onChange }) {
     try {
       await api.post('/api/fine-types', form);
       toast('Fine type added');
-      setForm({ name: '', description: '' });
+      setForm({ name: '', description: '', category: 'financial', defaultAmount: '' });
       load();
       onChange?.();
     } catch (err) {
@@ -50,35 +55,102 @@ export default function FineTypeManager({ onChange }) {
     }
   }
 
+  async function saveAmount(type) {
+    const n = Number(amountValue);
+    if (!Number.isFinite(n) || n < 0) {
+      toast('Enter a default amount of zero or more', 'error');
+      return;
+    }
+    try {
+      await api.patch(`/api/fine-types/${type._id}`, { defaultAmount: n });
+      setEditingAmountId(null);
+      load();
+      onChange?.();
+    } catch (err) {
+      toast(apiMessage(err), 'error');
+    }
+  }
+
   return (
     <section className="rounded-xl border border-rule bg-surface p-5">
       <h2 className="text-base font-semibold">Fine types</h2>
       <p className="mt-1 text-xs text-muted">
-        Reasons a fine can be issued — e.g. Late payment, Absence, Misconduct.
+        Financial fines (treasurer, e.g. Late payment) and disciplinary infractions (disciplinary
+        officer, e.g. Lateness, Absence) — each with its own default penalty amount.
       </p>
 
       {types.length > 0 && (
         <ul className="mt-3 divide-y divide-rule">
           {types.map((t) => (
-            <li key={t._id} className="flex items-center justify-between gap-3 py-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">
-                  {t.name}
-                  {!t.active && (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                      Inactive
+            <li key={t._id} className="py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">
+                    {t.name}
+                    <span
+                      className={`ml-2 text-[10px] font-semibold uppercase tracking-widest ${
+                        t.category === 'disciplinary' ? 'text-primary' : 'text-accent'
+                      }`}
+                    >
+                      {t.category === 'disciplinary' ? 'Disciplinary' : 'Financial'}
                     </span>
-                  )}
-                </p>
-                {t.description && <p className="truncate text-xs text-muted">{t.description}</p>}
+                    {!t.active && (
+                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                        Inactive
+                      </span>
+                    )}
+                  </p>
+                  {t.description && <p className="truncate text-xs text-muted">{t.description}</p>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleActive(t)}
+                  className="min-h-11 shrink-0 rounded-lg border border-rule px-3 text-xs font-medium"
+                >
+                  {t.active ? 'Deactivate' : 'Reactivate'}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => toggleActive(t)}
-                className="min-h-11 shrink-0 rounded-lg border border-rule px-3 text-xs font-medium"
-              >
-                {t.active ? 'Deactivate' : 'Reactivate'}
-              </button>
+
+              <div className="mt-2">
+                {editingAmountId === t._id ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoFocus
+                      value={amountValue}
+                      onChange={(e) => setAmountValue(e.target.value)}
+                      className="amount h-10 w-28 rounded-lg border border-rule px-3 text-sm"
+                      aria-label={`Default amount for ${t.name}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => saveAmount(t)}
+                      className="min-h-10 rounded-lg bg-primary px-3 text-xs font-semibold text-white"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingAmountId(null)}
+                      className="min-h-10 rounded-lg border border-rule px-3 text-xs font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingAmountId(t._id);
+                      setAmountValue(String(t.defaultAmount || ''));
+                    }}
+                    className="amount text-xs font-medium text-primary"
+                  >
+                    {t.defaultAmount > 0 ? `${money(t.defaultAmount)} default — edit` : 'No default amount — set one'}
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
@@ -86,6 +158,15 @@ export default function FineTypeManager({ onChange }) {
 
       <form onSubmit={onSubmit} className="mt-4 space-y-3 border-t border-rule pt-4">
         <p className="text-sm font-medium">Add fine type</p>
+        <select
+          value={form.category}
+          onChange={(e) => setForm({ ...form, category: e.target.value })}
+          className="h-12 w-full rounded-xl border border-rule px-4 text-sm"
+          aria-label="Fine type category"
+        >
+          <option value="financial">Financial (treasurer)</option>
+          <option value="disciplinary">Disciplinary (disciplinary officer)</option>
+        </select>
         <input
           type="text"
           required
@@ -94,6 +175,15 @@ export default function FineTypeManager({ onChange }) {
           onChange={(e) => setForm({ ...form, name: e.target.value })}
           className="h-12 w-full rounded-xl border border-rule px-4 text-sm"
           aria-label="Fine type name"
+        />
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="Default amount (optional)"
+          value={form.defaultAmount}
+          onChange={(e) => setForm({ ...form, defaultAmount: e.target.value })}
+          className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm"
+          aria-label="Default amount"
         />
         <input
           type="text"

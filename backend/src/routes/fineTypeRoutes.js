@@ -2,10 +2,10 @@ const router = require('express').Router();
 const { listFineTypes, createFineType, updateFineType } = require('../controllers/fineTypeController');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
-router.use(requireAuth, requireRole('super_admin', 'admin'));
+router.use(requireAuth);
 
-router.get('/', listFineTypes);
-router.post('/', createFineType);
-router.patch('/:id', updateFineType);
+router.get('/', requireRole('super_admin', 'admin', 'disciplinary'), listFineTypes);
+router.post('/', requireRole('super_admin', 'admin'), createFineType);
+router.patch('/:id', requireRole('super_admin', 'admin'), updateFineType);
 
 module.exports = router;

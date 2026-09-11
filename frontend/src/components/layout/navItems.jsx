@@ -1,4 +1,5 @@
-// The four admin destinations, shared by BottomNav (mobile) and Sidebar (desktop).
+// Admin destinations, shared by BottomNav (mobile) and Sidebar (desktop).
+// `roles` restricts visibility; omit it to show to every authenticated role.
 // Icons are inline SVG — no icon library.
 export const NAV_ITEMS = [
   {
@@ -54,12 +55,25 @@ export const NAV_ITEMS = [
   {
     to: '/admin/minutes',
     label: 'Minutes',
+    roles: ['super_admin', 'admin', 'secretary'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
         <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
         <path d="M9 7h7" />
         <path d="M9 11h7" />
+      </svg>
+    ),
+  },
+  {
+    to: '/admin/disciplinary',
+    label: 'Discipline',
+    roles: ['super_admin', 'admin', 'disciplinary'],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 2 3 6v6c0 5 3.8 8.7 9 10 5.2-1.3 9-5 9-10V6z" />
+        <path d="M12 8v5" />
+        <path d="M12 16h.01" />
       </svg>
     ),
   },

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiMessage } from '../services/api';
+import { roleHome } from '../utils/roleHome';
 
 export default function AdminLogin() {
   const { login } = useAuth();
@@ -17,7 +18,7 @@ export default function AdminLogin() {
     setError('');
     try {
       const user = await login(email, password);
-      navigate(user.role === 'secretary' ? '/admin/minutes' : '/admin/dashboard', { replace: true });
+      navigate(roleHome(user.role), { replace: true });
     } catch (err) {
       setError(apiMessage(err, 'Could not sign in. Please try again.'));
     } finally {

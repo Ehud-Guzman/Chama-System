@@ -47,7 +47,12 @@ async function createFine(req, res, next) {
     if (!type || !type.active) {
       return res.status(400).json({ message: 'Fine type not found or inactive' });
     }
-    const n = Number(amount);
+    // The disciplinary role only ever issues disciplinary-category fines —
+    // financial fine types stay with the treasurer/admin.
+    if (req.user.role === 'disciplinary' && type.category !== 'disciplinary') {
+      return res.status(403).json({ message: 'You can only issue disciplinary fine types' });
+    }
+    const n = Number(amount) > 0 ? Number(amount) : type.defaultAmount;
     if (!Number.isFinite(n) || n <= 0) {
       return res.status(400).json({ message: 'Amount must be a number greater than zero' });
     }
