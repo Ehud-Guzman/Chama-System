@@ -19,10 +19,20 @@ export default function IssueFineForm({ memberId, onIssued, onCancel }) {
       .get('/api/fine-types')
       .then((res) => {
         setTypes(res.data.types);
-        if (res.data.types.length > 0) setTypeId((prev) => prev || res.data.types[0]._id);
+        if (res.data.types.length > 0) {
+          setTypeId((prev) => prev || res.data.types[0]._id);
+          setAmount((prev) =>
+            prev || (res.data.types[0].defaultAmount > 0 ? String(res.data.types[0].defaultAmount) : '')
+          );
+        }
       })
       .catch(() => {});
   }, []);
+
+  function selectType(type) {
+    setTypeId(type._id);
+    setAmount(type.defaultAmount > 0 ? String(type.defaultAmount) : '');
+  }
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -59,7 +69,7 @@ export default function IssueFineForm({ memberId, onIssued, onCancel }) {
             <button
               key={t._id}
               type="button"
-              onClick={() => setTypeId(t._id)}
+              onClick={() => selectType(t)}
               aria-pressed={typeId === t._id}
               className={`min-h-11 rounded-lg border px-3 text-xs font-semibold ${
                 typeId === t._id ? 'border-primary bg-primary/10 text-primary' : 'border-rule text-muted'

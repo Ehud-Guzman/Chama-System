@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
 import { todayISO } from '../utils/format';
@@ -18,6 +18,7 @@ export default function DisciplinaryFines() {
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(todayISO());
   const [busy, setBusy] = useState(false);
+  const detailsRef = useRef(null);
 
   useEffect(() => {
     Promise.all([
@@ -53,6 +54,14 @@ export default function DisciplinaryFines() {
   function selectType(type) {
     setTypeId(type._id);
     setAmount(type.defaultAmount > 0 ? String(type.defaultAmount) : '');
+  }
+
+  function selectMember(member) {
+    setSelectedId(member._id);
+    setDate(todayISO());
+    window.setTimeout(() => {
+      detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
   }
 
   async function issue() {
@@ -112,15 +121,12 @@ export default function DisciplinaryFines() {
             {filtered.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-muted">No members match that search.</p>
             ) : (
-              <ul className="max-h-[34rem] overflow-y-auto">
+              <ul className="max-h-80 overflow-y-auto lg:max-h-[34rem]">
                 {filtered.map((m) => (
                   <li key={m._id} className="border-b border-rule last:border-b-0">
                     <button
                       type="button"
-                      onClick={() => {
-                        setSelectedId(m._id);
-                        setDate(todayISO());
-                      }}
+                      onClick={() => selectMember(m)}
                       aria-pressed={selectedMember?._id === m._id}
                       className={`flex min-h-16 w-full items-center justify-between gap-3 px-4 text-left ${
                         selectedMember?._id === m._id ? 'bg-primary/10' : 'hover:bg-elevation'
@@ -142,7 +148,10 @@ export default function DisciplinaryFines() {
             )}
           </section>
 
-          <aside className="rounded-xl border border-rule bg-surface p-4 lg:sticky lg:top-6 lg:self-start">
+          <aside
+            ref={detailsRef}
+            className="rounded-xl border border-rule bg-surface p-4 lg:sticky lg:top-6 lg:self-start"
+          >
             <div className="border-b border-rule pb-3">
               <p className="text-xs font-semibold uppercase tracking-widest text-muted">Fine details</p>
               <h2 className="mt-1 truncate text-lg font-bold">
