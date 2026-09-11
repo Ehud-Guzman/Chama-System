@@ -13,7 +13,7 @@ export default function DisciplinaryFines() {
   const [types, setTypes] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [openId, setOpenId] = useState(null);
+  const [selectedId, setSelectedId] = useState('');
   const [typeId, setTypeId] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(todayISO());
@@ -26,6 +26,7 @@ export default function DisciplinaryFines() {
     ])
       .then(([membersRes, typesRes]) => {
         setMembers(membersRes.data.members);
+        if (membersRes.data.members.length > 0) setSelectedId(membersRes.data.members[0]._id);
         setTypes(typesRes.data.types);
         if (typesRes.data.types.length > 0) {
           setTypeId(typesRes.data.types[0]._id);
@@ -44,17 +45,21 @@ export default function DisciplinaryFines() {
     );
   }, [members, search]);
 
-  function openFor(member) {
-    setOpenId(openId === member._id ? null : member._id);
-    setDate(todayISO());
-  }
+  const selectedMember = useMemo(
+    () => members.find((m) => m._id === selectedId) || filtered[0] || null,
+    [filtered, members, selectedId]
+  );
 
   function selectType(type) {
     setTypeId(type._id);
     setAmount(type.defaultAmount > 0 ? String(type.defaultAmount) : '');
   }
 
-  async function issue(member) {
+  async function issue() {
+    if (!selectedMember) {
+      toast('Select a member', 'error');
+      return;
+    }
     if (!typeId) {
       toast('Select an infraction type', 'error');
       return;
@@ -66,9 +71,8 @@ export default function DisciplinaryFines() {
     }
     setBusy(true);
     try {
-      await api.post('/api/fines', { memberId: member._id, typeId, amount: n, date });
-      toast(`Fine issued to ${member.name}`);
-      setOpenId(null);
+      await api.post('/api/fines', { memberId: selectedMember._id, typeId, amount: n, date });
+      toast(`Fine issued to ${selectedMember.name}`);
     } catch (err) {
       toast(apiMessage(err), 'error');
     } finally {
@@ -98,72 +102,121 @@ export default function DisciplinaryFines() {
         <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
           No disciplinary fine types set up yet.
         </p>
-      ) : filtered.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
-          No members match that search.
-        </p>
       ) : (
-        <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
-          {filtered.map((m) => (
-            <li key={m._id} className="border-b border-rule last:border-b-0">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
+          <section className="overflow-hidden rounded-xl border border-rule bg-surface">
+            <div className="flex items-center justify-between gap-3 border-b border-rule px-4 py-3">
+              <h2 className="text-sm font-semibold">Members</h2>
+              <span className="text-xs text-muted">{filtered.length} shown</span>
+            </div>
+            {filtered.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm text-muted">No members match that search.</p>
+            ) : (
+              <ul className="max-h-[34rem] overflow-y-auto">
+                {filtered.map((m) => (
+                  <li key={m._id} className="border-b border-rule last:border-b-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedId(m._id);
+                        setDate(todayISO());
+                      }}
+                      aria-pressed={selectedMember?._id === m._id}
+                      className={`flex min-h-16 w-full items-center justify-between gap-3 px-4 text-left ${
+                        selectedMember?._id === m._id ? 'bg-primary/10' : 'hover:bg-elevation'
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">{m.name}</span>
+                        <span className="mt-0.5 block truncate text-xs text-muted">
+                          {[m.regNumber, m.phone].filter(Boolean).join(' · ')}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs font-medium text-primary">
+                        {selectedMember?._id === m._id ? 'Selected' : 'Select'}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <aside className="rounded-xl border border-rule bg-surface p-4 lg:sticky lg:top-6 lg:self-start">
+            <div className="border-b border-rule pb-3">
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted">Fine details</p>
+              <h2 className="mt-1 truncate text-lg font-bold">
+                {selectedMember ? selectedMember.name : 'Select a member'}
+              </h2>
+              {selectedMember && (
+                <p className="mt-1 truncate text-xs text-muted">
+                  {[selectedMember.regNumber, selectedMember.phone].filter(Boolean).join(' · ')}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <fieldset>
+                <legend className="mb-2 text-xs font-medium">Infraction</legend>
+                <div className="flex flex-wrap gap-2">
+                  {types.map((t) => (
+                    <button
+                      key={t._id}
+                      type="button"
+                      onClick={() => selectType(t)}
+                      aria-pressed={typeId === t._id}
+                      className={`min-h-11 rounded-lg border px-3 text-xs font-semibold ${
+                        typeId === t._id ? 'border-primary bg-primary/10 text-primary' : 'border-rule text-muted'
+                      }`}
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div>
+                <label htmlFor="disciplinary-amount" className="mb-1 block text-xs font-medium">
+                  Amount
+                </label>
+                <input
+                  id="disciplinary-amount"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Amount (Ksh)"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="amount h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+                  aria-label={selectedMember ? `Amount for ${selectedMember.name}` : 'Fine amount'}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="disciplinary-date" className="mb-1 block text-xs font-medium">
+                  Date
+                </label>
+                <input
+                  id="disciplinary-date"
+                  type="date"
+                  max={todayISO()}
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+                  aria-label={selectedMember ? `Date for ${selectedMember.name}` : 'Fine date'}
+                />
+              </div>
+
               <button
                 type="button"
-                onClick={() => openFor(m)}
-                aria-pressed={openId === m._id}
-                className="flex min-h-14 w-full items-center justify-between gap-3 px-4 text-left"
+                onClick={issue}
+                disabled={busy || !selectedMember}
+                className="min-h-12 w-full rounded-lg bg-primary text-sm font-semibold text-white disabled:opacity-60"
               >
-                <span className="min-w-0 truncate text-sm font-medium">{m.name}</span>
-                <span className="shrink-0 text-xs font-medium text-primary">
-                  {openId === m._id ? 'Close' : 'Add fine'}
-                </span>
+                {busy ? 'Issuing…' : 'Issue fine'}
               </button>
-              {openId === m._id && (
-                <div className="space-y-3 border-t border-rule bg-canvas px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
-                    {types.map((t) => (
-                      <button
-                        key={t._id}
-                        type="button"
-                        onClick={() => selectType(t)}
-                        aria-pressed={typeId === t._id}
-                        className={`min-h-11 rounded-lg border px-3 text-xs font-semibold ${
-                          typeId === t._id ? 'border-primary bg-primary/10 text-primary' : 'border-rule text-muted'
-                        }`}
-                      >
-                        {t.name}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="Amount (Ksh)"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="amount h-11 w-full rounded-lg border border-rule bg-surface px-3 text-sm"
-                    aria-label={`Amount for ${m.name}`}
-                  />
-                  <input
-                    type="date"
-                    max={todayISO()}
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="h-11 w-full rounded-lg border border-rule bg-surface px-3 text-sm"
-                    aria-label={`Date for ${m.name}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => issue(m)}
-                    disabled={busy}
-                    className="min-h-11 w-full rounded-lg bg-primary text-sm font-semibold text-white disabled:opacity-60"
-                  >
-                    {busy ? 'Issuing…' : 'Issue fine'}
-                  </button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
+            </div>
+          </aside>
+        </div>
       )}
     </div>
   );
