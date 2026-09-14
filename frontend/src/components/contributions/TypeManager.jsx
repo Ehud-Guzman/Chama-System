@@ -113,7 +113,6 @@ export default function TypeManager({ onChange }) {
   }
 
 
-
   async function toggleRecoverable(type) {
     try {
       await api.patch(`/api/types/${type._id}`, { isRecoverable: !type.isRecoverable });
