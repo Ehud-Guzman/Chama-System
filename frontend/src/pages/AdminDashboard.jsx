@@ -59,6 +59,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-w-0 space-y-6">
+      {/* Header */}
       <header className="overflow-hidden rounded-xl border border-rule bg-surface">
         <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:p-6">
           <div className="min-w-0">
@@ -89,6 +90,7 @@ export default function AdminDashboard() {
         </div>
       </header>
 
+      {/* Summary stats */}
       {loading ? (
         <div className="rounded-xl border border-rule bg-surface p-6">
           <Loader />
@@ -130,6 +132,7 @@ export default function AdminDashboard() {
         )
       )}
 
+      {/* Quick actions */}
       <section aria-label="Quick actions" className="space-y-3">
         <div className="flex items-end justify-between gap-3">
           <div>
@@ -162,17 +165,16 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      <section
-        aria-label="Administration"
-        className="space-y-3"
-      >
+      {/* System controls */}
+      <section aria-label="Administration" className="space-y-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-muted">Management</p>
           <h2 className="mt-1 text-lg font-bold">System controls</h2>
         </div>
 
         <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] xl:items-start">
-          <div className="min-w-0 space-y-4">
+          {/* Left column */}
+          <div className="min-w-0 space-y-4 self-start">
             <ChamaSettingsForm />
             <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
               <TypeManager />
@@ -180,7 +182,8 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="min-w-0 space-y-4">
+          {/* Right column */}
+          <div className="min-w-0 space-y-4 self-start">
             <ExpensesPanel />
             <ChangePasswordForm />
             {user?.role === 'super_admin' && <BackupPanel />}
