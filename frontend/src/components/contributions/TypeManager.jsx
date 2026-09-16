@@ -266,11 +266,11 @@ export default function TypeManager({ onChange }) {
           )}
         </div>
 
-        {/* Form */}
-        <form
-          onSubmit={onSubmit}
-          className="space-y-3 border-t border-rule bg-canvas p-4 xl:w-80 xl:border-l xl:border-t-0 xl:overflow-y-auto"
-        >
+   {/* Form */}
+<form
+  onSubmit={onSubmit}
+  className="w-full space-y-3 border-t border-rule bg-canvas p-4 xl:w-80 xl:border-l xl:border-t-0 xl:overflow-y-auto"
+>
           <div>
             <p className="text-sm font-bold">Add type</p>
             <p className="mt-1 text-xs text-muted">Set the rules once, then the logs and reports follow them.</p>
