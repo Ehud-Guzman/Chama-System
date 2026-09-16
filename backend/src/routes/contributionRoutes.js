@@ -9,7 +9,7 @@ const {
 } = require('../controllers/contributionController');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
-router.use(requireAuth, requireRole('super_admin', 'admin'));
+router.use(requireAuth, requireRole('super_admin', 'admin', 'treasurer'));
 
 router.get('/', listContributions);
 router.get('/bulk/template', bulkImportTemplate);

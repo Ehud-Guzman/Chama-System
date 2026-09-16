@@ -12,7 +12,7 @@ const {
 } = require('../controllers/reportController');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
-router.use(requireAuth, requireRole('super_admin', 'admin', 'secretary'));
+router.use(requireAuth, requireRole('super_admin', 'admin', 'treasurer', 'secretary'));
 
 router.get('/summary', summary);
 router.get('/export', exportContributions);

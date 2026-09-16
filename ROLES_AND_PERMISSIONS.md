@@ -2,7 +2,7 @@
 
 ## Role Hierarchy
 
-The system has 4 user roles with different access levels:
+The system has 5 user roles with different access levels:
 
 ---
 
@@ -54,7 +54,31 @@ The system has 4 user roles with different access levels:
 
 ---
 
-## 📋 **Secretary**
+## � **Treasurer**
+
+**Purpose:** Financial operations specialist focused on contributions and financial reporting
+
+**Key Permissions:**
+- ✅ Record contributions
+- ✅ View reports (summary, performance, monthly, weekly)
+- ✅ Export reports to Excel
+- ✅ View audit trail (who did what and when)
+- ❌ Cannot create or manage expenses
+- ❌ Cannot create, settle, or void fines
+- ❌ Cannot manage member accounts
+- ❌ Cannot create or manage contribution types
+- ❌ Cannot create or manage fine types
+- ❌ Cannot modify system settings
+- ❌ Cannot manage user accounts
+- ❌ Cannot access backup/restore functions
+
+**When to use:** Treasurer, financial officer
+
+**Can Manage:** No one
+
+---
+
+## �📋 **Secretary**
 
 **Purpose:** Reporting and documentation (read-only access)
 

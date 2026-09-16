@@ -49,7 +49,7 @@ export default function AddAdminForm() {
     setBusy(true);
     try {
       await api.post('/api/auth/admins', form);
-      toast(form.role === 'admin' ? 'Admin added' : form.role === 'disciplinary' ? 'Disciplinary officer added' : 'Secretary added');
+      toast(form.role === 'admin' ? 'Admin added' : form.role === 'disciplinary' ? 'Disciplinary officer added' : form.role === 'treasurer' ? 'Treasurer added' : 'Secretary added');
       setForm({ name: '', email: '', password: '', role: 'secretary' });
       loadAdmins();
     } catch (err) {
@@ -112,6 +112,11 @@ export default function AddAdminForm() {
                   {a.role === 'disciplinary' && (
                     <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-alert">
                       Disciplinary
+                    </span>
+                  )}
+                  {a.role === 'treasurer' && (
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-accent">
+                      Treasurer
                     </span>
                   )}
                   {!a.active && (
@@ -191,6 +196,7 @@ export default function AddAdminForm() {
             aria-label="Role"
           >
             <option value="secretary">Secretary</option>
+            <option value="treasurer">Treasurer</option>
             <option value="disciplinary">Disciplinary officer</option>
             <option value="admin">Admin</option>
           </select>
@@ -228,7 +234,7 @@ export default function AddAdminForm() {
           disabled={busy}
           className="min-h-12 w-full rounded-xl bg-primary text-sm font-semibold text-white transition disabled:opacity-60 hover:bg-opacity-90"
         >
-          {busy ? 'Adding…' : form.role === 'admin' ? 'Add admin' : form.role === 'disciplinary' ? 'Add disciplinary officer' : 'Add secretary'}
+          {busy ? 'Adding…' : form.role === 'admin' ? 'Add admin' : form.role === 'disciplinary' ? 'Add disciplinary officer' : form.role === 'treasurer' ? 'Add treasurer' : 'Add secretary'}
         </button>
       </form>
     </section>
