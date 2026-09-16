@@ -168,7 +168,7 @@ export default function TypeManager({ onChange }) {
       </div>
 
       {/* Content grid */}
-      <div className="flex flex-1 flex-col gap-0 overflow-hidden xl:flex-row">
+      <div className="flex flex-1 flex-col gap-0 overflow-hidden 2xl:flex-row">
         {/* Types list */}
         <div className="min-w-0 flex-1 overflow-y-auto">
           {types.length === 0 ? (
