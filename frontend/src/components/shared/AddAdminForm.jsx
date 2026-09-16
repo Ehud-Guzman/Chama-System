@@ -2,28 +2,25 @@ import { useEffect, useState } from 'react';
 import api, { apiMessage } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from './Toast';
-import { weakPasswordMessage } from '../../utils/password';
+import AddAccountModal from './AddAccountModal';
 
-// Admin/super-admin: create admin, secretary or disciplinary accounts,
-// deactivate/reactivate them, and reset a locked-out account's password
+// Admin/super-admin: manage admin, secretary, treasurer, and disciplinary accounts
 // (there's no self-serve "forgot password" flow — no email delivery in this
-// system, by design). A plain admin can only manage secretary/disciplinary
+// system, by design). A plain admin can only manage secretary/treasurer/disciplinary
 // accounts; only the super admin can create or manage another admin.
-// Deliberately a small form, not a management page — this system will only
-// ever have a handful of accounts.
 export default function AddAdminForm() {
   const { user } = useAuth();
   const toast = useToast();
   const isSuperAdmin = user?.role === 'super_admin';
   const [admins, setAdmins] = useState([]);
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'secretary' });
-  const [busy, setBusy] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [resettingId, setResettingId] = useState(null);
   const [resetValue, setResetValue] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  // A plain admin can only manage secretary/disciplinary accounts, not other admins.
+  // A plain admin can manage secretary/treasurer/disciplinary accounts, not other admins.
   function canManage(admin) {
-    return isSuperAdmin || ['secretary', 'disciplinary'].includes(admin.role);
+    return isSuperAdmin || ['secretary', 'treasurer', 'disciplinary'].includes(admin.role);
   }
 
   async function loadAdmins() {
@@ -39,26 +36,6 @@ export default function AddAdminForm() {
     loadAdmins();
   }, []);
 
-  async function onSubmit(e) {
-    e.preventDefault();
-    const weakMessage = weakPasswordMessage(form.password);
-    if (weakMessage) {
-      toast(weakMessage, 'error');
-      return;
-    }
-    setBusy(true);
-    try {
-      await api.post('/api/auth/admins', form);
-      toast(form.role === 'admin' ? 'Admin added' : form.role === 'disciplinary' ? 'Disciplinary officer added' : form.role === 'treasurer' ? 'Treasurer added' : 'Secretary added');
-      setForm({ name: '', email: '', password: '', role: 'secretary' });
-      loadAdmins();
-    } catch (err) {
-      toast(apiMessage(err), 'error');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function toggleActive(admin) {
     try {
       await api.patch(`/api/auth/admins/${admin.id}`, { active: !admin.active });
@@ -70,9 +47,9 @@ export default function AddAdminForm() {
   }
 
   async function saveReset(admin) {
-    const weakMessage = weakPasswordMessage(resetValue);
-    if (weakMessage) {
-      toast(weakMessage, 'error');
+    const minLength = 8;
+    if (!resetValue || resetValue.length < minLength) {
+      toast('Password must be at least 8 characters', 'error');
       return;
     }
     setBusy(true);
@@ -186,57 +163,15 @@ export default function AddAdminForm() {
         ))}
       </ul>
 
-      <form onSubmit={onSubmit} className="mt-4 space-y-3 border-t border-rule pt-4">
-        <p className="text-sm font-medium">Add account</p>
-        {isSuperAdmin && (
-          <select
-            value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
-            className="h-12 w-full rounded-xl border border-rule px-4 text-sm transition focus:border-primary focus:outline-none"
-            aria-label="Role"
-          >
-            <option value="secretary">Secretary</option>
-            <option value="treasurer">Treasurer</option>
-            <option value="disciplinary">Disciplinary officer</option>
-            <option value="admin">Admin</option>
-          </select>
-        )}
-        <input
-          type="text"
-          required
-          placeholder="Full name"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          className="h-12 w-full rounded-xl border border-rule px-4 text-sm transition focus:border-primary focus:outline-none"
-          aria-label="Full name"
-        />
-        <input
-          type="email"
-          required
-          placeholder="Email"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-          className="h-12 w-full rounded-xl border border-rule px-4 text-sm transition focus:border-primary focus:outline-none"
-          aria-label="Email"
-        />
-        <input
-          type="password"
-          required
-          minLength={8}
-          placeholder="Password (letters & numbers, min 8 chars)"
-          value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
-          className="h-12 w-full rounded-xl border border-rule px-4 text-sm transition focus:border-primary focus:outline-none"
-          aria-label="Password"
-        />
-        <button
-          type="submit"
-          disabled={busy}
-          className="min-h-12 w-full rounded-xl bg-primary text-sm font-semibold text-white transition disabled:opacity-60 hover:bg-opacity-90"
-        >
-          {busy ? 'Adding…' : form.role === 'admin' ? 'Add admin' : form.role === 'disciplinary' ? 'Add disciplinary officer' : form.role === 'treasurer' ? 'Add treasurer' : 'Add secretary'}
-        </button>
-      </form>
+      <button
+        type="button"
+        onClick={() => setShowAddModal(true)}
+        className="mt-4 w-full rounded-lg bg-primary py-3 text-sm font-semibold text-white transition hover:bg-opacity-90"
+      >
+        + Add account
+      </button>
+
+      <AddAccountModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} onAdded={loadAdmins} />
     </section>
   );
 }

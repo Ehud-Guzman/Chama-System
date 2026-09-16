@@ -1,7 +1,7 @@
 // Where each role lands after login / when blocked from a route it can't use.
 const ROLE_HOME = {
   secretary: '/admin/minutes',
-  treasurer: '/admin/reports',
+  treasurer: '/admin/log',
   disciplinary: '/admin/disciplinary',
 };
 

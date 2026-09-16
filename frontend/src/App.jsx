@@ -57,7 +57,7 @@ export default function App() {
               <Route
                 path="/admin/log"
                 element={
-                  <RoleGuard roles={['super_admin', 'admin']}>
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
                     <ContributionsLog />
                   </RoleGuard>
                 }
@@ -65,7 +65,7 @@ export default function App() {
               <Route
                 path="/admin/reports"
                 element={
-                  <RoleGuard roles={['super_admin', 'admin', 'secretary']}>
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer', 'secretary']}>
                     <Reports />
                   </RoleGuard>
                 }

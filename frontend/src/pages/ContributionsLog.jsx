@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import api, { apiMessage } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/shared/Toast';
 import { money, shortDate } from '../utils/format';
 import ContributionForm from '../components/contributions/ContributionForm';
@@ -11,7 +12,9 @@ import Loader from '../components/shared/Loader';
 import { METHOD_LABELS } from '../utils/format';
 
 export default function ContributionsLog() {
+  const { user } = useAuth();
   const toast = useToast();
+  const isAdmin = ['super_admin', 'admin'].includes(user?.role);
   const [contributions, setContributions] = useState([]);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
@@ -167,8 +170,8 @@ export default function ContributionsLog() {
               <LedgerRows
                 contributions={contributions}
                 showMember
-                onEdit={setEditing}
-                onDelete={setDeleting}
+                onEdit={isAdmin ? setEditing : undefined}
+                onDelete={isAdmin ? setDeleting : undefined}
               />
             )}
 

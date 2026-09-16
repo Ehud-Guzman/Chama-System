@@ -31,7 +31,7 @@ export const NAV_ITEMS = [
   {
     to: '/admin/log',
     label: 'Log',
-    roles: ['super_admin', 'admin'],
+    roles: ['super_admin', 'admin', 'treasurer'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M12 5v14" />
