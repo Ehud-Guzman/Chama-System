@@ -149,7 +149,7 @@ export default function TypeManager({ onChange }) {
   const fundCount = types.filter((t) => t.tracksExpenses).length;
 
   return (
-    <section className="flex max-h-[500px] flex-col overflow-hidden rounded-xl border border-rule bg-surface lg:max-h-[600px]">
+    <section className="flex max-h-[700px] flex-col overflow-hidden rounded-xl border border-rule bg-surface lg:max-h-[800px]">
       {/* Header */}
       <div className="border-b border-rule p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
