@@ -17,11 +17,10 @@ const { setPledge } = require('../controllers/pledgeController');
 
 router.use(requireAuth);
 
-// Bare member list (name/phone) only — the disciplinary role needs this to
-// pick who to fine, nothing else about a member.
-router.get('/', requireRole('super_admin', 'admin', 'disciplinary'), listMembers);
+// Bare member list (name/phone) — admin, treasurer, and disciplinary can list
+router.get('/', requireRole('super_admin', 'admin', 'treasurer', 'disciplinary'), listMembers);
 
-router.use(requireRole('super_admin', 'admin'));
+router.use(requireRole('super_admin', 'admin', 'treasurer'));
 router.get('/export', exportMembers);
 router.get('/import-template', importTemplate);
 router.get('/:id', getMember);

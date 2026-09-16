@@ -5,7 +5,7 @@ export const NAV_ITEMS = [
   {
     to: '/admin/dashboard',
     label: 'Dashboard',
-    roles: ['super_admin', 'admin'],
+    roles: ['super_admin', 'admin', 'treasurer'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <rect x="3" y="3" width="7" height="9" rx="1" />
@@ -18,7 +18,7 @@ export const NAV_ITEMS = [
   {
     to: '/admin/members',
     label: 'Members',
-    roles: ['super_admin', 'admin'],
+    roles: ['super_admin', 'admin', 'treasurer'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="9" cy="8" r="4" />

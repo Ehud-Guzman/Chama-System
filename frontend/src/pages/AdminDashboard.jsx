@@ -44,6 +44,8 @@ function QuickAction({ to, label, description, primary }) {
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const isTreasurer = user?.role === 'treasurer';
+  const isAdmin = ['super_admin', 'admin'].includes(user?.role);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -70,7 +72,9 @@ export default function AdminDashboard() {
               Hello, {firstName}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              A clean view of money, members, records, and the admin tools that keep the chama running.
+              {isTreasurer
+                ? 'Financial overview, contributions, expenses, and member information.'
+                : 'A clean view of money, members, records, and the admin tools that keep the chama running.'}
             </p>
           </div>
 
@@ -157,40 +161,60 @@ export default function AdminDashboard() {
             label="Reports"
             description="Review summaries, performance, audit, and exports."
           />
-          <QuickAction
-            to="/admin/minutes"
-            label="Minutes"
-            description="Write, import, export, and manage meeting records."
-          />
+          {!isTreasurer && (
+            <QuickAction
+              to="/admin/minutes"
+              label="Minutes"
+              description="Write, import, export, and manage meeting records."
+            />
+          )}
         </div>
       </section>
 
       {/* System controls */}
-      <section aria-label="Administration" className="space-y-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted">Management</p>
-          <h2 className="mt-1 text-lg font-bold">System controls</h2>
-        </div>
+      {isAdmin && (
+        <section aria-label="Administration" className="space-y-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted">Management</p>
+            <h2 className="mt-1 text-lg font-bold">System controls</h2>
+          </div>
 
-        <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] xl:items-start">
-          {/* Left column */}
-          <div className="min-w-0 space-y-4 self-start">
-            <ChamaSettingsForm />
-            <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
-              <TypeManager />
-              <FineTypeManager />
+          <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] xl:items-start">
+            {/* Left column */}
+            <div className="min-w-0 space-y-4 self-start">
+              <ChamaSettingsForm />
+              <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+                <TypeManager />
+                <FineTypeManager />
+              </div>
+            </div>
+
+            {/* Right column */}
+            <div className="min-w-0 space-y-4 self-start">
+              <ExpensesPanel />
+              <ChangePasswordForm />
+              {user?.role === 'super_admin' && <BackupPanel />}
+              {isAdmin && <AddAdminForm />}
             </div>
           </div>
+        </section>
+      )}
 
-          {/* Right column */}
-          <div className="min-w-0 space-y-4 self-start">
-            <ExpensesPanel />
-            <ChangePasswordForm />
-            {user?.role === 'super_admin' && <BackupPanel />}
-            {['super_admin', 'admin'].includes(user?.role) && <AddAdminForm />}
+      {/* Treasurer: Financial controls only */}
+      {isTreasurer && (
+        <section aria-label="Financial controls" className="space-y-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted">Management</p>
+            <h2 className="mt-1 text-lg font-bold">Financial controls</h2>
           </div>
-        </div>
-      </section>
+
+          <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+            <TypeManager />
+            <ExpensesPanel />
+          </div>
+          <ChangePasswordForm />
+        </section>
+      )}
     </div>
   );
 }

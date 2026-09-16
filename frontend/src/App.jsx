@@ -33,7 +33,7 @@ export default function App() {
               <Route
                 path="/admin/dashboard"
                 element={
-                  <RoleGuard roles={['super_admin', 'admin']}>
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
                     <AdminDashboard />
                   </RoleGuard>
                 }
@@ -41,7 +41,7 @@ export default function App() {
               <Route
                 path="/admin/members"
                 element={
-                  <RoleGuard roles={['super_admin', 'admin']}>
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
                     <MembersList />
                   </RoleGuard>
                 }
@@ -49,7 +49,7 @@ export default function App() {
               <Route
                 path="/admin/members/:id"
                 element={
-                  <RoleGuard roles={['super_admin', 'admin']}>
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
                     <MemberDetail />
                   </RoleGuard>
                 }
