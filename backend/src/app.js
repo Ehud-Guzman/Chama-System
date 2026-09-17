@@ -7,7 +7,7 @@ const mongoSanitize = require('express-mongo-sanitize');
 
 const connectDB = require('./config/db');
 const { seedDisciplinaryFineTypes } = require('./utils/seedDisciplinaryFineTypes');
-const { seedLedgerTypes } = require('./utils/ledgerTypes');
+const { seedLedgerTypes, seedGroupFunds } = require('./utils/ledgerTypes');
 
 const {
   lookupLimiter,
@@ -226,6 +226,9 @@ if (require.main === module) {
   connectDB()
     .then(() => seedDisciplinaryFineTypes())
     .then(() => seedLedgerTypes())
+    // The funds the group keeps: seeded so the go-live screen lists them all
+    // without anybody typing ten fund names in.
+    .then(() => seedGroupFunds())
     .then(() => {
       app.listen(PORT, '0.0.0.0', () => {
         console.log(`API running on port ${PORT}`);

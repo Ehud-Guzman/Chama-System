@@ -16,7 +16,7 @@ const {
   parseEatDate,
   toEatDateString,
 } = require('../utils/weekCycle');
-const { getLedgerTypes, bucketForType, syncLedgerTypeAmounts } = require('../utils/ledgerTypes');
+const { getLedgerTypes, bucketForType, syncLedgerTypeAmounts, seedGroupFunds } = require('../utils/ledgerTypes');
 const { computeMemberLedger, summariseMember, totalLedger } = require('../utils/memberLedger');
 const { suggestedOpeningBalances } = require('../utils/suggestedBalances');
 const { fundBalance } = require('../utils/fundBalance');
@@ -494,6 +494,9 @@ async function getSetup(req, res, next) {
   try {
     const settings = await getOrCreateSettings();
     const config = resolveConfig(settings);
+    // The funds are seeded, not typed: this table can only be filled in if every
+    // fund the group keeps is already on it.
+    await seedGroupFunds();
 
     const [members, held, types, collectedByType, spentByType, activeMemberCount] = await Promise.all([
       Member.find().sort({ name: 1 }).lean(),

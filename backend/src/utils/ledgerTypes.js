@@ -52,6 +52,100 @@ async function seedLedgerTypes() {
   }
 }
 
+// The group's funds: every type its paper ledger kept a column for, beyond the two
+// the weekly cycle needs. They are seeded rather than typed in one at a time,
+// because the go-live screen has to list them before anybody can carry a total
+// into one — and a fund the system has forgotten is a fund that goes missing.
+//
+// The names, and whether each belongs to the group or to a member, follow the
+// group's own ledger (its pre-reset import mapping): registration, resignation
+// fines, fines and penalties, the welfare pair, the refunds-and-loans fund, the
+// objectives fund, running expenses, deposits still held for former members, and
+// bank interest.
+//
+// Deliberately NOT here: "Extra Contributions" (retired — anything above the
+// weekly requirement is just a bigger weekly payment, carried forward as credit),
+// and the four rows the old import created from a bank statement — "Bank Opening
+// Balance", "Unallocated Bank Deposits", "Audit Assessed Contribution" and "Audit
+// Member Balance Reconciliation". Those describe a reconciliation, not a fund the
+// group collects, and the float behind them is carried in through the funds
+// below. Any of them can still be added by hand from the setup screen.
+const GROUP_FUNDS = [
+  {
+    name: 'Registration Fees',
+    description: 'The one-off fee a member pays to join. Group money.',
+    isGroupFund: true,
+    tracksExpenses: true,
+  },
+  {
+    name: 'Resignation Fines',
+    description: 'Charged when a member resigns, as the constitution provides. Group money.',
+    isGroupFund: true,
+    tracksExpenses: true,
+  },
+  {
+    name: 'Fines & Penalties',
+    description: 'Fines and penalties collected outside the disciplinary fine list. Group money.',
+    isGroupFund: true,
+    tracksExpenses: false,
+  },
+  {
+    name: 'Welfare Contribution',
+    description: 'Welfare and bereavement money collected from a member (§9). Held as his.',
+    isGroupFund: false,
+    tracksExpenses: false,
+  },
+  {
+    name: 'Welfare & Gifts Fund',
+    description: 'What the group holds for bereavement welfare and approved gifts (§9).',
+    isGroupFund: true,
+    tracksExpenses: true,
+  },
+  {
+    name: 'Member Refunds & Loans Fund',
+    description: 'Held for member refunds and loan disbursements (§10).',
+    isGroupFund: true,
+    tracksExpenses: true,
+  },
+  {
+    name: 'Group Objectives Fund',
+    description: 'What the group has set aside for its objectives, welfare of the group and projects.',
+    isGroupFund: true,
+    tracksExpenses: true,
+  },
+  {
+    name: 'Group Expenses',
+    description: 'Running expenses the group pays.',
+    isGroupFund: true,
+    tracksExpenses: true,
+  },
+  {
+    name: 'Former Member Deposits',
+    description: 'Balances still held for members who have left.',
+    isGroupFund: true,
+    tracksExpenses: false,
+  },
+  {
+    name: 'Bank Interest',
+    description: 'Interest earned on the group account.',
+    isGroupFund: false,
+    tracksExpenses: true,
+  },
+];
+
+// Idempotent, like seedLedgerTypes: safe on every boot, and it only ever inserts a
+// fund that is missing — a fund whose name or flags were changed by hand is left
+// exactly as it is.
+async function seedGroupFunds() {
+  for (const fund of GROUP_FUNDS) {
+    await ContributionType.updateOne(
+      { name: fund.name },
+      { $setOnInsert: { ...fund, active: true } },
+      { upsert: true }
+    );
+  }
+}
+
 // The legacy screens (weekly grid, reports, member schedule) still read each
 // type own weeklyAmount, so Settings stays authoritative and these two copies
 // are kept in step with it. Called on boot and whenever the figures change.
@@ -92,7 +186,9 @@ module.exports = {
   RETIRED_EXTRA_TYPE_NAME,
   LEDGER_TYPE_NAMES,
   LEDGER_TYPES,
+  GROUP_FUNDS,
   seedLedgerTypes,
+  seedGroupFunds,
   syncLedgerTypeAmounts,
   getLedgerTypes,
   bucketForType,

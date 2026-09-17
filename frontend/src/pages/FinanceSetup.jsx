@@ -381,7 +381,12 @@ export default function FinanceSetup() {
                         {!f.active && <span className="ml-2 text-xs text-muted">(inactive)</span>}
                       </p>
                       <p className="text-xs text-muted">
-                        {[f.isGroupFund ? 'Group fund' : 'Member money', f.tracksExpenses ? 'we spend from it' : '']
+                        {[
+                          f.isGroupFund
+                            ? 'Group fund'
+                            : 'Member money — carried in the members’ balances above',
+                          f.tracksExpenses ? 'we spend from it' : '',
+                        ]
                           .filter(Boolean)
                           .join(' · ')}
                       </p>

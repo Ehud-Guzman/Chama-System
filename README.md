@@ -127,6 +127,16 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   have yet can be **added from that page** (name, whether it belongs to the group, whether the group
   spends from it) through the ordinary `/api/types` API, so registration and resignation do not need
   a separate screen.
+- **The fund list is seeded, not typed:** `seedGroupFunds()` (boot, and again whenever the go-live
+  screen is opened) creates the funds the group's own ledger kept — Registration Fees, Resignation
+  Fines, Fines & Penalties, Welfare Contribution, Welfare & Gifts Fund, Member Refunds & Loans Fund,
+  Group Objectives Fund, Group Expenses, Former Member Deposits and Bank Interest — alongside the
+  weekly contribution and Chai. It only ever *inserts what is missing*, so a fund renamed or
+  re-flagged by hand is left alone, and `Extra Contributions` is deliberately not among them.
+  The four rows the old import built from a bank statement (Bank Opening Balance, Unallocated Bank
+  Deposits, Audit Assessed Contribution, Audit Member Balance Reconciliation) are left out too: they
+  describe a reconciliation rather than a fund the group collects, and the float behind them is
+  carried in through the funds above. Any of them can still be added by hand.
 - **`openingBalance`** on each member carries his verified paper-ledger balance into the cycle,
   so his money starts where the old sheet left him. It is shown at the top wherever a member
   appears — the header tile on the ledger list, a "Brought forward" tile on his own page, the first
