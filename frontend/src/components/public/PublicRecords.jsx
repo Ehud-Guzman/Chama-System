@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../../services/api';
 import { normalizePhone, maskPhone } from '../../utils/phone';
 import { shortDate, formatBytes } from '../../utils/format';
@@ -7,13 +8,15 @@ import { opensInBrowser } from '../../utils/documentFiles';
 import { blobErrorMessage } from '../../utils/blobError';
 import MinutesReader from '../minutes/MinutesReader';
 
-// The members' area: the chama's documents (title deeds, certificates) and the
-// meeting minutes, behind one phone-number gate. A successful passbook lookup
-// counts as having entered a number, so `verifiedPhone` unlocks it without
-// asking twice.
+// The members' area: the chama's documents (title deeds, certificates), the
+// meeting minutes, and the constitution, behind one phone-number gate. A
+// successful passbook lookup counts as having entered a number, so
+// `verifiedPhone` unlocks it without asking twice.
 //
-// Both tabs are served by phone-gated endpoints that re-check the number
-// themselves — the gate below is a convenience, never the protection.
+// Every tab is served by a phone-gated endpoint that re-checks the number
+// itself — the gate below is a convenience, never the protection. Anything that
+// must not be public is not in the app bundle either: the constitution is a
+// server-side document now, not a page anyone can read from the source.
 export default function PublicRecords({ verifiedPhone }) {
   const [phone, setPhone] = useState('');
   const [unlockedPhone, setUnlockedPhone] = useState('');
@@ -168,10 +171,10 @@ export default function PublicRecords({ verifiedPhone }) {
     <section className="rounded-2xl border border-rule bg-surface p-4 shadow-sm sm:p-6">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-base font-bold sm:text-lg">Documents &amp; minutes</h2>
+          <h2 className="text-base font-bold sm:text-lg">Documents, minutes &amp; constitution</h2>
           <p className="mt-1 text-xs leading-5 text-muted sm:text-sm">
-            Title deeds, certificates and meeting minutes. Shown only after you enter a phone
-            number registered with the chama.
+            Title deeds, certificates, meeting minutes and the constitution. Shown only after you
+            enter a phone number registered with the chama.
           </p>
         </div>
 
@@ -238,7 +241,7 @@ export default function PublicRecords({ verifiedPhone }) {
           )}
 
           <div
-            className="grid w-full grid-cols-2 rounded-xl border border-rule bg-page p-1 sm:max-w-xs"
+            className="grid w-full grid-cols-3 rounded-xl border border-rule bg-page p-1 sm:max-w-md"
             role="tablist"
             aria-label="Chama records"
           >
@@ -262,6 +265,18 @@ export default function PublicRecords({ verifiedPhone }) {
               className={tabClass('minutes')}
             >
               Minutes
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'constitution'}
+              onClick={() => {
+                setOpenMinute(null);
+                setTab('constitution');
+              }}
+              className={tabClass('constitution')}
+            >
+              Constitution
             </button>
           </div>
 
@@ -361,6 +376,28 @@ export default function PublicRecords({ verifiedPhone }) {
                 </ul>
               )}
             </>
+          )}
+
+          {/* The constitution sits with the other members' documents. The page it
+              opens fetches the text from the server for this same number, so the
+              handover carries the number rather than making the member type it
+              again. */}
+          {tab === 'constitution' && (
+            <div className="mt-4 rounded-xl border border-rule bg-page px-4 py-5">
+              <p className="text-sm font-semibold">The group&rsquo;s constitution</p>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">
+                Every clause, searchable and printable — the governance and
+                financial-management rules this ledger is run by.
+              </p>
+
+              <Link
+                to="/constitution"
+                state={{ phone: unlockedPhone }}
+                className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-white"
+              >
+                Read the constitution
+              </Link>
+            </div>
           )}
 
           <p className="mt-3 text-[11px] text-muted">

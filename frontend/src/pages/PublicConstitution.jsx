@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  constitutionChapters,
-  constitutionMeta,
-} from "../data/constitution.js";
-import "./publicConstitution.css";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import api, { apiMessage } from "../services/api";
+import { normalizePhone } from "../utils/phone";
+import "../components/public/constitution.css";
 
 function ClauseBody({ blocks }) {
   return (
@@ -42,6 +40,7 @@ function ClauseBody({ blocks }) {
 
 export default function PublicConstitution() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [openClauses, setOpenClauses] = useState({});
@@ -49,6 +48,65 @@ export default function PublicConstitution() {
   const [showTopButton, setShowTopButton] = useState(false);
 
   const chapterRefs = useRef({});
+
+  /*
+   * ---------------------------------------------------------
+   * PHONE GATE — the constitution is a members' document
+   * ---------------------------------------------------------
+   * It is fetched from the server only for a phone number registered with the
+   * chama, and it is deliberately not shipped in the app bundle, so there is
+   * nothing to read here before proving a number — see
+   * GET /api/public/constitution.
+   */
+  const linkedPhone = location.state?.phone || "";
+  const [phone, setPhone] = useState("");
+  const [status, setStatus] = useState(linkedPhone ? "loading" : "locked");
+  const [gateError, setGateError] = useState("");
+  const [doc, setDoc] = useState(null);
+
+  const unlock = useCallback(async (rawPhone) => {
+    const normalized = normalizePhone(rawPhone);
+
+    if (!normalized) {
+      setStatus("error");
+      setGateError("Enter a valid phone number, e.g. 0712 345 678");
+      return;
+    }
+
+    setStatus("loading");
+    setGateError("");
+
+    try {
+      const res = await api.get("/api/public/constitution", {
+        params: { phone: normalized },
+      });
+      setDoc(res.data);
+      setStatus("unlocked");
+    } catch (err) {
+      setDoc(null);
+      setStatus("error");
+      setGateError(
+        err.response?.status === 404
+          ? "That number is not registered with the chama. Check the number, or ask the treasurer to add you."
+          : apiMessage(err, "Could not open the constitution right now. Please try again.")
+      );
+    }
+  }, []);
+
+  function onSubmitGate(event) {
+    event.preventDefault();
+    unlock(phone);
+  }
+
+  // Arriving from the members' area: the number was proved there a moment ago, so
+  // the page opens straight onto the document instead of asking for it twice.
+  useEffect(() => {
+    if (linkedPhone) unlock(linkedPhone);
+  }, [linkedPhone, unlock]);
+
+  // The document's shape is unchanged from when it lived in the bundle: a meta
+  // block and the chapters. Aliased to the names the rest of the file uses.
+  const { meta: constitutionMeta = {}, chapters: constitutionChapters = [] } = doc || {};
 
   const query = search.trim().toLowerCase();
 
@@ -264,6 +322,82 @@ export default function PublicConstitution() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [search]);
+
+  /*
+   * ---------------------------------------------------------
+   * RENDER — locked: no number, no document
+   * ---------------------------------------------------------
+   * Nothing of the constitution is on the page, or in the bundle, until the
+   * server answers for a registered number.
+   */
+  if (status !== "unlocked") {
+    return (
+      <div className="min-h-dvh bg-page px-3 py-8 sm:px-5 sm:py-12">
+        <main className="mx-auto w-full max-w-md">
+          <div className="rounded-2xl border border-rule bg-surface p-5 shadow-sm sm:p-6">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted">
+              Members only
+            </p>
+            <h1 className="mt-1 text-xl font-bold sm:text-2xl">
+              The group&rsquo;s constitution
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Enter a phone number registered with the chama to read the constitution.
+            </p>
+
+            <form onSubmit={onSubmitGate} className="mt-5" noValidate>
+              <label htmlFor="constitution-phone" className="mb-2 block text-sm font-semibold">
+                Phone number
+              </label>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  id="constitution-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  enterKeyHint="go"
+                  placeholder="0712 345 678"
+                  value={phone}
+                  onChange={(event) => {
+                    setPhone(event.target.value);
+                    if (status === "error") {
+                      setStatus("locked");
+                      setGateError("");
+                    }
+                  }}
+                  aria-invalid={status === "error"}
+                  className="amount h-12 w-full rounded-xl border border-rule bg-page px-4 text-base"
+                />
+
+                <button
+                  type="submit"
+                  disabled={status === "loading"}
+                  className="min-h-12 shrink-0 rounded-xl bg-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {status === "loading" ? "Opening…" : "Read it"}
+                </button>
+              </div>
+
+              {status === "error" && gateError && (
+                <p className="mt-2 text-sm font-medium text-alert" role="alert">
+                  {gateError}
+                </p>
+              )}
+            </form>
+
+            <button
+              type="button"
+              onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/"))}
+              className="mt-5 text-sm font-medium text-primary"
+            >
+              ← Back
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   /*
    * ---------------------------------------------------------

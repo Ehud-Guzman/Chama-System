@@ -1,7 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import PublicLookup from './pages/PublicLookup.jsx';
-import PublicMemberDetail from './pages/PublicMemberDetail.jsx';
 import PublicConstitution from './pages/PublicConstitution.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './components/shared/Toast.jsx';
@@ -30,7 +29,8 @@ export default function App() {
         <Suspense fallback={<Loader />}>
           <Routes>
             <Route path="/" element={<PublicLookup />} />
-            <Route path="/member/:id" element={<PublicMemberDetail />} />
+            {/* Members only: the page fetches the text for a registered phone number,
+                and there is no public link to it anywhere. */}
             <Route path="/constitution" element={<PublicConstitution />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route element={<ProtectedRoute />}>

@@ -1,4 +1,12 @@
-export const constitutionMeta = {
+// The group's constitution — the published edition, clause by clause.
+//
+// It lives on the server rather than in the frontend bundle, because a member has
+// to prove a registered phone number before reading it
+// (GET /api/public/constitution). Shipping it in the app bundle would have made that
+// gate decorative: the whole text would have stayed one devtools download away.
+
+
+const constitutionMeta = {
   title: "Wazo Moja Self-Help Group",
   eyebrow: "Accessible Constitution · Revised Draft 1.2",
   description:
@@ -14,7 +22,7 @@ export const constitutionMeta = {
     "Wazo Moja Self-Help Group · Accessible Constitution Edition · 17 August 2026",
 };
 
-export const constitutionChapters = [
+const constitutionChapters = [
   {
     number: 1,
     title: "Preliminary, Identity And Legal Foundation",
@@ -1738,3 +1746,6 @@ export const constitutionChapters = [
     ],
   },
 ];
+
+module.exports = { constitutionMeta, constitutionChapters };
+

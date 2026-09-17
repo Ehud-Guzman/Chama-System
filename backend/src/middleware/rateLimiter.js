@@ -31,20 +31,10 @@ const overviewLimiter = rateLimit({
   message: { message: 'Too many requests. Please wait a minute and try again.' },
 });
 
-// The member directory is meant to be freely browsed — the group chose full
-// openness over privacy-by-obscurity — so this only guards against raw abuse,
-// not against people genuinely paging through the whole list.
-const directoryLimiter = rateLimit({
-  windowMs: 60000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: 'Too many requests. Please wait a minute and try again.' },
-});
-
-// The document vault is phone-gated but browsed — a member unlocks the list
-// once and then opens several files, so this is more generous than the passbook
-// lookup while still capping scripted scraping of a member's number.
+// The document vault, the minutes and the constitution are all phone-gated but
+// browsed — a member unlocks once and then opens several things, so this is more
+// generous than the passbook lookup while still capping scripted scraping of a
+// member's number.
 const documentLimiter = rateLimit({
   windowMs: 60000,
   max: 30,
@@ -64,4 +54,4 @@ const passwordChangeLimiter = rateLimit({
   message: { message: 'Too many attempts. Please wait a few minutes and try again.' },
 });
 
-module.exports = { loginLimiter, lookupLimiter, overviewLimiter, directoryLimiter, documentLimiter, passwordChangeLimiter };
+module.exports = { loginLimiter, lookupLimiter, overviewLimiter, documentLimiter, passwordChangeLimiter };

@@ -41,9 +41,10 @@ set it to the deployed API URL.
 
 ## Routes
 
-- `/` — public lookup + group overview + member directory + chama document vault (standalone,
-  loads no admin code)
-- `/member/:id` — public passbook view for one member, reached by browsing the directory
+- `/` — public lookup: group totals, your own record by phone number, and the members' area
+  (documents, minutes, constitution). Standalone — loads no admin code.
+- `/constitution` — the constitution, members only: the page fetches the text for a registered
+  phone number and there is no public link to it.
 - `/admin/login` — admin sign in
 - `/admin/dashboard` · `/admin/members` · `/admin/reports` · `/admin/minutes` ·
   `/admin/reminders` · `/admin/documents` · `/admin/disciplinary` — protected
@@ -92,16 +93,16 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   around half a second, and no handler tuning beats that. The free tier of some hosts also spins the
   service down after idling, which makes the first load of the day slow for a reason nothing in this
   repo can fix.
-- **Every list counts the same money as the ledger:** the cards at `/admin/members`, the public
-  directory at `/` and a member's own passbook all show his balance from the cycle engine
-  (opening balance + what he has paid − required − tea), not a sum of contribution rows. After
-  go-live those two are different figures — the money that carried across from the paper ledger
-  lives in `openingBalance`, so a row sum reads 0 for everybody — and a card reading "no
-  contributions yet" next to a ledger that says he holds money is exactly the confusion this
-  avoids. The passbook's own row column is labelled "Paid to date" for the same reason: it is cash
-  logged against him, while the stamped total underneath ("Held by member") is what he actually
-  holds. The PDF and Excel statements lead with that same figure and print the four numbers it is
-  made of.
+- **Every list counts the same money as the ledger:** the cards at `/admin/members` and a
+  member's own passbook both show his balance from the cycle engine (opening balance + what he
+  has paid − required − tea), not a sum of contribution rows. After go-live those two are
+  different figures — the money that carried across from the paper ledger lives in
+  `openingBalance`, so a row sum reads 0 for everybody — and a card reading "no contributions
+  yet" next to a ledger that says he holds money is exactly the confusion this avoids. The
+  passbook's own row column is labelled "Paid to date" for the same reason: it is cash logged
+  against him, while the stamped total underneath ("Held by member") is what he actually holds.
+  The PDF and Excel statements lead with that same figure and print the four numbers it is made
+  of.
 - **One-time opening balances:** `/admin/finance/setup` (also linked from the dashboard as
   "Opening balances (one-time)") is where each member's current total is keyed in at go-live.
   Every member is listed with his ledger figure already filled in as a suggestion, any of them
@@ -140,23 +141,32 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   audit trail as well.
 - **Phone normalization:** `+2547…`, `2547…`, `07…` all resolve to one stored format
   (`07XXXXXXXX`) — enforced on member create/edit, CSV import, and public lookup.
-- **Public lookup:** exact phone match only, 5 requests/minute/IP (configurable via env),
-  returns the member's masked phone, member-since date, what he holds today with the four figures
-  it is made of, the rows he has logged since the cycle opened, pledges by type, fines (pending +
-  settled) and the weekly schedule. The open directory (`GET /api/public/directory`) lists every
-  active member with the same cycle-engine balance, so the public page and the treasurer's ledger
-  can never disagree about the same person. Never returns internal ids or admin metadata.
-- **Chama documents and minutes (phone-gated):** title deeds, certificates and other group
-  records are uploaded from `/admin/documents` (PDF, Word/Excel, or a photo, up to 8 MB) and
-  minutes are written at `/admin/minutes`. Both are stored in MongoDB itself — Render/Railway
-  disks are ephemeral, so a file written to disk would not survive a deploy or a backup.
-  Members open them on the public page only after entering a phone number registered with the
-  chama (`GET /api/public/documents?phone=…`, `…/documents/:id/file?phone=…`,
-  `GET /api/public/minutes?phone=…`, `…/minutes/:id?phone=…`, 30 requests/minute/IP). An upload
-  or a minute can be marked hidden from members to keep it admin-only; removals are soft
-  deletes, like every other record. The phone number is the only credential — anyone who knows
-  a member's number can open the members' area, so treat it as group-visible material, not
-  private documents.
+- **Public lookup — your own record, nobody else's:** exact phone match only, 5 requests/minute/IP
+  (configurable via env), returning the member's masked phone, member-since date, what he holds
+  today with the four figures it is made of, the rows he has logged since the cycle opened,
+  pledges by type, fines (pending + settled) and the weekly schedule. Never returns internal ids
+  or admin metadata. There is deliberately **no public member directory**: a member's record is
+  opened by proving his own number, never by browsing a list of names, balances and phone
+  numbers. The home page carries group-wide totals only (`GET /api/public/overview` — chama name,
+  membership size, raised by fund, fund balances), which hold no per-member data at all.
+- **Chama documents, minutes and the constitution (phone-gated):** title deeds, certificates and
+  other group records are uploaded from `/admin/documents` (PDF, Word/Excel, or a photo, up to
+  8 MB) and minutes are written at `/admin/minutes`. Both are stored in MongoDB itself —
+  Render/Railway disks are ephemeral, so a file written to disk would not survive a deploy or a
+  backup. Members open those, and the constitution, on the public page only after entering a
+  phone number registered with the chama (`GET /api/public/documents?phone=…`,
+  `…/documents/:id/file?phone=…`, `GET /api/public/minutes?phone=…`, `…/minutes/:id?phone=…`,
+  `GET /api/public/constitution?phone=…`, 30 requests/minute/IP). An upload or a minute can be
+  marked hidden from members to keep it admin-only; removals are soft deletes, like every other
+  record. The phone number is the only credential — anyone who knows a member's number can open
+  the members' area, so treat it as group-visible material, not private documents.
+- **The constitution is served, not bundled:** the published edition lives in
+  `backend/src/data/constitution.js` and reaches the browser only through the phone-gated
+  endpoint above, so the members-only gate is real rather than cosmetic — a reader that shipped
+  the text inside the app bundle would leave it one devtools download away for anybody who never
+  signed in. The page (`/constitution`) has no public link and asks for a number itself when
+  opened directly; arriving from the members' area it opens straight onto the document, since the
+  number was just proved there.
 - **Member profile photos:** uploaded from the member form (`POST /api/uploads/member-photo`,
   image-only, 5 MB) and stored on Cloudinary, cropped square around the face at 512px. The
   publicId is saved with the member so a replaced photo's old asset is deleted rather than

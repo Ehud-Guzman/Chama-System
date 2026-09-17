@@ -65,7 +65,10 @@ export default function ChamaSettingsForm() {
           <label htmlFor="constitution" className="text-sm font-medium">
             Constitution
           </label>
-          <p className="mt-1 text-xs text-muted">Shown on the public constitution page.</p>
+          <p className="mt-1 text-xs text-muted">
+            For the chama&rsquo;s own records. The constitution members read is the published
+            edition on the members&rsquo; page, not this field.
+          </p>
           <textarea
             id="constitution"
             rows={8}

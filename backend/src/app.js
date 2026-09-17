@@ -12,7 +12,6 @@ const { seedLedgerTypes } = require('./utils/ledgerTypes');
 const {
   lookupLimiter,
   overviewLimiter,
-  directoryLimiter,
   documentLimiter,
 } = require('./middleware/rateLimiter');
 
@@ -25,14 +24,10 @@ const {
   publicLookup,
   publicLookupStatement,
   publicLookupStatementExcel,
-  publicDirectory,
-  publicMemberProfile,
-  publicMemberStatement,
-  publicMemberStatementExcel,
-  publicResigned,
 } = require('./controllers/memberController');
 
 const { publicOverview } = require('./controllers/overviewController');
+const { publicConstitution } = require('./controllers/constitutionController');
 
 const {
   publicListDocuments,
@@ -124,36 +119,21 @@ app.get(
   publicLookupStatementExcel
 );
 
-// Public group overview
+// Public group overview — totals only, never a member's name or balance.
 app.get(
   '/api/public/overview',
   overviewLimiter,
   publicOverview
 );
 
-// Public member directory
+// The chama's constitution — members only, by the same phone gate as the
+// document vault below. There is deliberately no public directory of members:
+// a member's record is theirs, and it is opened by proving his number, not by
+// anybody browsing a list of names.
 app.get(
-  '/api/public/directory',
-  directoryLimiter,
-  publicDirectory
-);
-
-app.get(
-  '/api/public/directory/:id',
-  directoryLimiter,
-  publicMemberProfile
-);
-
-app.get(
-  '/api/public/directory/:id/statement',
-  directoryLimiter,
-  publicMemberStatement
-);
-
-app.get(
-  '/api/public/directory/:id/statement/excel',
-  directoryLimiter,
-  publicMemberStatementExcel
+  '/api/public/constitution',
+  documentLimiter,
+  publicConstitution
 );
 
 // Public chama documents — the group's title deeds, certificates and other
@@ -182,13 +162,6 @@ app.get(
   '/api/public/minutes/:id',
   documentLimiter,
   publicGetMinute
-);
-
-// Public resigned members
-app.get(
-  '/api/public/resigned',
-  directoryLimiter,
-  publicResigned
 );
 
 // -----------------------------------------------------------------------------

@@ -10,9 +10,10 @@ import WeeklyScheduleTable from '../shared/WeeklyScheduleTable';
 const PAGE_SIZE = 20;
 
 // One member's full public passbook: header, pledged-vs-contributed by type,
-// the ledger, and a stamped total. Used both for a phone-number search result
-// and for the directory's per-member detail view — pass a fresh `key` from the
-// caller when the underlying member changes so the reveal animation replays.
+// the ledger, and a stamped total. It is the one public view of a member there
+// is, and it is only ever reached by typing that member's own registered phone
+// number — pass a fresh `key` from the caller when the underlying member changes
+// so the reveal animation replays.
 // `statementUrl` (relative, e.g. /api/public/lookup/statement?phone=...) and
 // `statementExcelUrl` (e.g. /api/public/lookup/statement/excel?phone=...) are
 // both optional — omit them if the caller has no way to re-identify this member.
@@ -179,9 +180,9 @@ export default function PassbookCard({
 
         {/* Member detail strip. Email, next of kin and the reminder flag arrive
             only when the caller proved their own number at the gate — the server
-            omits them entirely for anyone else, so this strip is empty for a
-            stranger and for a visitor who arrived by browsing the directory. The
-            phone number is never sent here at all, only the masked form. */}
+            omits them entirely otherwise, so this strip is empty for anyone who
+            somehow reached a passbook that is not theirs. The phone number is
+            never sent here at all, only the masked form. */}
         <div className="border-b border-rule px-5 py-4">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             {result.email && (

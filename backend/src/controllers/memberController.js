@@ -106,12 +106,8 @@ function escapeRegex(str) {
 
 // The single pass that turns raw contribution rows into what the cycle engine
 // needs: every row tagged with its bucket (weekly / chai / other) and grouped per
-// member, plus the two figures the member lists show next to the balance — what
+// member, plus the two figures the member list shows next to the balance — what
 // he has paid personally, and when he last paid.
-//
-// Shared by the admin member list and the public directory on purpose. Both score
-// a member's money with the same engine, so the treasurer's ledger and the open
-// directory can never disagree about the same person.
 function summariseContributionRows(rows, types) {
   const typeById = new Map(types.map((t) => [String(t._id), t]));
   const byMemberId = new Map();
@@ -612,11 +608,12 @@ async function exportMembers(req, res, next) {
   }
 }
 
-// Shared shape for every public-facing member view (phone lookup, directory
-// detail). Never includes loggedBy, internal ids, or admin metadata.
-// Renders the public-facing passbook for one member. The returned object is
-// also reused as the body of the phone-gated PDF/Excel statements, so it is
-// deliberately kept lean: no audit trail, no "issued by" fields.
+// Shared shape for the one public-facing member view there is: the passbook a
+// member opens by proving his own number. Never includes loggedBy, internal ids,
+// or admin metadata.
+// The returned object is also reused as the body of the phone-gated PDF/Excel
+// statements, so it is deliberately kept lean: no audit trail, no "issued by"
+// fields.
 //
 // `lookupPhone` is the number the caller entered at the gate. When it matches
 // the member's own number we let the member see their own contact details
@@ -687,11 +684,10 @@ async function buildPublicProfile(member, lookupPhone) {
   return {
     name: member.name,
     regNumber: member.regNumber || null,
-    // Public: the directory is open by design, so a profile photo is fine here.
+    // His own photo, shown back to him — nobody else can reach this view.
     photoUrl: member.photoUrl || '',
-    // Masked the same way the directory masks it — a member's own number is
-    // never echoed back in full, even to themselves, so a shared screen or a
-    // screenshot can't leak it.
+    // Masked even for the member himself: a shared screen or a screenshot
+    // shouldn't leak a number he already knows.
     phoneMasked: maskPhone(member.phone),
     joinDate: member.joinDate || member.createdAt || null,
     contributionsCount: contributions.length,
@@ -999,38 +995,6 @@ async function publicLookupStatementExcel(req, res, next) {
   }
 }
 
-// GET /api/public/directory/:id/statement/excel — PUBLIC
-async function publicMemberStatementExcel(req, res, next) {
-  try {
-    const member = await Member.findOne({
-      _id: req.params.id,
-      active: true,
-    }).lean();
-
-    if (!member) {
-      return res.status(404).json({ message: 'not_found' });
-    }
-
-    await sendStatementExcel(
-      res,
-      await buildPublicProfile(member)
-    );
-  } catch (err) {
-    next(err);
-  }
-}
-
-// GET /api/public/directory/:id/statement — PUBLIC, same access rule as publicMemberProfile.
-async function publicMemberStatement(req, res, next) {
-  try {
-    const member = await Member.findOne({ _id: req.params.id, active: true }).lean();
-    if (!member) return res.status(404).json({ message: 'not_found' });
-    await sendStatement(res, await buildPublicProfile(member));
-  } catch (err) {
-    next(err);
-  }
-}
-
 // GET /api/members/:id/statement — admin, any member regardless of active status.
 async function memberStatement(req, res, next) {
   try {
@@ -1058,7 +1022,8 @@ async function publicLookup(req, res, next) {
 
     // The number that just matched IS the credential, so this caller is the
     // member: pass it through and they see their own email and next of kin.
-    // Browsing the directory (no phone) keeps those two fields hidden.
+    // Nobody reaches this without their own number, and there is no directory to
+    // browse any more, so there is no other way in.
     res.json(await buildPublicProfile(member, normalized));
   } catch (err) {
     next(err);
@@ -1069,27 +1034,6 @@ async function publicLookup(req, res, next) {
 // 10-char normalized format (0[17]XXXXXXXX), so slicing at fixed offsets is safe.
 function maskPhone(phone) {
   return `${phone.slice(0, 2)}XX XXX ${phone.slice(7)}`;
-}
-
-// GET /api/public/directory/:id/statement/excel — PUBLIC
-async function publicMemberStatementExcel(req, res, next) {
-  try {
-    const member = await Member.findOne({
-      _id: req.params.id,
-      active: true,
-    }).lean();
-
-    if (!member) {
-      return res.status(404).json({ message: 'not_found' });
-    }
-
-    await sendStatementExcel(
-      res,
-      await buildPublicProfile(member)
-    );
-  } catch (err) {
-    next(err);
-  }
 }
 
 // GET /api/members/:id/statement/excel — ADMIN
@@ -1112,125 +1056,6 @@ async function memberStatementExcel(req, res, next) {
   }
 }
 
-// GET /api/public/directory?search=&page=&limit= — PUBLIC, open member list.
-// The group chose full transparency over a bank-style private ledger — this
-// deliberately lists every active member. Phone numbers are masked server-side
-// so the response itself never carries a scrapeable full number.
-//
-// The figure on each row is the member's money from the same cycle engine the
-// treasurer's ledger and the admin member list use: openingBalance + what he has
-// paid since the cycle opened − what the weeks have required − tea. Summing
-// contribution rows alone — which is what this endpoint used to do — reports
-// every member as holding nothing, because the money carried across from the
-// paper ledger lives in openingBalance, not in rows.
-async function publicDirectory(req, res, next) {
-  try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
-    const search = String(req.query.search || '').trim();
-
-    const filter = { active: true };
-    if (search) {
-      const rx = new RegExp(escapeRegex(search), 'i');
-      filter.$or = [{ name: rx }, { regNumber: rx }];
-    }
-
-    const [members, total] = await Promise.all([
-      Member.find(filter).sort({ name: 1 }).skip((page - 1) * limit).limit(limit).lean(),
-      Member.countDocuments(filter),
-    ]);
-
-    const { byMemberId, personalTotals, lastDates } = await loadContributionRows(
-      members.map((m) => m._id)
-    );
-    const settings = await getOrCreateSettings();
-    const config = resolveConfig(settings);
-
-    res.json({
-      members: members.map((m) => {
-        const key = String(m._id);
-        const ledger = computeMemberLedger({
-          member: m,
-          contributions: byMemberId.get(key) || [],
-          config,
-        });
-        return {
-          id: m._id,
-          name: m.name,
-          regNumber: m.regNumber || null,
-          photoUrl: m.photoUrl || '',
-          phoneMasked: maskPhone(m.phone),
-          // What he holds, and what the cycle expects of him so far.
-          balance: ledger.money,
-          paid: ledger.paid,
-          arrears: ledger.arrears,
-          weeksBehind: ledger.weeksBehind,
-          chaiPaid: ledger.chai.due,
-          // Kept alongside `balance` for a caller that only has the old field:
-          // what he has personally paid since the cycle opened, excluding tea.
-          totalContributed: personalTotals.get(key) || 0,
-          lastContributionDate: lastDates.has(key) ? new Date(lastDates.get(key)) : null,
-        };
-      }),
-      total,
-      page,
-      pages: Math.ceil(total / limit) || 1,
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// GET /api/public/directory/:id — PUBLIC full passbook for one member, reached
-// by browsing the directory rather than typing a phone number.
-async function publicMemberProfile(req, res, next) {
-  try {
-    const member = await Member.findOne({ _id: req.params.id, active: true }).lean();
-    if (!member) {
-      return res.status(404).json({ message: 'not_found' });
-    }
-    res.json(await buildPublicProfile(member));
-  } catch (err) {
-    next(err);
-  }
-}
-
-// GET /api/public/resigned?search=&page=&limit= — PUBLIC list of members who
-// explicitly resigned (resignedAt set), separate from the current directory.
-// Same full-transparency choice as publicDirectory.
-async function publicResigned(req, res, next) {
-  try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
-    const search = String(req.query.search || '').trim();
-
-    const filter = { active: false, resignedAt: { $ne: null } };
-    if (search) {
-      const rx = new RegExp(escapeRegex(search), 'i');
-      filter.$or = [{ name: rx }, { regNumber: rx }];
-    }
-
-    const [members, total] = await Promise.all([
-      Member.find(filter).sort({ resignedAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
-      Member.countDocuments(filter),
-    ]);
-
-    res.json({
-      members: members.map((m) => ({
-        name: m.name,
-        regNumber: m.regNumber || null,
-        resignedAt: m.resignedAt,
-        resignationReason: m.resignationReason || '',
-      })),
-      total,
-      page,
-      pages: Math.ceil(total / limit) || 1,
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
 module.exports = {
   listMembers,
   getMember,
@@ -1246,9 +1071,4 @@ module.exports = {
   publicLookup,
   publicLookupStatement,
   publicLookupStatementExcel,
-  publicDirectory,
-  publicMemberProfile,
-  publicMemberStatement,
-  publicMemberStatementExcel,
-  publicResigned,
 };

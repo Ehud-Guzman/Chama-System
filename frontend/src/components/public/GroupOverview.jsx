@@ -3,9 +3,10 @@ import api from '../../services/api';
 import { money } from '../../utils/format';
 import StatTile from '../shared/StatTile';
 
-// Loads automatically for anyone who opens the link — no phone number needed.
-// This is the group-wide half of "open book": who the chama is, how many
-// members it has (and has ever had), and what's been raised per fund.
+// Group-wide totals for anyone who opens the link — no phone number needed, and
+// no per-member data in it at all: no name, no balance, no phone number. A
+// member's own record is opened by proving his own number on the lookup above,
+// never by browsing a list of people.
 // Renders as a row of tiles rather than one narrow card so it actually uses
 // the width on a desktop screen.
 export default function GroupOverview({ onChamaName }) {

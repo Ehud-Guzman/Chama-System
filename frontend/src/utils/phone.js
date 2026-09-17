@@ -20,7 +20,7 @@ export function normalizePhone(input) {
   return /^0[17]\d{8}$/.test(digits) ? digits : null;
 }
 
-// Same masking the backend applies to directory listings: keep the first two
+// Same masking the backend applies to the passbook: keep the first two
 // and last three digits. Phones are always the fixed 10-char format, so slicing
 // at fixed offsets is safe.
 export function maskPhone(phone) {

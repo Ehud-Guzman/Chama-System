@@ -25,8 +25,8 @@ export default function ResignDialog({ open, memberName, busy, onConfirm, onCanc
       <div ref={containerRef} className="w-full max-w-sm rounded-xl bg-surface p-5 shadow-xl">
         <h2 className="text-base font-semibold">Resign {memberName}?</h2>
         <p className="mt-2 text-sm text-muted">
-          They're marked inactive and hidden from the public directory, but will appear on the
-          public resigned-members list. Their contribution history is kept.
+          They're marked inactive and kept out of every member-facing list, so they no longer
+          appear to anyone browsing. Their contribution history is kept.
         </p>
         <label htmlFor="resign-reason" className="mt-4 block text-sm font-medium">
           Reason <span className="font-normal text-muted">(optional)</span>

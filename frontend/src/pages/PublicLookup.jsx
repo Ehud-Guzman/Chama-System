@@ -5,8 +5,6 @@ import { normalizePhone } from '../utils/phone';
 
 import GroupOverview from '../components/public/GroupOverview';
 import PassbookCard from '../components/public/PassbookCard';
-import DirectoryList from '../components/public/DirectoryList';
-import ResignedMembersList from '../components/public/ResignedMembersList';
 import PublicRecords from '../components/public/PublicRecords';
 
 export default function PublicLookup() {
@@ -16,7 +14,6 @@ export default function PublicLookup() {
   const [lookedUpPhone, setLookedUpPhone] = useState('');
   const [error, setError] = useState('');
   const [chamaName, setChamaName] = useState('');
-  const [directoryTab, setDirectoryTab] = useState('current');
 
   const onChamaName = useCallback((name) => {
     setChamaName(name);
@@ -85,22 +82,6 @@ export default function PublicLookup() {
               className="flex shrink-0 items-center gap-1.5 sm:gap-2"
             >
               <Link
-                to="/constitution"
-                className="
-                  inline-flex min-h-9 items-center justify-center
-                  rounded-lg px-2.5
-                  text-xs font-semibold text-muted
-                  transition
-                  hover:bg-surface hover:text-primary
-                  focus:outline-none focus:ring-2
-                  focus:ring-primary/30
-                  sm:px-3
-                "
-              >
-                Constitution
-              </Link>
-
-              <Link
                 to="/admin/login"
                 className="
                   inline-flex min-h-9 items-center justify-center
@@ -140,8 +121,9 @@ export default function PublicLookup() {
             </h1>
 
             <p className="mt-3 max-w-lg text-sm leading-6 text-muted sm:text-base">
-              See what the group has raised and securely find your own
-              contribution record using your registered phone number.
+              Group totals are open to everyone. Your own contribution record — and the
+              group&rsquo;s documents, minutes and constitution — open with the phone number
+              you registered.
             </p>
 
           </section>
@@ -346,125 +328,16 @@ export default function PublicLookup() {
         </section>
 
         {/* =====================================================
-            MEMBER DIRECTORY
-        ====================================================== */}
-
-        <section
-          className="mt-8 sm:mt-12"
-          aria-labelledby="directory-heading"
-        >
-
-          {/* Directory heading */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted">
-                Member directory
-              </p>
-
-              <h2
-                id="directory-heading"
-                className="mt-1 text-xl font-bold sm:text-2xl"
-              >
-                {directoryTab === 'current'
-                  ? 'All members'
-                  : 'Resigned members'}
-              </h2>
-
-              <p className="mt-1 max-w-2xl text-sm leading-5 text-muted">
-                {directoryTab === 'current'
-                  ? 'Browse the full membership — open to everyone, no login required.'
-                  : 'Members who have explicitly resigned from the group.'}
-              </p>
-            </div>
-
-            {/* =================================================
-                TABS
-            ================================================== */}
-
-            <div
-              className="
-                grid w-full grid-cols-2
-                rounded-xl border border-rule
-                bg-surface p-1
-                sm:w-auto sm:min-w-[210px]
-              "
-              role="tablist"
-              aria-label="Member directory"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={directoryTab === 'current'}
-                aria-pressed={directoryTab === 'current'}
-                onClick={() => setDirectoryTab('current')}
-                className={`
-                  min-h-11 rounded-lg px-3
-                  text-xs font-bold
-                  transition
-                  ${
-                    directoryTab === 'current'
-                      ? 'bg-primary text-white shadow-sm'
-                      : 'text-muted hover:text-primary'
-                  }
-                `}
-              >
-                Current
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={directoryTab === 'resigned'}
-                aria-pressed={directoryTab === 'resigned'}
-                onClick={() => setDirectoryTab('resigned')}
-                className={`
-                  min-h-11 rounded-lg px-3
-                  text-xs font-bold
-                  transition
-                  ${
-                    directoryTab === 'resigned'
-                      ? 'bg-primary text-white shadow-sm'
-                      : 'text-muted hover:text-primary'
-                  }
-                `}
-              >
-                Resigned
-              </button>
-            </div>
-
-          </div>
-
-          {/* Directory */}
-          <div className="mt-4 min-w-0 overflow-hidden sm:mt-5">
-            {directoryTab === 'current' ? (
-              <DirectoryList />
-            ) : (
-              <ResignedMembersList />
-            )}
-          </div>
-
-        </section>
-
-        {/* =====================================================
             FOOTER
         ====================================================== */}
 
         <footer className="mt-12 border-t border-rule py-6 text-center text-xs text-muted">
           <p>
-            Public contribution records
+            Your own record, opened with the number you registered — nothing here lists
+            the members.
           </p>
 
           <div className="mt-2 flex items-center justify-center gap-3">
-            <Link
-              to="/constitution"
-              className="underline-offset-2 hover:underline"
-            >
-              Constitution
-            </Link>
-
-            <span aria-hidden="true">•</span>
-
             <Link
               to="/admin/login"
               className="underline-offset-2 hover:underline"
