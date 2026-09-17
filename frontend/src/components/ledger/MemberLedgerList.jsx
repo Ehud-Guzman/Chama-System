@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../../services/api';
 import { useToast } from '../shared/Toast';
 import { money, shortDate } from '../../utils/format';
 import Loader from '../shared/Loader';
+import FinanceMemberLedger from '../../pages/FinanceMemberLedger';
+import { fetchLedger, getCachedLedger, prefetchMember } from '../../services/ledgerCache';
 
 // The one logging surface in the system. Every dashboard that logs money shows
 // this and nothing else: the week's figures, then a list of names — a tap opens
@@ -56,19 +57,24 @@ function StatusPill({ member }) {
 
 export default function MemberLedgerList({ onLoaded, showHeader = false, action = null }) {
   const toast = useToast();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Straight from the cache when the page was visited a moment ago, so switching
+  // between the dashboard and the ledger paints immediately instead of flashing a
+  // spinner while the same list is fetched all over again.
+  const [data, setData] = useState(() => getCachedLedger());
+  const [loading, setLoading] = useState(() => !getCachedLedger());
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('name');
+  // The member whose panel is open, if any — the panel is part of this screen, so
+  // tapping a name never leaves the page.
+  const [openMember, setOpenMember] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .get('/api/ledger')
-      .then((res) => {
+    fetchLedger(api)
+      .then((d) => {
         if (cancelled) return;
-        setData(res.data);
-        onLoaded?.(res.data);
+        setData(d);
+        onLoaded?.(d);
       })
       .catch((err) => toast(apiMessage(err, 'Could not load the ledger'), 'error'))
       .finally(() => {
@@ -123,8 +129,8 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
           {totals && (
             <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Stat label="Held by members" value={money(totals.money)} accent />
-              <Stat label={`Expected by week ${week.currentWeek}`} value={money(totals.required)} />
-              <Stat label="Collected so far" value={money(totals.paid)} />
+              <Stat label="Brought forward at week 92" value={money(totals.openingBalance)} />
+              <Stat label="Collected since week 92" value={money(totals.paid)} />
               <Stat label="Behind in total" value={money(totals.arrears)} alert={totals.arrears > 0} />
             </section>
           )}
@@ -162,8 +168,12 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
         <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
           {members.map((m) => (
             <li key={m._id} className="border-b border-rule last:border-b-0">
-              <Link
-                to={`/admin/finance/${m._id}`}
+              <button
+                type="button"
+                // Prefetch on press so the panel usually has its data before the
+                // tap completes; the whole screen stays put either way.
+                onPointerDown={() => prefetchMember(api, m._id)}
+                onClick={() => setOpenMember(m._id)}
                 className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas"
               >
                 <span className="min-w-0 flex-1">
@@ -180,7 +190,9 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
                   <span className="amount block text-xs text-muted">
                     {money(m.paid)} of {money(m.required)}
                   </span>
-                  <span className="amount block text-xs text-muted">tea {money(m.chaiPaid)}</span>
+                  <span className="amount block text-xs text-muted">
+                    tea (auto) {money(m.chaiPaid)}
+                  </span>
                 </span>
                 <svg
                   viewBox="0 0 24 24"
@@ -194,10 +206,16 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
                 >
                   <path d="M9 6l6 6-6 6" />
                 </svg>
-              </Link>
+              </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {/* The member's ledger, over the list rather than instead of it. Closing it
+          puts the treasurer back exactly where they were. */}
+      {openMember && (
+        <FinanceMemberLedger memberId={openMember} onClose={() => setOpenMember(null)} />
       )}
     </div>
   );

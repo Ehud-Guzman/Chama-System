@@ -29,7 +29,12 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   const currentWeek = currentWeekNumber(config, now);
   const elapsed = currentWeek - config.cycleStartWeek + 1;
   const required = config.weeklyAmount * elapsed;
-  const chaiRequired = config.chaiAmount * elapsed;
+  // Tea is automatic: every member is charged the week's tea for every week of
+  // the cycle, whether or not anybody logged anything, and the money goes to the
+  // Group's fund. That is why there is no such thing as tea arrears and no tea
+  // entry to write — it is a straight deduction, exactly as the paper ledger's
+  // total column treated it.
+  const chaiDue = config.chaiAmount * elapsed;
 
   // One row per week of the live cycle, pre-seeded so a week nobody paid still
   // appears (a NILL week is a status the ledger must show, not an absence of
@@ -41,6 +46,8 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
       paid: 0,
       extraPaid: 0,
       chaiPaid: 0,
+      // The week's tea, automatic for every member — see chaiDue below.
+      chaiAmount: config.chaiAmount,
       otherPaid: 0,
       logs: [],
     });
@@ -121,9 +128,9 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   const openingBalance = Number(member.openingBalance) || 0;
   const movement = paid - required;
   const chaiWeek = weeks.find((w) => w.isCurrent);
-  // Tea comes out of his money like any other week's deduction, so the balance
-  // he sees is the same figure the paper ledger's total column used to hold.
-  const money = openingBalance + movement - chaiPaid;
+  // Tea comes out of his money like the week's other deduction, so the balance he
+  // sees is the same figure the paper ledger's total column used to hold.
+  const money = openingBalance + movement - chaiDue;
 
   return {
     currentWeek,
@@ -141,14 +148,16 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
     arrears: movement < 0 ? -movement : 0,
     credit: movement > 0 ? movement : 0,
     chai: {
-      paid: chaiPaid,
-      required: chaiRequired,
-      // How much tea is missing, if any — never silently absorbed into his
-      // balance, because he is only charged for tea that was recorded.
-      shortfall: Math.max(0, chaiRequired - chaiPaid),
-      difference: chaiPaid - chaiRequired,
-      thisWeek: chaiWeek ? chaiWeek.chaiPaid : 0,
-      deductedFromMoney: chaiPaid,
+      // Automatic and never owed: charged for every week of the cycle so far,
+      // and shown per member so the total each has put into the Group's fund is
+      // always visible.
+      due: chaiDue,
+      perWeek: config.chaiAmount,
+      weeks: elapsed,
+      thisWeek: chaiWeek ? chaiWeek.chaiAmount : 0,
+      // Anything logged against the old tea type before it became automatic —
+      // reported, never counted, because the automatic figure already covers it.
+      recorded: chaiPaid,
     },
     weeksPaid: weeks.filter((w) => w.status === 'paid').length,
     weeksPartial: weeks.filter((w) => w.status === 'partial').length,
@@ -179,9 +188,9 @@ function summariseMember(member, ledger) {
     extraPaid: ledger.extraPaid,
     arrears: ledger.arrears,
     credit: ledger.credit,
-    chaiPaid: ledger.chai.paid,
+    chaiPaid: ledger.chai.due,
     chaiThisWeek: ledger.chai.thisWeek,
-    chaiShortfall: ledger.chai.shortfall,
+    chaiWeeks: ledger.chai.weeks,
     weeksPaid: ledger.weeksPaid,
     weeksPartial: ledger.weeksPartial,
     weeksNill: ledger.weeksNill,
@@ -202,10 +211,10 @@ function totalLedger(ledgers) {
       required: acc.required + l.required,
       arrears: acc.arrears + l.arrears,
       credit: acc.credit + l.credit,
-      chaiPaid: acc.chaiPaid + l.chai.paid,
-      chaiRequired: acc.chaiRequired + l.chai.required,
+      chaiPaid: acc.chaiPaid + l.chai.due,
+      chaiRecorded: acc.chaiRecorded + l.chai.recorded,
     }),
-    { money: 0, openingBalance: 0, paid: 0, required: 0, arrears: 0, credit: 0, chaiPaid: 0, chaiRequired: 0 }
+    { money: 0, openingBalance: 0, paid: 0, required: 0, arrears: 0, credit: 0, chaiPaid: 0, chaiRecorded: 0 }
   );
 }
 

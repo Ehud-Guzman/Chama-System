@@ -75,7 +75,12 @@ async function computeWeeklyReconciliation() {
       typeName: CHAI_TYPE_NAME,
       isGroupFund: true,
       weeklyAmount: config.chaiAmount,
-      read: (week) => ({ paid: week.chaiPaid, item: week }),
+      // Automatic: every member is charged the week's tea whether or not anybody
+      // logged anything, so a tea week is always collected and can never come up
+      // short. Reported as its own fund so the total reaching the Group is
+      // visible; never counted against a member.
+      automatic: true,
+      read: (week) => ({ paid: week.chaiAmount ?? config.chaiAmount, item: week }),
     },
   ];
 
@@ -108,6 +113,7 @@ async function computeWeeklyReconciliation() {
         typeId: fund.type ? fund.type._id : null,
         typeName: fund.typeName,
         isGroupFund: fund.isGroupFund,
+        automatic: Boolean(fund.automatic),
         weeklyAmount: fund.weeklyAmount,
         eligibleCount: ledgers.length,
         expected: ledgers.length * fund.weeklyAmount,

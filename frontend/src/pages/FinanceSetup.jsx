@@ -75,10 +75,13 @@ export default function FinanceSetup() {
           <Link to="/admin/finance" className="text-xs font-medium text-primary">
             ← Back to the ledger
           </Link>
-          <h1 className="mt-1 text-2xl font-bold">Week cycle and opening balances</h1>
-          <p className="mt-1 text-sm text-muted">
-            Set these once at go-live. The week number and the amount required then roll forward on
-            their own every Friday.
+          <h1 className="mt-1 text-2xl font-bold">Opening balances — the one-time week {settings.cycleStartWeek} setup</h1>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+            Key in what each member holds today. This is the only manual entry the system needs: every
+            week from week {settings.cycleStartWeek} onward is counted on top of these figures, and the
+            week number and the amount required then roll forward on their own every Friday. Each
+            member’s current ledger total is filled in as a suggestion — type over any of them, then
+            save.
           </p>
         </div>
         <button

@@ -10,6 +10,7 @@ const { typeBreakdown } = require('../utils/typeBreakdown');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
 const { resolveConfig, cycleHistory } = require('../utils/weekCycle');
 const { bucketForType } = require('../utils/ledgerTypes');
+const { computeMemberLedger } = require('../utils/memberLedger');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { renderStatementPdf } = require('../utils/statementPdf');
 const { getOrCreateSettings } = require('../utils/settings');
@@ -72,11 +73,19 @@ async function buildFinesAndSchedules(member, contributions) {
     // (constitution §7.1, §7.2) and the two are only kept in step for the older
     // screens that still read the type's own weeklyAmount.
     const isChai = bucketForType(type) === 'chai';
+    const amount = isChai ? config.chaiAmount : config.weeklyAmount;
+    const weeks = buildWeeklySchedule(config, amount, typeContributions);
     return {
       typeId: type._id,
       typeName: type.name,
-      weeklyAmount: isChai ? config.chaiAmount : config.weeklyAmount,
-      weeks: buildWeeklySchedule(config, isChai ? config.chaiAmount : config.weeklyAmount, typeContributions),
+      weeklyAmount: amount,
+      // Tea is automatic: every week is collected from every member by
+      // deduction, so a tea week is never unpaid and is never something a member
+      // owes. Shown so each member can see what has gone into the Group's fund.
+      automatic: isChai,
+      weeks: isChai
+        ? weeks.map((w) => ({ ...w, paid: amount, status: 'paid' }))
+        : weeks,
       // The group's earlier weeks (1..91 today), so the schedule reads back to
       // week one exactly as the paper ledger numbered it. They are marked
       // isHistory and carry no expectation — the money for them is inside the
@@ -150,30 +159,63 @@ async function listMembers(req, res, next) {
       Member.countDocuments(filter),
     ]);
 
-    // Per-member totals (personal types only — group funds like Chai belong to
-    // the group, not the individual, so they must not inflate this figure)
-    // + last contribution date of any kind, for the card list.
     const ids = members.map((m) => m._id);
-    const excludedTypeIds = await nonPersonalTypeIds();
-    const [personalSums, lastDates] = await Promise.all([
-      Contribution.aggregate([
-        { $match: { memberId: { $in: ids }, deleted: false, typeId: { $nin: excludedTypeIds } } },
-        { $group: { _id: '$memberId', totalContributed: { $sum: '$amount' } } },
-      ]),
-      Contribution.aggregate([
-        { $match: { memberId: { $in: ids }, deleted: false } },
-        { $group: { _id: '$memberId', lastContributionDate: { $max: '$date' } } },
-      ]),
+
+    // One query for the rows this page needs — they carry everything the cards
+    // show (what he has paid, when, and his balance), so the two per-member
+    // aggregations that used to run alongside it are gone.
+    const [rows, types] = await Promise.all([
+      Contribution.find({ memberId: { $in: ids }, deleted: false })
+        .select('memberId typeId amount grossAmount date')
+        .lean(),
+      ContributionType.find().select('name isGroupFund').lean(),
     ]);
-    const sumMap = new Map(personalSums.map((s) => [String(s._id), s]));
-    const lastDateMap = new Map(lastDates.map((s) => [String(s._id), s.lastContributionDate]));
+    const typeById = new Map(types.map((t) => [String(t._id), t]));
+
+    const byMemberId = new Map();
+    const lastDateMap = new Map();
+    const personalSumMap = new Map();
+    for (const c of rows) {
+      const type = typeById.get(String(c.typeId));
+      const bucket = bucketForType(type);
+      const isGroupFund = Boolean(type && type.isGroupFund);
+      const key = String(c.memberId);
+      if (!byMemberId.has(key)) byMemberId.set(key, []);
+      byMemberId.get(key).push({ ...c, bucket, isGroupFund });
+      const cash = Number(c.grossAmount ?? c.amount) || 0;
+      if (!isGroupFund) personalSumMap.set(key, (personalSumMap.get(key) || 0) + cash);
+      const at = new Date(c.date).getTime();
+      if (!lastDateMap.has(key) || at > lastDateMap.get(key)) lastDateMap.set(key, at);
+    }
+
+    const settings = await getOrCreateSettings();
+    const config = resolveConfig(settings);
 
     res.json({
-      members: members.map((m) => ({
-        ...m,
-        totalContributed: sumMap.get(String(m._id))?.totalContributed || 0,
-        lastContributionDate: lastDateMap.get(String(m._id)) || null,
-      })),
+      members: members.map((m) => {
+        // The money a member actually holds comes from the same cycle engine the
+        // finance ledger uses — openingBalance plus what he has paid since the
+        // cycle opened, less the week's requirement and that week's tea. Summing
+        // contribution rows alone would report every member as holding nothing,
+        // because the money carried across from the paper ledger lives in
+        // openingBalance, not in rows.
+        const ledger = computeMemberLedger({
+          member: m,
+          contributions: byMemberId.get(String(m._id)) || [],
+          config,
+        });
+        return {
+          ...m,
+          totalContributed: personalSumMap.get(String(m._id)) || 0,
+          lastContributionDate: lastDateMap.has(String(m._id))
+            ? new Date(lastDateMap.get(String(m._id)))
+            : null,
+          balance: ledger.money,
+          arrears: ledger.arrears,
+          weeksBehind: ledger.weeksBehind,
+          chaiDue: ledger.chai.due,
+        };
+      }),
       total,
       page,
       pages: Math.ceil(total / limit) || 1,

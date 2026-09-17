@@ -77,9 +77,13 @@ function ScheduleSection({ schedule: s }) {
                 {shortDate(w.startDate)} – {shortDate(w.endDate)}
               </span>
               <span className="amount text-right text-xs font-medium">{money(w.paid)}</span>
-              <span className={`text-right text-xs font-semibold ${STATUS_CLASSES[w.status]}`}>
-                {STATUS_LABELS[w.status]}
-              </span>
+              {s.automatic ? (
+                <span className="text-right text-xs font-semibold text-muted">Auto</span>
+              ) : (
+                <span className={`text-right text-xs font-semibold ${STATUS_CLASSES[w.status]}`}>
+                  {STATUS_LABELS[w.status]}
+                </span>
+              )}
             </li>
           ))}
         </ul>

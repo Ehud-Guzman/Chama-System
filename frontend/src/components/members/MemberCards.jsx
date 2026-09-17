@@ -1,9 +1,12 @@
 import { Link } from 'react-router-dom';
-import { money, shortDate } from '../../utils/format';
+import { money } from '../../utils/format';
 import MemberAvatar from './MemberAvatar';
 
 // Mobile-first member list: stacked cards, no horizontal-scroll tables.
 // Cards flow into columns as the screen widens instead of staying single-file.
+// The figure on each card is the member's balance from the same cycle engine the
+// finance ledger uses — not a sum of contribution rows, which after go-live is
+// only part of the story (the rest is his carried-forward opening balance).
 export default function MemberCards({ members }) {
   return (
     <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -26,15 +29,17 @@ export default function MemberCards({ members }) {
                   )}
                 </p>
                 <p className="amount shrink-0 font-semibold text-accent">
-                  {money(m.totalContributed)}
+                  {money(m.balance ?? m.totalContributed)}
                 </p>
               </div>
               <div className="mt-0.5 flex items-baseline justify-between gap-3 text-xs text-muted">
                 <p className="amount truncate">{m.phone}</p>
                 <p className="shrink-0">
-                  {m.lastContributionDate
-                    ? `Last: ${shortDate(m.lastContributionDate)}`
-                    : 'No contributions yet'}
+                  {m.arrears > 0
+                    ? `${money(m.arrears)} behind`
+                    : m.balance
+                      ? 'Held for him'
+                      : 'Nothing held'}
                 </p>
               </div>
             </div>

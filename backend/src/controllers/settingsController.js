@@ -1,4 +1,4 @@
-const { getOrCreateSettings } = require('../utils/settings');
+const { getOrCreateSettings, invalidateSettings } = require('../utils/settings');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { fridayOf, parseEatDate } = require('../utils/weekCycle');
 const { syncLedgerTypeAmounts } = require('../utils/ledgerTypes');
@@ -72,6 +72,7 @@ async function updateSettings(req, res, next) {
     settings.updatedBy = req.user._id;
 
     await settings.save();
+    invalidateSettings();
     // Keep the legacy per-type amounts in step with the authoritative ones.
     await syncLedgerTypeAmounts(settings);
     await logAudit({

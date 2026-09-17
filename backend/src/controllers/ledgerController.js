@@ -4,7 +4,7 @@ const Contribution = require('../models/Contribution');
 const Expense = require('../models/Expense');
 const ContributionType = require('../models/ContributionType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
-const { getOrCreateSettings } = require('../utils/settings');
+const { getOrCreateSettings, invalidateSettings } = require('../utils/settings');
 const {
   resolveConfig,
   currentWeekNumber,
@@ -21,10 +21,9 @@ const { suggestedOpeningBalances } = require('../utils/suggestedBalances');
 const { fundBalance } = require('../utils/fundBalance');
 
 const METHODS = ['cash', 'bank', 'mobile', 'other'];
-// Everything the treasurer can put on a member's page. The three contribution
-// kinds are the money in; `expense` is money out of a group fund (the Tea Fund
-// today), which is why it lands on a different collection.
-const LOG_KINDS = ['weekly', 'extra', 'chai', 'expense'];
+// Everything the treasurer can put on a member's page. Tea is not here on
+// purpose: it is automatic, so there is nothing to log and nothing to edit.
+const LOG_KINDS = ['weekly', 'expense'];
 
 // Loads the settings + the annotated contribution list every ledger view needs.
 // Contributions arrive tagged with their bucket so nothing downstream has to
@@ -38,7 +37,7 @@ async function loadContext(memberFilter) {
   const memberIds = members.map((m) => m._id);
 
   const [types, contributions] = await Promise.all([
-    ContributionType.find().select('name isWeekly isGroupFund tracksExpenses').lean(),
+    ContributionType.find().select('name isWeekly isGroupFund tracksExpenses active').lean(),
     memberIds.length === 0
       ? Promise.resolve([])
       : Contribution.find({ memberId: { $in: memberIds }, deleted: false })
@@ -65,7 +64,7 @@ async function loadContext(memberFilter) {
     byMember.get(key).push(c);
   }
 
-  return { settings, config, members, byMember };
+  return { settings, config, members, byMember, types };
 }
 
 // GET /api/ledger — the member list the treasurer lands on: one row per active
@@ -109,13 +108,17 @@ async function memberLedger(req, res, next) {
     const member = await Member.findById(req.params.id).lean();
     if (!member) return res.status(404).json({ message: 'Member not found' });
 
-    const { config, byMember } = await loadContext({ _id: member._id });
+    const { config, byMember, types } = await loadContext({ _id: member._id });
     const contributions = byMember.get(String(member._id)) || [];
     const ledger = computeMemberLedger({ member, contributions, config });
 
-    const fundTypes = await ContributionType.find({ tracksExpenses: true, active: true }).select('name').lean();
+    // The fund types come out of the type list loadContext already fetched, so
+    // this page costs one round trip for the member and one for the fund — see
+    // the settings cache for why round trips are the thing worth counting.
+    const fundTypes = types.filter((t) => t.tracksExpenses && t.active);
     const fundTypeIds = fundTypes.map((t) => t._id);
-    const [expenses, balances] = await Promise.all([
+    const [activeMembers, expenses] = await Promise.all([
+      Member.countDocuments({ active: true }),
       fundTypeIds.length === 0
         ? Promise.resolve([])
         : Expense.find({ typeId: { $in: fundTypeIds }, deleted: false })
@@ -124,8 +127,13 @@ async function memberLedger(req, res, next) {
             .populate('typeId', 'name')
             .populate('loggedBy', 'name')
             .lean(),
-      Promise.all(fundTypeIds.map((id) => fundBalance(id))),
     ]);
+    // The Tea Fund's income is automatic — 100 per member per week of the cycle —
+    // so it is derived here rather than summed from contribution rows.
+    const teaIncome = config.chaiAmount * ledger.weeksElapsed * activeMembers;
+    const balances = await Promise.all(
+      fundTypes.map((t) => fundBalance(t._id, { extraIncome: bucketForType(t) === 'chai' ? teaIncome : 0 }))
+    );
 
     res.json({
       member: summariseMember(member, ledger),
@@ -259,12 +267,10 @@ async function createLog(req, res, next) {
   }
 }
 
-// Which bucket a log kind writes to. Kept as a lookup rather than a switch so
-// adding a kind later is one line in both places.
+// Which bucket a log kind writes to. Tea has no kind: it is deducted
+// automatically and never logged.
 function kindsToType(kind, types) {
   if (kind === 'weekly') return types.weekly;
-  if (kind === 'extra') return types.extra;
-  if (kind === 'chai') return types.chai;
   return null;
 }
 
@@ -352,6 +358,7 @@ async function updateSetup(req, res, next) {
     }
     settings.updatedBy = req.user._id;
     await settings.save();
+    invalidateSettings();
     // The legacy screens read each type's own weeklyAmount, so the copies are
     // refreshed whenever the authoritative figures change.
     await syncLedgerTypeAmounts(settings);

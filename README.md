@@ -69,22 +69,45 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   `his money = openingBalance + what he has paid since week 92 − required − tea`. Paying above
   the 1,400 pushes his money up instead of being swallowed; a week with nothing paid takes 1,400
   back off it — the "expected total deducted from his money" the members already work to, which
-  is the accumulated credit/arrears of constitution §7.5. The Tea Fund (`chaiAmount`, 100/week)
-  is totalled on its own per §7.2 *and* comes out of the member's money, exactly as the paper
-  ledger's "Previous + Weekly + Extra − Chai = Member Total" did — deducted as it is recorded,
-  never as an assumption, with any shortfall reported rather than silently absorbed. A closed
-  NILL week is flagged for the §7.5 KES 50 fine but never charged automatically — a fine has to
-  be issued with its week and reason.
+  is the accumulated credit/arrears of constitution §7.5. **Tea is automatic**: `chaiAmount` is
+  deducted from every member for every week of the cycle whether or not anybody logged anything,
+  it needs no entry, it can never be in arrears, and it is shown per member so each can see the
+  total he has put into the Group's Tea Fund. That mirrors the paper ledger's
+  "Previous + Weekly + Extra − Chai = Member Total". A closed NILL week is flagged for the §7.5
+  KES 50 fine but never charged automatically — a fine has to be issued with its week and reason.
+- **Speed, and how it is kept:** the cost of a page here is *round trips to the database*, so the
+  app counts them. Settings is held in-process for 30 seconds rather than re-read by nearly every
+  request; one member's ledger is three round trips; the member list and each member's ledger are
+  cached in the browser for 30 seconds and prefetched on touch-down, so tapping a name opens a
+  panel *over* the list — no page change, no lazily-loaded chunk, and closing it leaves the scroll
+  exactly where it was. If the hosted app still feels slow, the first thing to check is that the
+  API and the Atlas cluster are in the same region: a cross-region round trip measures around half
+  a second, and no handler tuning beats that. The free tier of some hosts also spins the service
+  down after idling, which makes the first load of the day slow for a reason nothing in this repo
+  can fix.
+- **Member cards count the same money as the ledger:** the cards at `/admin/members` show each
+  member's balance from the cycle engine (opening balance + what he has paid − required − tea),
+  not a sum of contribution rows. After go-live those two are different figures — the money that
+  carried across from the paper ledger lives in `openingBalance` — and a card reading "no
+  contributions yet" next to a ledger that says he holds money is exactly the confusion that
+  avoids.
+- **One-time opening balances:** `/admin/finance/setup` (also linked from the dashboard as
+  "Opening balances (one-time)") is where each member's current total is keyed in at go-live.
+  Every member is listed with his ledger figure already filled in as a suggestion, any of them
+  can be typed over, and one save applies the lot. That is the only manual figure entry the
+  system needs.
 - **`openingBalance`** on each member carries his verified paper-ledger balance into the cycle,
   so his money starts where the old sheet left him. `/admin/finance/setup` suggests each figure
   from what the ledger already says he holds (`GET /api/ledger/setup`), so the 32 balances never
   have to be retyped by hand.
 - **One write for the treasurer:** `POST /api/ledger/members/:id/log` with
-  `kind: weekly | extra | chai | expense` decides which collection the entry lands in, so the UI
-  keeps a single "Add a log" panel. Every entry — contributions *and* expenses — carries a free
-  text `note`, which is where the M-Pesa or bank message gets pasted, so the evidence sits on the
-  entry it explains. `clientRequestId` makes a retried submit resolve to the entry already
-  written instead of charging the member twice.
+  `kind: weekly | expense` decides which collection the entry lands in, so the UI keeps a single
+  "Add a log" panel. There is no tea entry and no "extra contribution" — tea is deducted
+  automatically, and anything above the 1,400 is simply a bigger weekly payment, which the
+  cumulative credit carries forward on its own. Every entry — contributions *and* expenses —
+  carries a free text `note`, which is where the M-Pesa or bank message gets pasted, so the
+  evidence sits on the entry it explains. `clientRequestId` makes a retried submit resolve to
+  the entry already written instead of charging the member twice.
 - **Logging an earlier week:** the member's page has a week strip (every cycle week with its
   `now` / `settled` / `owing` state). Picking one moves the date into that Friday→Thursday week
   and prefills what that week still needs, so a late payment is recorded against the week it

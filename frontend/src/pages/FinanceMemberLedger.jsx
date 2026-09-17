@@ -5,6 +5,7 @@ import { useToast } from '../components/shared/Toast';
 import { money, shortDate, todayISO, isoDateOf, METHOD_LABELS } from '../utils/format';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import Loader from '../components/shared/Loader';
+import { fetchMember, getCachedMember, invalidateLedger } from '../services/ledgerCache';
 
 const METHODS = Object.keys(METHOD_LABELS);
 
@@ -12,10 +13,11 @@ const METHODS = Object.keys(METHOD_LABELS);
 // straight onto the API's single write endpoint, and the amount each one
 // prefills with is what members actually owe — so the usual entry is: tap the
 // member, tap Weekly, paste the M-Pesa message, tap Log.
+// The two things the treasurer can add to a member's page. Tea is not here on
+// purpose — it is deducted automatically every week, so there is nothing to log
+// and nothing to edit.
 const KINDS = [
   { value: 'weekly', label: 'Weekly', hint: 'The weekly contribution due' },
-  { value: 'extra', label: 'Extra', hint: 'Above the weekly amount — it stays his' },
-  { value: 'chai', label: 'Chai', hint: 'Tea money — the Group’s, kept on its own' },
   { value: 'expense', label: 'Expense', hint: 'Money spent from the Tea Fund' },
 ];
 
@@ -34,12 +36,19 @@ function Stat({ label, value, accent, alert }) {
   );
 }
 
-export default function FinanceMemberLedger() {
-  const { id } = useParams();
+// One member's ledger. Rendered two ways, from the same code: as the panel that
+// slides over the list when a name is tapped (no navigation, no new chunk, the
+// list stays put underneath), and as the full page at /admin/finance/:id so a
+// link to one member can still be shared or bookmarked.
+export default function FinanceMemberLedger({ memberId, onClose }) {
+  const params = useParams();
+  const id = memberId || params.id;
   const toast = useToast();
 
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Painted straight from the cache when we have it, so a member the treasurer
+  // looked at a moment ago opens instantly.
+  const [data, setData] = useState(() => getCachedMember(id) || null);
+  const [loading, setLoading] = useState(() => !getCachedMember(id));
   const [kind, setKind] = useState('weekly');
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('mobile');
@@ -60,9 +69,9 @@ export default function FinanceMemberLedger() {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get(`/api/ledger/members/${id}`);
-      setData(res.data);
-      return res.data;
+      const res = await fetchMember(api, id);
+      setData(res);
+      return res;
     } catch (err) {
       toast(apiMessage(err, 'Could not load this member'), 'error');
       return null;
@@ -93,7 +102,6 @@ export default function FinanceMemberLedger() {
   const weekDue = selectedWeek
     ? Math.max(0, (ledger?.weeklyAmount || 0) - (selectedWeek.personalPaid || 0))
     : 0;
-  const chaiDue = selectedWeek ? Math.max(0, (ledger?.chaiAmount || 0) - (selectedWeek.chaiPaid || 0)) : 0;
 
   // Set by the one-tap catch-up so the prefill below doesn't immediately
   // overwrite the total it just filled in: the amount and the week it belongs to
@@ -109,9 +117,8 @@ export default function FinanceMemberLedger() {
       return;
     }
     if (kind === 'weekly') setAmount(weekDue > 0 ? String(weekDue) : '');
-    else if (kind === 'chai') setAmount(chaiDue > 0 ? String(chaiDue) : '');
     else setAmount('');
-  }, [kind, ledger, selectedWeek, weekDue, chaiDue]);
+  }, [kind, ledger, selectedWeek, weekDue]);
 
   // Picking a week also moves the date into it: a Friday-to-Thursday week means
   // the Thursday is the day the money was due, and today's date for a week still
@@ -159,6 +166,9 @@ export default function FinanceMemberLedger() {
       requestIdRef.current = crypto.randomUUID();
       setNote('');
       setDescription('');
+      // The list's totals are stale the moment money moves; drop the cache so
+      // both this panel and the list behind it come back fresh.
+      invalidateLedger();
       await load();
     } catch (err) {
       toast(apiMessage(err), 'error');
@@ -174,6 +184,7 @@ export default function FinanceMemberLedger() {
       await api.delete(path);
       toast('Entry deleted');
       setDeleting(null);
+      invalidateLedger();
       await load();
     } catch (err) {
       toast(apiMessage(err), 'error');
@@ -182,11 +193,28 @@ export default function FinanceMemberLedger() {
     }
   }
 
-  if (loading) return <Loader />;
+  // The panel and the page are the same markup. As a panel it floats over the
+  // list — nothing unmounts behind it, so closing it is instant and the list is
+  // exactly where it was, scroll and all.
+  const frame = (content) =>
+    onClose ? (
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="dialog" aria-modal="true">
+        <div className="h-full w-full max-w-3xl overflow-y-auto bg-canvas p-4 shadow-xl md:p-6">
+          {content}
+        </div>
+      </div>
+    ) : (
+      content
+    );
+
+  if (loading) return frame(<Loader />);
   if (!data) {
-    return (
+    return frame(
       <p className="rounded-xl border border-dashed border-rule px-5 py-10 text-center text-sm text-muted">
-        That member could not be loaded. <Link to="/admin/finance" className="text-primary">Back to the ledger</Link>
+        That member could not be loaded.{' '}
+        <Link to="/admin/finance" className="text-primary">
+          Back to the ledger
+        </Link>
       </p>
     );
   }
@@ -195,13 +223,19 @@ export default function FinanceMemberLedger() {
   const teaFund = (data.funds || []).find((f) => f.name.toLowerCase().includes('chai')) || null;
   const owed = ledger.movement < 0;
 
-  return (
+  return frame(
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <Link to="/admin/finance" className="text-xs font-medium text-primary">
-            ← All members
-          </Link>
+          {onClose ? (
+            <button type="button" onClick={onClose} className="text-xs font-medium text-primary">
+              ← Back to the list
+            </button>
+          ) : (
+            <Link to="/admin/finance" className="text-xs font-medium text-primary">
+              ← All members
+            </Link>
+          )}
           <h1 className="mt-1 truncate text-2xl font-bold">{member.name}</h1>
           <p className="mt-1 text-sm text-muted">
             {[member.regNumber, member.phone].filter(Boolean).join(' · ')}
@@ -226,18 +260,15 @@ export default function FinanceMemberLedger() {
           value={money(owed ? ledger.arrears : ledger.credit)}
           alert={owed}
         />
-        <Stat label={`Tea this week (of ${money(ledger.chaiAmount)})`} value={money(ledger.chai.thisWeek)} />
+        <Stat label={`Tea (auto) — ${ledger.chai.weeks} week${ledger.chai.weeks === 1 ? '' : 's'}`} value={money(ledger.chai.due)} />
       </section>
 
       <p className="rounded-xl border border-rule bg-canvas px-4 py-3 text-xs leading-5 text-muted">
         {money(ledger.openingBalance)} brought forward + {money(ledger.paid)} paid since week 92 −{' '}
-        {money(ledger.required)} required − {money(ledger.chai.paid)} tea ={' '}
-        <span className="amount font-semibold">{money(ledger.money)}</span>. Tea is totalled on its
-        own but comes out of his money, the way the paper ledger did it.
-        {ledger.chai.shortfall > 0 &&
-          ` Tea entered so far is ${money(ledger.chai.paid)} of ${money(
-            ledger.chai.required
-          )} due (${money(ledger.chai.shortfall)} short).`}
+        {money(ledger.required)} required − {money(ledger.chai.due)} tea ={' '}
+        <span className="amount font-semibold">{money(ledger.money)}</span>. Tea is{' '}
+        {money(ledger.chai.perWeek)} a week, deducted automatically from every member and paid into the
+        Group’s Tea Fund — nobody owes it and nobody pays arrears on it.
         {ledger.nillWeeksDueFine.length > 0 &&
           ` ${ledger.nillWeeksDueFine.length} closed week(s) were NILL with no credit standing (${ledger.nillWeeksDueFine
             .map((w) => 'W' + w)
@@ -516,7 +547,9 @@ export default function FinanceMemberLedger() {
                           {w.coveredByCredit ? ' (credit)' : ''}
                         </span>
                       </td>
-                      <td className="amount px-3 py-2 text-muted">{money(w.chaiPaid)}</td>
+                      <td className="amount px-3 py-2 text-muted">
+                        {money(w.chaiAmount ?? ledger.chaiAmount)}
+                      </td>
                     </tr>
                   ))}
 

@@ -73,6 +73,12 @@ export default function AdminDashboard() {
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <QuickAction
+            to="/admin/finance/setup"
+            label="Opening balances (one-time)"
+            description="Key in what each member holds today. Every week is counted from there."
+            primary
+          />
+          <QuickAction
             to="/admin/members"
             label="Members"
             description="Add, update, view statements, and resign members."
