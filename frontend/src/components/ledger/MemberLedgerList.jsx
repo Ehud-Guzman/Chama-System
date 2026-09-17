@@ -175,7 +175,7 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
                 label={`Brought forward at week ${week.cycleStartWeek}`}
                 value={money(totals.openingBalance)}
               />
-              <Stat label="Collected since week 92" value={money(totals.paid)} />
+              <Stat label="Collected in total" value={money(totals.paid)} />
               <Stat label="Behind in total" value={money(totals.arrears)} alert={totals.arrears > 0} />
             </section>
           )}
