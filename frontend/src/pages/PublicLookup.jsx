@@ -70,7 +70,7 @@ export default function PublicLookup() {
         {/* =====================================================
             TOP NAV / BRAND
         ====================================================== */}
-        <header className="mx-auto w-full max-w-xl">
+        <header className="w-full">
 
           <div className="flex items-center justify-between gap-3">
 
@@ -120,11 +120,16 @@ export default function PublicLookup() {
 
           </div>
 
+          {/* Hero and the lookup card share a row from lg: on a laptop the page
+              used to open as a narrow 576px ribbon with half the screen empty
+              beside it. On a phone they stack in the order they are read. */}
+          <div className="mt-8 grid gap-6 sm:mt-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:items-start lg:gap-10">
+
           {/* =================================================
               HERO
           ================================================== */}
 
-          <section className="mt-8 sm:mt-10">
+          <section>
 
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
               Member portal
@@ -147,9 +152,9 @@ export default function PublicLookup() {
 
           <section
             className="
-              mt-6 rounded-2xl border border-rule
+              rounded-2xl border border-rule
               bg-surface p-4 shadow-sm
-              sm:mt-7 sm:p-6
+              sm:p-6
             "
           >
 
@@ -288,8 +293,13 @@ export default function PublicLookup() {
 
           </section>
 
+          </div>
+
           {/* =================================================
               MEMBER RESULT
+
+              Full width: the passbook carries a stat grid and a ledger that
+              were being squeezed into the same 576px column as the hero.
           ================================================== */}
 
    {status === 'found' && result && (

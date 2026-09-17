@@ -106,10 +106,18 @@ export default function FineTypeManager({ onChange }) {
                     <p className="mt-0.5 break-words text-xs text-muted">{t.description}</p>
                   )}
                 </div>
+                {/* The two states carry different visual weight on purpose:
+                    taking a type out of use is the cautious action, so it reads
+                    as a danger outline, while bringing one back is the
+                    constructive one and reads as the primary button. */}
                 <button
                   type="button"
                   onClick={() => toggleActive(t)}
-                  className="min-h-11 w-full rounded-lg border border-rule px-3 text-xs font-medium lg:w-auto lg:shrink-0"
+                  className={`min-h-11 w-full rounded-lg px-3 text-xs font-semibold lg:w-auto lg:shrink-0 ${
+                    t.active
+                      ? 'border border-alert/40 text-alert hover:bg-alert/5'
+                      : 'bg-primary text-white hover:bg-primary-dark'
+                  }`}
                 >
                   {t.active ? 'Deactivate' : 'Reactivate'}
                 </button>

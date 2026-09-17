@@ -40,7 +40,7 @@ export default function GroupOverview({ onChamaName }) {
     accent
   />
 </div>
-<p className="mt-2 text-xs text-muted">
+<p className="mt-3 max-w-3xl text-xs leading-5 text-muted">
   "Total raised" is everyone's lifetime contributions added up. "Cash held now" is that total
   minus {money(overview.totalExpenses)} spent from tracked funds — the closer answer to "how
   much does the group actually have."
@@ -49,35 +49,45 @@ export default function GroupOverview({ onChamaName }) {
   )}
 </p>
 
-      {overview.byType.length > 0 && (
-        <div className="mt-3 rounded-xl border border-rule bg-surface p-4 md:p-5">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-            Raised by contribution type (all-time)
-          </p>
-          <ul className="grid gap-x-6 gap-y-2 md:grid-cols-2">
-            {overview.byType.map((t) => (
-              <li key={t.name} className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="min-w-0 truncate">{t.name}</span>
-                <span className="amount shrink-0 font-medium">{money(t.totalContributed)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* The two per-name breakdowns sit side by side from lg. As full-width
+          cards every amount sat a screen away from the label it belongs to, so
+          the width was there but the pairing was unreadable. Each list is a
+          single column inside its own card instead. */}
+      {(overview.byType.length > 0 || overview.fundBalances?.length > 0) && (
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          {overview.byType.length > 0 && (
+            <div className="rounded-xl border border-rule bg-surface p-4 md:p-5">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                Raised by contribution type (all-time)
+              </p>
+              <ul className="space-y-2">
+                {overview.byType.map((t) => (
+                  <li key={t.name} className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate">{t.name}</span>
+                    <span className="amount shrink-0 font-medium">
+                      {money(t.totalContributed)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-      {overview.fundBalances?.length > 0 && (
-        <div className="mt-3 rounded-xl border border-rule bg-surface p-4 md:p-5">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-            Fund balances (collected minus spent)
-          </p>
-          <ul className="grid gap-x-6 gap-y-2 md:grid-cols-2">
-            {overview.fundBalances.map((f) => (
-              <li key={f.name} className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="min-w-0 truncate">{f.name}</span>
-                <span className="amount shrink-0 font-medium">{money(f.balance)}</span>
-              </li>
-            ))}
-          </ul>
+          {overview.fundBalances?.length > 0 && (
+            <div className="rounded-xl border border-rule bg-surface p-4 md:p-5">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                Fund balances (collected minus spent)
+              </p>
+              <ul className="space-y-2">
+                {overview.fundBalances.map((f) => (
+                  <li key={f.name} className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate">{f.name}</span>
+                    <span className="amount shrink-0 font-medium">{money(f.balance)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </section>

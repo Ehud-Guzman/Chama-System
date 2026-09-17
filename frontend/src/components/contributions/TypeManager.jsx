@@ -215,10 +215,17 @@ export default function TypeManager({ onChange }) {
                           {t.isRecoverable ? 'Real expense' : 'Recoverable'}
                         </button>
                       )}
+                      {/* Deactivate reads as a danger outline and Reactivate as
+                          the primary action, so a row's state is obvious without
+                          reading the label. */}
                       <button
                         type="button"
                         onClick={() => toggleActive(t)}
-                        className="min-h-11 flex-1 rounded-lg border border-rule px-3 text-xs font-medium lg:flex-none"
+                        className={`min-h-11 flex-1 rounded-lg px-3 text-xs font-semibold lg:flex-none ${
+                          t.active
+                            ? 'border border-alert/40 text-alert hover:bg-alert/5'
+                            : 'bg-primary text-white hover:bg-primary-dark'
+                        }`}
                       >
                         {t.active ? 'Deactivate' : 'Reactivate'}
                       </button>
