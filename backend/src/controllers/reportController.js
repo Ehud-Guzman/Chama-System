@@ -61,10 +61,14 @@ async function computePerformance() {
     for (const type of personalWeeklyTypes) {
       const typeContributions = own.filter((c) => String(c.typeId) === String(type._id));
       const weeks = buildWeeklySchedule(config, config.weeklyAmount, typeContributions);
-      weeksExpected += weeks.length;
-      weeksPaid += weeks.filter((w) => w.status === 'paid').length;
-      weeksPartial += weeks.filter((w) => w.status === 'partial').length;
-      weeksUnpaid += weeks.filter((w) => w.status === 'unpaid').length;
+      // The opening week is the baseline: it carried no expectation and no
+      // payment, so counting it would drag every member's consistency down and
+      // report a week nobody could have paid.
+      const scored = weeks.filter((w) => !w.isBaseline);
+      weeksExpected += scored.length;
+      weeksPaid += scored.filter((w) => w.status === 'paid').length;
+      weeksPartial += scored.filter((w) => w.status === 'partial').length;
+      weeksUnpaid += scored.filter((w) => w.status === 'unpaid').length;
     }
     const consistency = weeksExpected > 0 ? Math.round((weeksPaid / weeksExpected) * 100) : null;
 

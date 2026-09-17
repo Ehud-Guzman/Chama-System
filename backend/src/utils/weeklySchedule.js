@@ -26,17 +26,27 @@ function buildWeeklySchedule(config, weeklyAmount, contributions) {
   const weeks = [];
   for (let w = config.cycleStartWeek; w <= currentWeek; w++) {
     const paid = paidByWeek.get(w) || 0;
-    let status = 'unpaid';
-    if (weeklyAmount > 0 && paid >= weeklyAmount) status = 'paid';
-    else if (paid > 0) status = 'partial';
+    // The opening week is the baseline: nothing is expected of it, because every
+    // member's money for it is already his brought-forward balance. It is listed
+    // so the numbering matches the paper ledger, never scored — the same rule
+    // computeMemberLedger applies.
+    const isBaseline = w === config.cycleStartWeek;
+    const expected = isBaseline ? 0 : weeklyAmount;
+    let status = isBaseline ? 'baseline' : 'unpaid';
+
+    if (!isBaseline) {
+      if (weeklyAmount > 0 && paid >= weeklyAmount) status = 'paid';
+      else if (paid > 0) status = 'partial';
+    }
 
     // isCurrent marks the week still running, so the UI can separate it from
     // settled history — a week in progress is never "not paid yet".
     weeks.push({
       ...weekRange(w, config),
-      expected: weeklyAmount,
+      expected,
       paid,
       status,
+      isBaseline,
       isCurrent: w === currentWeek,
     });
   }

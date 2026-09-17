@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { money, shortDate } from '../../utils/format';
 
-const STATUS_LABELS = { paid: 'Paid', partial: 'Partial', unpaid: 'Unpaid' };
+const STATUS_LABELS = { paid: 'Paid', partial: 'Partial', unpaid: 'Unpaid', baseline: 'Opening week' };
 const STATUS_CLASSES = {
   paid: 'text-accent',
   partial: 'text-primary',
   unpaid: 'text-alert',
+  baseline: 'text-muted',
 };
 
 // Week-by-week due schedule for one or more fixed weekly funds (the weekly
@@ -77,7 +78,11 @@ function ScheduleSection({ schedule: s }) {
                 {shortDate(w.startDate)} – {shortDate(w.endDate)}
               </span>
               <span className="amount text-right text-xs font-medium">{money(w.paid)}</span>
-              {s.automatic ? (
+              {/* The opening week is the baseline: nothing was due for it and no
+                  tea was taken, so it says so rather than "Unpaid" or "Auto". */}
+              {w.isBaseline ? (
+                <span className="text-right text-xs font-semibold text-muted">Opening week</span>
+              ) : s.automatic ? (
                 <span className="text-right text-xs font-semibold text-muted">Auto</span>
               ) : (
                 <span className={`text-right text-xs font-semibold ${STATUS_CLASSES[w.status]}`}>

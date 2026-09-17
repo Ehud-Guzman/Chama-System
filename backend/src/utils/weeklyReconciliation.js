@@ -86,6 +86,11 @@ async function computeWeeklyReconciliation() {
 
   const weeks = [];
   for (const weekNumber of ledgers[0].ledger.weeks.map((w) => w.weekNumber)) {
+    const sample = ledgers[0].ledger.weeks.find((w) => w.weekNumber === weekNumber);
+    // The opening week is the baseline and is not scored: nobody was expected to
+    // pay into it, so it cannot come up short. computeMemberLedger flags the same
+    // week, so the reconciliation and the ledger can never disagree about it.
+    const isBaseline = Boolean(sample && sample.isBaseline);
     const perFund = [];
 
     for (const fund of funds) {
@@ -97,6 +102,7 @@ async function computeWeeklyReconciliation() {
         if (!week) continue;
         const { paid } = fund.read(week);
         actual += paid;
+        if (isBaseline) continue;
         const status = fund.weeklyAmount > 0 && paid >= fund.weeklyAmount ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
         if (status !== 'paid') {
           shortfallMembers.push({
@@ -109,6 +115,8 @@ async function computeWeeklyReconciliation() {
         }
       }
 
+      const expected = isBaseline ? 0 : ledgers.length * fund.weeklyAmount;
+
       perFund.push({
         typeId: fund.type ? fund.type._id : null,
         typeName: fund.typeName,
@@ -116,9 +124,9 @@ async function computeWeeklyReconciliation() {
         automatic: Boolean(fund.automatic),
         weeklyAmount: fund.weeklyAmount,
         eligibleCount: ledgers.length,
-        expected: ledgers.length * fund.weeklyAmount,
+        expected,
         actual,
-        diff: actual - ledgers.length * fund.weeklyAmount,
+        diff: actual - expected,
         // Nothing can be collected against a cycle week from outside it, so
         // there is never an untracked tail to explain.
         untrackedAmount: 0,
@@ -133,13 +141,13 @@ async function computeWeeklyReconciliation() {
     // rarely match exactly even on a perfectly fine week. What actually matters
     // to a treasurer is whether anyone still owes their minimum.
     const shortfallCount = perFund.reduce((s, f) => s + f.shortfallMembers.length, 0);
-    const sample = ledgers[0].ledger.weeks.find((w) => w.weekNumber === weekNumber);
 
     weeks.push({
       weekNumber,
       startDate: sample.startDate,
       endDate: sample.endDate,
       isCurrent: sample.isCurrent,
+      isBaseline,
       expectedTotal,
       actualTotal,
       diff: actualTotal - expectedTotal,

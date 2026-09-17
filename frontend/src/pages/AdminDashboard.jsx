@@ -68,8 +68,20 @@ export default function AdminDashboard() {
         </p>
       </header>
 
-      {/* The one logging surface, identical to /admin/finance */}
-      <MemberLedgerList showHeader />
+      {/* The one logging surface, identical to /admin/finance. The one-time
+          opening-balance entry sits at the top here too, so it is one tap away
+          rather than below the whole member list. */}
+      <MemberLedgerList
+        showHeader
+        action={
+          <Link
+            to="/admin/finance/setup"
+            className="min-h-11 rounded-lg border border-rule bg-surface px-4 text-sm font-medium leading-[2.75rem]"
+          >
+            Opening balances
+          </Link>
+        }
+      />
 
       <section aria-label="Other workflows" className="space-y-3">
         <div>
@@ -78,15 +90,10 @@ export default function AdminDashboard() {
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <QuickAction
-            to="/admin/finance/setup"
-            label="Opening balances (one-time)"
-            description="Key in what each member holds today. Every week is counted from there."
-            primary
-          />
-          <QuickAction
             to="/admin/members"
             label="Members"
             description="Add, update, view statements, and resign members."
+            primary
           />
           <QuickAction
             to="/admin/reports"

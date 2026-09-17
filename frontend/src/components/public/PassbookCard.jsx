@@ -125,6 +125,19 @@ export default function PassbookCard({
             phone, member since) and the numbers behind the ledger —
             contributions logged, what they pledged, fines owed and cleared. */}
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-rule px-5 py-4 md:grid-cols-3">
+          {/* What he brought forward leads: it is the figure his money is built
+              on, and the one the treasurer verified when the books opened. */}
+          {result.ledger && (
+            <div>
+              <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                Brought forward (week {result.ledger.cycleStartWeek})
+              </dt>
+              <dd className="amount mt-0.5 text-sm font-medium">
+                {money(result.ledger.openingBalance)}
+              </dd>
+            </div>
+          )}
+
           <div>
             <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
               Phone

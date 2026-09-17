@@ -86,8 +86,14 @@ async function buildFinesAndSchedules(member, contributions, settings) {
       // deduction, so a tea week is never unpaid and is never something a member
       // owes. Shown so each member can see what has gone into the Group's fund.
       automatic: isChai,
+      // Tea is automatic, so a tea week is never short and never something a
+      // member owes — except the opening week, which takes no tea at all.
       weeks: isChai
-        ? weeks.map((w) => ({ ...w, paid: amount, status: 'paid' }))
+        ? weeks.map((w) =>
+            w.isBaseline
+              ? { ...w, paid: 0, status: 'baseline' }
+              : { ...w, paid: amount, status: 'paid' }
+          )
         : weeks,
       // The group's earlier weeks (1..91 today), so the schedule reads back to
       // week one exactly as the paper ledger numbered it. They are marked
@@ -255,13 +261,14 @@ async function getMember(req, res, next) {
     const member = await Member.findById(req.params.id).lean();
     if (!member) return res.status(404).json({ message: 'Member not found' });
 
-    const [contributions, byType] = await Promise.all([
+    const [contributions, byType, settings] = await Promise.all([
       Contribution.find({ memberId: member._id, deleted: false })
         .sort({ date: -1, createdAt: -1 })
         .populate('loggedBy', 'name')
         .populate('typeId', 'name isGroupFund')
         .lean(),
       typeBreakdown(member._id),
+      getOrCreateSettings(),
     ]);
     // Group-fund types (e.g. Chai) are still shown on the ledger but excluded
     // from the personal total — that money belongs to the group, not them.
@@ -269,9 +276,45 @@ async function getMember(req, res, next) {
       .filter((c) => !c.typeId?.isGroupFund)
       .reduce((sum, c) => sum + c.amount, 0);
     const totalPledged = byType.reduce((sum, b) => sum + b.pledged, 0);
-    const { fines, weeklySchedules } = await buildFinesAndSchedules(member, contributions);
+    const config = resolveConfig(settings);
+    const { fines, weeklySchedules } = await buildFinesAndSchedules(member, contributions, settings);
 
-    res.json({ member, contributions, totalContributed, totalPledged, byType, fines, weeklySchedules });
+    // The same cycle figures the treasurer's ledger shows. A record page that
+    // summed contribution rows instead would read "Ksh 0" for every member, since
+    // the money carried across from the paper ledger lives in his opening balance.
+    const ledger = computeMemberLedger({
+      member,
+      contributions: contributions.map((c) => ({
+        ...c,
+        bucket: bucketForType(c.typeId),
+        isGroupFund: Boolean(c.typeId && c.typeId.isGroupFund),
+      })),
+      config,
+    });
+
+    res.json({
+      member,
+      contributions,
+      totalContributed,
+      totalPledged,
+      byType,
+      fines,
+      weeklySchedules,
+      ledger: {
+        openingBalance: ledger.openingBalance,
+        paid: ledger.paid,
+        required: ledger.required,
+        tea: ledger.chai.due,
+        money: ledger.money,
+        arrears: ledger.arrears,
+        credit: ledger.credit,
+        currentWeek: ledger.currentWeek,
+        cycleStartWeek: config.cycleStartWeek,
+        weeklyAmount: ledger.weeklyAmount,
+        weeksScored: ledger.weeksScored,
+        weeksBehind: ledger.weeksBehind,
+      },
+    });
   } catch (err) {
     next(err);
   }

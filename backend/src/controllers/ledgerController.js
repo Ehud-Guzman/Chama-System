@@ -128,9 +128,10 @@ async function memberLedger(req, res, next) {
             .populate('loggedBy', 'name')
             .lean(),
     ]);
-    // The Tea Fund's income is automatic — 100 per member per week of the cycle —
-    // so it is derived here rather than summed from contribution rows.
-    const teaIncome = config.chaiAmount * ledger.weeksElapsed * activeMembers;
+    // The Tea Fund's income is automatic — 100 per member per scored week of the
+    // cycle, the opening week taking none — so it is derived here rather than
+    // summed from contribution rows.
+    const teaIncome = config.chaiAmount * ledger.weeksScored * activeMembers;
     const balances = await Promise.all(
       fundTypes.map((t) => fundBalance(t._id, { extraIncome: bucketForType(t) === 'chai' ? teaIncome : 0 }))
     );
@@ -138,7 +139,11 @@ async function memberLedger(req, res, next) {
     res.json({
       member: summariseMember(member, ledger),
       ledger,
-      week: { currentWeek: ledger.currentWeek, ...weekRange(ledger.currentWeek, config) },
+      week: {
+        currentWeek: ledger.currentWeek,
+        cycleStartWeek: config.cycleStartWeek,
+        ...weekRange(ledger.currentWeek, config),
+      },
       // Weeks 1..(cycleStartWeek-1) — the group's whole history, so the week list
       // reads back to week one with every Thursday in place, even though only the
       // live weeks carry an expectation.

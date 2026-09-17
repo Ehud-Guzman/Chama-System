@@ -41,7 +41,7 @@ function Stat({ label, value, accent, alert }) {
   );
 }
 
-function StatusPill({ member }) {
+function StatusPill({ member, baselineWeek }) {
   if (member.arrears > 0) {
     const weeks =
       member.weeksBehind > 0
@@ -50,6 +50,15 @@ function StatusPill({ member }) {
     return (
       <span className="rounded-full bg-alert/10 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-alert">
         {money(member.arrears)} behind{weeks}
+      </span>
+    );
+  }
+  // The opening week asks nothing of anybody — every member's money for it is the
+  // balance he brought forward — so "settled" would be the wrong word for it.
+  if (baselineWeek) {
+    return (
+      <span className="rounded-full bg-canvas px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-muted">
+        Opening week · nothing due
       </span>
     );
   }
@@ -139,6 +148,9 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
 
   const week = data?.week;
   const totals = data?.totals;
+  // While the books are still in the opening week, nobody is expected to have paid
+  // into it, so the list says so rather than calling everyone owed or settled.
+  const isBaselineWeek = Boolean(week && week.currentWeek === week.cycleStartWeek);
 
   return (
     <div className="min-w-0 space-y-4">
@@ -159,7 +171,10 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
           {totals && (
             <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Stat label="Held by members" value={money(totals.money)} accent />
-              <Stat label="Brought forward at week 92" value={money(totals.openingBalance)} />
+              <Stat
+                label={`Brought forward at week ${week.cycleStartWeek}`}
+                value={money(totals.openingBalance)}
+              />
               <Stat label="Collected since week 92" value={money(totals.paid)} />
               <Stat label="Behind in total" value={money(totals.arrears)} alert={totals.arrears > 0} />
             </section>
@@ -212,13 +227,15 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
                     {[m.regNumber, m.phone].filter(Boolean).join(' · ')}
                   </span>
                   <span className="mt-1 block">
-                    <StatusPill member={m} />
+                    <StatusPill member={m} baselineWeek={isBaselineWeek} />
                   </span>
                 </span>
                 <span className="shrink-0 text-right">
                   <span className="amount block text-base font-bold">{money(m.money)}</span>
                   <span className="amount block text-xs text-muted">
-                    {money(m.paid)} of {money(m.required)}
+                    {m.required > 0
+                      ? `${money(m.paid)} of ${money(m.required)}`
+                      : `${money(m.paid)} paid this cycle`}
                   </span>
                   <span className="amount block text-xs text-muted">
                     tea (auto) {money(m.chaiPaid)}

@@ -61,8 +61,12 @@ async function computeMemberDues(members) {
       config,
     });
 
+    // `settled` rather than `status`: a week covered out of earlier credit is not
+    // late, and the opening week is the baseline — nothing was expected of it, so
+    // it can never be late either. This is exactly what the ledger's own
+    // weeksBehind counts, so a reminder can never contradict the member's page.
     const lateWeeks = ledger.weeks
-      .filter((w) => !w.isCurrent && w.status !== 'paid')
+      .filter((w) => !w.isBaseline && !w.isCurrent && !w.settled)
       .map((w) => ({
         weekNumber: w.weekNumber,
         startDate: w.startDate,

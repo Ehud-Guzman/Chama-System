@@ -539,6 +539,11 @@ export default function Reports() {
                             Now
                           </span>
                         )}
+                        {w.isBaseline && (
+                          <span className="rounded bg-canvas px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted">
+                            Baseline
+                          </span>
+                        )}
                         <span className="amount text-xs text-muted">
                           {shortDate(w.startDate)} – {shortDate(w.endDate)}
                         </span>
@@ -547,9 +552,11 @@ export default function Reports() {
                         <span
                           className={`text-xs font-semibold ${w.balanced ? "text-accent" : "text-alert"}`}
                         >
-                          {w.balanced
-                            ? "All paid"
-                            : `${w.shortfallCount} short`}
+                          {w.isBaseline
+                            ? "Nothing due"
+                            : w.balanced
+                              ? "All paid"
+                              : `${w.shortfallCount} short`}
                         </span>
                         <span className="amount text-sm font-semibold">
                           {money(w.actualTotal)}

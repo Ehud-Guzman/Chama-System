@@ -269,7 +269,7 @@ async function exportStatementExcel() {
     );
   }
 
-  const { member, contributions, totalContributed, totalPledged, byType, fines, weeklySchedules } = data;
+  const { member, contributions, totalContributed, totalPledged, byType, fines, weeklySchedules, ledger } = data;
   const kin = member.nextOfKin || {};
   const hasKin = Boolean(kin.name || kin.phone || kin.email);
 
@@ -304,9 +304,22 @@ async function exportStatementExcel() {
           </div>
           <div className="shrink-0 text-right">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-              Total (all-time)
+              Held by member
             </p>
-            <p className="amount text-xl font-bold text-accent">{money(totalContributed)}</p>
+            <p className="amount text-xl font-bold text-accent">
+              {money(ledger ? ledger.money : totalContributed)}
+            </p>
+            {ledger && (
+              <p className="amount mt-1 text-xs text-muted">
+                {money(ledger.openingBalance)} brought forward at week {ledger.cycleStartWeek} ·{' '}
+                {money(ledger.paid)} paid since
+              </p>
+            )}
+            {ledger && ledger.arrears > 0 && (
+              <p className="amount mt-1 text-xs font-semibold text-alert">
+                {money(ledger.arrears)} behind
+              </p>
+            )}
             {totalPledged > 0 && (
               <p className="amount mt-1 text-xs text-muted">of {money(totalPledged)} pledged</p>
             )}

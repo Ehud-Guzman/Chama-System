@@ -118,8 +118,15 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
       pendingFillRef.current = null;
       return;
     }
-    if (kind === 'weekly') setAmount(weekDue > 0 ? String(weekDue) : '');
-    else setAmount('');
+    if (kind === 'weekly') {
+      // The opening week asks nothing of anybody, but the group still collects
+      // that week's 1,400 — logged against it, the money becomes the credit that
+      // covers the week after, so the same one-tap prefill applies there.
+      const prefill = selectedWeek.isBaseline ? ledger.weeklyAmount : weekDue;
+      setAmount(prefill > 0 ? String(prefill) : '');
+    } else {
+      setAmount('');
+    }
   }, [kind, ledger, selectedWeek, weekDue]);
 
   // Picking a week also moves the date into it: a Friday-to-Thursday week means
@@ -258,7 +265,8 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         </Link>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Stat label={`Brought forward at week ${data.week.cycleStartWeek}`} value={money(ledger.openingBalance)} />
         <Stat label="His money" value={money(ledger.money)} accent />
         <Stat label="Expected by now" value={money(ledger.required)} />
         <Stat
@@ -312,7 +320,13 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                   >
                     <span className="amount block text-sm font-bold">W{w.weekNumber}</span>
                     <span className="mt-0.5 block text-[10px] uppercase tracking-wide">
-                      {w.isCurrent ? 'now' : w.settled ? 'settled' : 'owing'}
+                      {w.isBaseline
+                        ? 'opening'
+                        : w.isCurrent
+                          ? 'now'
+                          : w.settled
+                            ? 'settled'
+                            : 'owing'}
                     </span>
                   </button>
                 );
@@ -322,9 +336,17 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
               <p className="mt-2 text-xs text-muted">
                 Logging against week {selectedWeek.weekNumber} ({shortDate(selectedWeek.startDate)} →{' '}
                 {shortDate(selectedWeek.endDate)})
-                {selectedWeek.settled && !selectedWeek.isCurrent
-                  ? ' — already settled, so anything logged now counts as extra credit.'
-                  : ` — ${money(weekDue)} still due on the ${money(ledger.weeklyAmount)}.`}
+                {selectedWeek.isBaseline
+                  ? ` — the opening week. Nothing was required of it, because his money for it is the ${money(
+                      ledger.openingBalance
+                    )} he brought forward; the week's ${money(
+                      ledger.weeklyAmount
+                    )} is still collected, and it stands as credit against week ${
+                      selectedWeek.weekNumber + 1
+                    }.`
+                  : selectedWeek.settled && !selectedWeek.isCurrent
+                    ? ' — already settled, so anything logged now counts as extra credit.'
+                    : ` — ${money(weekDue)} still due on the ${money(ledger.weeklyAmount)}.`}
               </p>
             )}
             {data.history?.length > 0 && (
@@ -549,7 +571,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                                   : 'bg-canvas text-muted'
                           }`}
                         >
-                          {w.status}
+                          {w.isBaseline ? 'opening' : w.status}
                           {w.coveredByCredit ? ' (credit)' : ''}
                         </span>
                       </td>
