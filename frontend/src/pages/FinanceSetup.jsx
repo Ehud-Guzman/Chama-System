@@ -7,6 +7,24 @@ import { invalidateLedger } from '../services/ledgerCache';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import Loader from '../components/shared/Loader';
 
+// Money typed by hand: "1,400", " 1400 " and "Ksh 1400" all mean the same number —
+// Number() alone reads two of those three as NaN, which is how a sheet full of good
+// figures ends up saving nothing. A blank box means "leave this one as it is".
+function readAmount(value) {
+  const text = String(value ?? '')
+    .trim()
+    .replace(/^ksh/i, '')
+    .replace(/[\s,\u00a0]/g, '');
+  if (text === '') return { skip: true };
+  const amount = Number(text);
+  return Number.isFinite(amount) ? { amount } : { invalid: true };
+}
+
+function numberOrUndefined(value) {
+  const read = readAmount(value);
+  return read.skip ? undefined : read.amount;
+}
+
 // The go-live screen: the week cycle figures and each member's carry-forward
 // balance. The suggestions are what the ledger already says each member holds,
 // so the usual run is "Use all suggestions" → check the total → Save — no
@@ -101,27 +119,57 @@ export default function FinanceSetup() {
 
   async function save(e) {
     e.preventDefault();
+
+    // Every box is checked before anything is sent, and the offending one is named:
+    // a figure like "1,4oo" used to be dropped without a word, which looked exactly
+    // like the save failing.
+    const rows = [
+      ...data.members.map((m) => ({ label: m.name, value: balances[m._id] })),
+      ...(data.funds || []).map((f) => ({ label: `${f.name} fund`, value: funds[f.typeId] })),
+    ];
+    const bad = rows.find((row) => readAmount(row.value).invalid);
+    if (bad) {
+      toast(`“${bad.label}”: “${bad.value}” is not a number — use digits, e.g. 1400 or 1,400`, 'error');
+      return;
+    }
+
     setBusy(true);
     try {
       const res = await api.patch('/api/ledger/setup', {
-        cycleStartWeek: Number(settings.cycleStartWeek),
-        weeklyAmount: Number(settings.weeklyAmount),
-        chaiAmount: Number(settings.chaiAmount),
+        // The figures go up as typed — the API reads "1,400" and treats a blank box
+        // as "leave it", so nothing here has to guess.
+        cycleStartWeek: numberOrUndefined(settings.cycleStartWeek),
+        weeklyAmount: numberOrUndefined(settings.weeklyAmount),
+        chaiAmount: numberOrUndefined(settings.chaiAmount),
         weekAnchorDate: settings.weekAnchorDate || undefined,
         balances: data.members.map((m) => ({
           memberId: m._id,
-          openingBalance: Number(balances[m._id] || 0),
+          openingBalance: balances[m._id],
         })),
         funds: (data.funds || []).map((f) => ({
           typeId: f.typeId,
-          openingBalance: Number(funds[f.typeId] || 0),
+          openingBalance: funds[f.typeId],
         })),
       });
+      const memberSaved = res.data.balancesSaved ?? 0;
+      const fundSaved = res.data.fundsSaved ?? 0;
       toast(
-        `Saved — ${res.data.balancesSaved} member balance(s), ${res.data.fundsSaved ?? 0} fund total(s) updated`
+        memberSaved + fundSaved === 0
+          ? 'Saved — nothing had changed'
+          : `Saved — ${memberSaved} member balance(s) and ${fundSaved} fund total(s) changed`
       );
+      await reload();
     } catch (err) {
-      toast(apiMessage(err), 'error');
+      const status = err.response?.status;
+      toast(
+        apiMessage(
+          err,
+          status
+            ? `Could not save (HTTP ${status}).`
+            : 'Could not save — check your connection and try again.'
+        ),
+        'error'
+      );
     } finally {
       setBusy(false);
     }
@@ -275,7 +323,8 @@ export default function FinanceSetup() {
             <h2 className="text-sm font-bold">Opening balances</h2>
             <p className="mt-0.5 text-xs text-muted">
               What each member held on the paper ledger when this started. It is the base every
-              later week is added to.
+              later week is added to. Type figures as digits — 1400 and 1,400 both work — and a box
+              you leave alone keeps the value it already has.
             </p>
           </div>
           <button
@@ -351,7 +400,8 @@ export default function FinanceSetup() {
             Each fund&rsquo;s own carry-in, the same idea as a member&rsquo;s balance: the tea float,
             registration money collected so far, anything the group was holding before this ledger
             started counting. A fund&rsquo;s balance on every screen is this figure plus what comes
-            in minus what goes out — so a fund nobody carries in reads as empty.
+            in minus what goes out — so a fund nobody carries in reads as empty. Digits only
+            (1400 or 1,400 both work); a box you leave alone keeps the value it already has.
           </p>
         </div>
 

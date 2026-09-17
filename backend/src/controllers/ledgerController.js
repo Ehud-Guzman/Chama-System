@@ -209,6 +209,23 @@ function validateLog({ amount, date, method }) {
   return null;
 }
 
+// Money typed by hand: "1,400", " 1400 ", "Ksh 1400" and "1400.50" all mean the
+// same number, and Number() alone reads three of those four as NaN — which is how
+// a sheet full of perfectly good figures ends up saving nothing.
+//
+// A blank box means "leave this one as it is", never zero: a half-filled sheet
+// must not be able to wipe a balance that was already agreed.
+function readAmount(value) {
+  if (value === undefined || value === null) return { skip: true };
+  const text = String(value)
+    .trim()
+    .replace(/^ksh/i, '')
+    .replace(/[\s,\u00a0]/g, '');
+  if (text === '') return { skip: true };
+  const amount = Number(text);
+  return Number.isFinite(amount) ? { amount } : { invalid: true };
+}
+
 // POST /api/ledger/members/:id/log — the one write the treasurer needs. Which
 // collection it lands in is decided from the kind, so the UI can keep a single
 // "Add a log" panel instead of a form per record type. `note` is free text and
@@ -588,19 +605,64 @@ async function updateSetup(req, res, next) {
     const { cycleStartWeek, weeklyAmount, chaiAmount, weekAnchorDate, balances, funds } =
       req.body || {};
 
-    if (weeklyAmount !== undefined) {
-      const n = Number(weeklyAmount);
-      if (!Number.isFinite(n) || n <= 0) {
+    // Everything is read before anything is written, so a sheet with one unreadable
+    // figure in it saves nothing at all rather than half of itself. Blank boxes say
+    // "leave this one alone" (see readAmount).
+    const rejected = [];
+    const memberRows = [];
+    if (Array.isArray(balances)) {
+      for (const row of balances) {
+        if (!row || !mongoose.Types.ObjectId.isValid(row.memberId)) continue;
+        const read = readAmount(row.openingBalance);
+        if (read.invalid) {
+          rejected.push(`member ${row.memberId}: "${row.openingBalance}"`);
+          continue;
+        }
+        if (read.skip) continue;
+        memberRows.push({ memberId: row.memberId, amount: read.amount, note: row.openingBalanceNote });
+      }
+    }
+
+    const fundRows = [];
+    if (Array.isArray(funds)) {
+      for (const row of funds) {
+        if (!row || !mongoose.Types.ObjectId.isValid(row.typeId)) continue;
+        const read = readAmount(row.openingBalance);
+        if (read.invalid) {
+          rejected.push(`fund ${row.typeId}: "${row.openingBalance}"`);
+          continue;
+        }
+        if (read.skip) continue;
+        fundRows.push({ typeId: row.typeId, amount: read.amount, note: row.openingBalanceNote });
+      }
+    }
+
+    if (rejected.length > 0) {
+      return res.status(400).json({
+        message: `These figures are not numbers: ${rejected.join(', ')}. Use digits only, e.g. 1400 or 1,400.`,
+      });
+    }
+
+    const weekly = readAmount(weeklyAmount);
+    if (weekly.invalid) {
+      return res.status(400).json({ message: 'The weekly amount must be a number' });
+    }
+    if (weekly.amount !== undefined) {
+      if (weekly.amount <= 0) {
         return res.status(400).json({ message: 'Weekly amount must be greater than zero' });
       }
-      settings.weeklyAmount = n;
+      settings.weeklyAmount = weekly.amount;
     }
-    if (chaiAmount !== undefined) {
-      const n = Number(chaiAmount);
-      if (!Number.isFinite(n) || n < 0) {
+
+    const chai = readAmount(chaiAmount);
+    if (chai.invalid) {
+      return res.status(400).json({ message: 'The tea amount must be a number' });
+    }
+    if (chai.amount !== undefined) {
+      if (chai.amount < 0) {
         return res.status(400).json({ message: 'Tea amount cannot be negative' });
       }
-      settings.chaiAmount = n;
+      settings.chaiAmount = chai.amount;
     }
     if (cycleStartWeek !== undefined) {
       const n = parseInt(cycleStartWeek, 10);
@@ -632,65 +694,51 @@ async function updateSetup(req, res, next) {
     });
 
     let saved = 0;
-    if (Array.isArray(balances)) {
-      for (const row of balances) {
-        if (!row || !mongoose.Types.ObjectId.isValid(row.memberId)) continue;
-        const amount = Number(row.openingBalance);
-        if (!Number.isFinite(amount)) continue;
-        const memberBefore = await Member.findById(row.memberId).lean();
-        if (!memberBefore) continue;
-        if ((memberBefore.openingBalance || 0) === amount && row.openingBalanceNote === undefined) continue;
+    for (const row of memberRows) {
+      const amount = row.amount;
+      const memberBefore = await Member.findById(row.memberId).lean();
+      if (!memberBefore) continue;
+      if ((memberBefore.openingBalance || 0) === amount && row.note === undefined) continue;
 
-        const patch = { openingBalance: amount };
-        if (row.openingBalanceNote !== undefined) {
-          patch.openingBalanceNote = String(row.openingBalanceNote).trim();
-        }
-        const updated = await Member.findByIdAndUpdate(row.memberId, { $set: patch }, { new: true });
-        saved += 1;
-        await logAudit({
-          action: 'update',
-          entityType: 'Member',
-          entityId: updated._id,
-          performedBy: req.user._id,
-          before: memberBefore,
-          after: snapshot(updated),
-        });
-      }
+      const patch = { openingBalance: amount };
+      if (row.note !== undefined) patch.openingBalanceNote = String(row.note).trim();
+      const updated = await Member.findByIdAndUpdate(row.memberId, { $set: patch }, { new: true });
+      saved += 1;
+      await logAudit({
+        action: 'update',
+        entityType: 'Member',
+        entityId: updated._id,
+        performedBy: req.user._id,
+        before: memberBefore,
+        after: snapshot(updated),
+      });
     }
 
     // The funds' own one-time totals, the same shape as the member balances above:
     // the money each fund already held before this ledger started counting.
     let savedFunds = 0;
-    if (Array.isArray(funds)) {
-      for (const row of funds) {
-        if (!row || !mongoose.Types.ObjectId.isValid(row.typeId)) continue;
-        const amount = Number(row.openingBalance);
-        if (!Number.isFinite(amount)) continue;
-        const typeBefore = await ContributionType.findById(row.typeId).lean();
-        if (!typeBefore) continue;
-        if ((typeBefore.openingBalance || 0) === amount && row.openingBalanceNote === undefined) {
-          continue;
-        }
+    for (const row of fundRows) {
+      const amount = row.amount;
+      const typeBefore = await ContributionType.findById(row.typeId).lean();
+      if (!typeBefore) continue;
+      if ((typeBefore.openingBalance || 0) === amount && row.note === undefined) continue;
 
-        const patch = { openingBalance: amount };
-        if (row.openingBalanceNote !== undefined) {
-          patch.openingBalanceNote = String(row.openingBalanceNote).trim();
-        }
-        const updated = await ContributionType.findByIdAndUpdate(
-          row.typeId,
-          { $set: patch },
-          { new: true }
-        );
-        savedFunds += 1;
-        await logAudit({
-          action: 'update',
-          entityType: 'ContributionType',
-          entityId: updated._id,
-          performedBy: req.user._id,
-          before: typeBefore,
-          after: snapshot(updated),
-        });
-      }
+      const patch = { openingBalance: amount };
+      if (row.note !== undefined) patch.openingBalanceNote = String(row.note).trim();
+      const updated = await ContributionType.findByIdAndUpdate(
+        row.typeId,
+        { $set: patch },
+        { new: true }
+      );
+      savedFunds += 1;
+      await logAudit({
+        action: 'update',
+        entityType: 'ContributionType',
+        entityId: updated._id,
+        performedBy: req.user._id,
+        before: typeBefore,
+        after: snapshot(updated),
+      });
     }
 
     res.json({ settings, balancesSaved: saved, fundsSaved: savedFunds });
