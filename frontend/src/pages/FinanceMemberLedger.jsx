@@ -288,6 +288,14 @@ export default function FinanceMemberLedger() {
                   : ` — ${money(weekDue)} still due on the ${money(ledger.weeklyAmount)}.`}
               </p>
             )}
+            {data.history?.length > 0 && (
+              <p className="mt-2 text-xs leading-5 text-muted">
+                Weeks 1–{data.history[data.history.length - 1].weekNumber} are listed on the week table
+                below for reference. They ran before this ledger opened and their money is already
+                inside his brought-forward balance, so they are not scored — to correct one of those
+                weeks, change his opening balance instead.
+              </p>
+            )}
           </fieldset>
 
           {ledger.weeksBehind > 0 && (
@@ -509,6 +517,28 @@ export default function FinanceMemberLedger() {
                       <td className="amount px-3 py-2 text-muted">{money(w.chaiPaid)}</td>
                     </tr>
                   ))}
+
+                  {data.history?.length > 0 && (
+                    <>
+                      <tr className="border-b border-rule bg-canvas">
+                        <td colSpan={4} className="px-3 py-2 text-xs leading-5 text-muted">
+                          Weeks 1–{data.history[data.history.length - 1].weekNumber} ran before this ledger
+                          opened. Their money is already inside the {money(ledger.openingBalance)} brought
+                          forward, so they are listed for reference and never scored again.
+                        </td>
+                      </tr>
+                      {[...data.history].reverse().map((w) => (
+                        <tr key={w.weekNumber} className="border-b border-rule text-muted last:border-b-0">
+                          <td className="amount px-3 py-2">{w.weekNumber}</td>
+                          <td className="amount px-3 py-2">—</td>
+                          <td className="px-3 py-2 text-xs">Carried forward</td>
+                          <td className="amount px-3 py-2">
+                            {shortDate(w.startDate)} – {shortDate(w.endDate)}
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
                 </tbody>
               </table>
             </section>

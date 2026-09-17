@@ -58,9 +58,12 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
 
 - **The week cycle (the treasurer's maths).** `weekAnchorDate` + `cycleStartWeek` in Settings
   pin the group to one shared week number — week 92 when this went live, closing on its
-  Thursday — and it advances by itself every Friday, so nobody ever has to "start" a week. Week
-  boundaries are pinned to East African time (a fixed +3) rather than the server's clock, because
-  the API runs on hosts that default to UTC while the treasurer's phone is on EAT. Per member:
+  Thursday — and it advances by itself every Friday, so nobody ever has to "start" a week. The
+  anchor is checked against the group's own ledger, which labelled its weeks by the Thursday they
+  closed on (week 86 = Thu 6 Aug 2026, week 87 = 13 Aug, …), and it reproduces that to the day.
+  Week boundaries are pinned to East African time (a fixed +3) rather than the server's clock,
+  because the API runs on hosts that default to UTC while the treasurer's phone is on EAT. Per
+  member:
   `required so far = weeklyAmount × weeks elapsed since the opening week` (1,400 in week 92,
   2,800 in 93, …), and
   `his money = openingBalance + what he has paid since week 92 − required − tea`. Paying above
@@ -88,7 +91,10 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   belongs to instead of landing on today's date as anonymous credit. Where a member is behind,
   one button fills in the whole arrears total against the earliest week he owes — the cumulative
   credit of §7.5 then settles the weeks after it on its own, so there is no need to enter a line
-  per week.
+  per week. Below that, the week table and the passbook's schedule both list **every week back to
+  week 1** (from 13 Dec 2024), each one running Friday to Thursday exactly as the paper ledger
+  numbered them; the weeks before the cycle opened are marked "carried forward" and never scored,
+  because their money is already inside the member's `openingBalance`.
 - **The Week-92 reset** (`npm run reset:week92 --prefix backend`, dry run by default;
   `--confirm-reset` applies it) rolls every member's ledger balance into `openingBalance`, clears
   contributions, expenses, fines, fine types, contribution types and pledges, and reseeds the

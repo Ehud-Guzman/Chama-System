@@ -8,7 +8,7 @@ const { logAudit, snapshot } = require('../utils/auditLogger');
 const { parseMembersCSV } = require('../utils/csvImport');
 const { typeBreakdown } = require('../utils/typeBreakdown');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
-const { resolveConfig } = require('../utils/weekCycle');
+const { resolveConfig, cycleHistory } = require('../utils/weekCycle');
 const { bucketForType } = require('../utils/ledgerTypes');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { renderStatementPdf } = require('../utils/statementPdf');
@@ -77,6 +77,11 @@ async function buildFinesAndSchedules(member, contributions) {
       typeName: type.name,
       weeklyAmount: isChai ? config.chaiAmount : config.weeklyAmount,
       weeks: buildWeeklySchedule(config, isChai ? config.chaiAmount : config.weeklyAmount, typeContributions),
+      // The group's earlier weeks (1..91 today), so the schedule reads back to
+      // week one exactly as the paper ledger numbered it. They are marked
+      // isHistory and carry no expectation — the money for them is inside the
+      // member's carried-forward balance.
+      history: cycleHistory(config),
     };
   });
 

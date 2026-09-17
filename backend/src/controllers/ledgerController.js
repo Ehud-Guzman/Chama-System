@@ -10,6 +10,7 @@ const {
   currentWeekNumber,
   weekRange,
   cycleWeekNumber,
+  cycleHistory,
   fridayOf,
   parseEatDate,
   toEatDateString,
@@ -130,6 +131,10 @@ async function memberLedger(req, res, next) {
       member: summariseMember(member, ledger),
       ledger,
       week: { currentWeek: ledger.currentWeek, ...weekRange(ledger.currentWeek, config) },
+      // Weeks 1..(cycleStartWeek-1) — the group's whole history, so the week list
+      // reads back to week one with every Thursday in place, even though only the
+      // live weeks carry an expectation.
+      history: cycleHistory(config),
       // Each log carries the week it falls in so the list can be read the same
       // way the paper ledger was — by week, not just by date.
       logs: contributions.map((c) => ({ ...c, week: cycleWeekNumber(c.date, config) })),

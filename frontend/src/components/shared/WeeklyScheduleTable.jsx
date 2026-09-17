@@ -8,17 +8,17 @@ const STATUS_CLASSES = {
   unpaid: 'text-alert',
 };
 
-// Week-by-week due schedule for one or more fixed weekly contribution types
-// (e.g. the 1,400 weekly contribution, the 100 Chai fee), anchored to the
-// member's own join date. Shared by the admin member view and the public
-// passbook — same shape from GET /api/members/:id and the public profile.
+// Week-by-week due schedule for one or more fixed weekly funds (the weekly
+// contribution, the 100 tea), taken from the group's own cycle — week 92 closing
+// on its Thursday and advancing every Friday — not from each member's join date.
+// Shared by the admin member record and the public passbook.
 //
-// The list of weeks itself needs no admin action to "advance" — the backend
-// derives the current week count from the clock every time this is fetched,
-// so a new row simply exists as soon as its 7-day window starts. Newest
-// week first (like every other ledger in this app) so that growing history
-// doesn't push the one week anyone actually cares about further down a
-// scrolling list every week that passes.
+// The list reaches back to week 1 so the numbering reads exactly as the paper
+// ledger did, every week closing on a Thursday. The weeks before the cycle
+// started are shown as carried forward rather than scored: their money is inside
+// the member's opening balance, and scoring them a second time would bill weeks
+// that were already paid. They sit behind a toggle because ninety-odd rows would
+// bury the week anybody actually cares about — the one running now.
 export default function WeeklyScheduleTable({ schedules }) {
   if (!schedules || schedules.length === 0) return null;
 
@@ -33,6 +33,10 @@ export default function WeeklyScheduleTable({ schedules }) {
 
 function ScheduleSection({ schedule: s }) {
   const weeksNewestFirst = useMemo(() => [...s.weeks].reverse(), [s.weeks]);
+  const historyNewestFirst = useMemo(
+    () => [...(s.history || [])].reverse(),
+    [s.history]
+  );
   const currentWeek = s.weeks[s.weeks.length - 1];
 
   return (
@@ -79,7 +83,33 @@ function ScheduleSection({ schedule: s }) {
             </li>
           ))}
         </ul>
+
+        {historyNewestFirst.length > 0 && (
+          <>
+            <p className="border-t border-rule bg-canvas px-4 py-3 text-xs leading-5 text-muted">
+              Weeks 1–{historyNewestFirst[0].weekNumber} ran before this ledger opened. What was paid in
+              them is already inside the member’s carried-forward balance, so they are listed for
+              reference and never scored again.
+            </p>
+            <ul>
+              {historyNewestFirst.map((w) => (
+                <li
+                  key={w.weekNumber}
+                  className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-3 border-t border-rule px-4 py-2 text-sm text-muted"
+                >
+                  <span className="amount text-xs">{w.weekNumber}</span>
+                  <span className="amount text-xs">
+                    {shortDate(w.startDate)} – {shortDate(w.endDate)}
+                  </span>
+                  <span className="text-right text-xs">—</span>
+                  <span className="text-right text-xs">Carried forward</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     </section>
   );
 }
+

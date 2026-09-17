@@ -117,6 +117,20 @@ function weeksElapsed(config, now = Date.now()) {
   return currentWeekNumber(config, now) - config.cycleStartWeek + 1;
 }
 
+// Every week number the group has ever had, back to week 1, for the weeks
+// *before* the one this ledger scores. They exist so the numbering reads exactly
+// as the paper ledger did — each week closing on its Thursday, all the way back
+// to the first — while only the weeks from cycleStartWeek onward carry an
+// expectation: the money for the earlier ones is already inside each member's
+// carried-forward balance, so scoring them again would bill the same weeks twice.
+function cycleHistory(config) {
+  const weeks = [];
+  for (let w = 1; w < config.cycleStartWeek; w++) {
+    weeks.push({ ...weekRange(w, config), isHistory: true });
+  }
+  return weeks;
+}
+
 module.exports = {
   WEEK_MS,
   DAY_MS,
@@ -133,4 +147,5 @@ module.exports = {
   weekRange,
   currentWeekNumber,
   weeksElapsed,
+  cycleHistory,
 };
