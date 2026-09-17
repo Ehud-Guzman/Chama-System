@@ -48,7 +48,9 @@ export default function FinanceMemberLedger() {
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(null);
-  const [showWeeks, setShowWeeks] = useState(false);
+  // Open by default: the week list is the thing a treasurer checks against the
+  // paper ledger, so it should never be the hidden half of the page.
+  const [showWeeks, setShowWeeks] = useState(true);
 
   // Stable per-attempt key: it only rotates after a successful submit, so a
   // retried request resolves to the entry already written instead of charging
