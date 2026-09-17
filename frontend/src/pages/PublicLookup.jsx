@@ -300,14 +300,14 @@ export default function PublicLookup() {
 
 
         {/* =================================================
-              CHAMA DOCUMENTS & MINUTES
+              CHAMA DOCUMENTS, MINUTES & CONSTITUTION
 
               Locked until a registered phone number is given.
               A successful lookup above already proved one, so the
               members' area opens itself rather than asking again.
           ================================================== */}
 
-          <section className="mt-5" aria-label="Chama documents and minutes">
+          <section className="mt-5" aria-label="Chama documents, minutes and constitution">
             <PublicRecords
               key={lookedUpPhone || 'locked'}
               verifiedPhone={lookedUpPhone}
