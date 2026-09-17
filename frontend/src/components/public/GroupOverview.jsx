@@ -77,7 +77,7 @@ export default function GroupOverview({ onChamaName }) {
           {overview.fundBalances?.length > 0 && (
             <div className="rounded-xl border border-rule bg-surface p-4 md:p-5">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                Fund balances (collected minus spent)
+                Fund balances (what each fund holds)
               </p>
               <ul className="space-y-2">
                 {overview.fundBalances.map((f) => (

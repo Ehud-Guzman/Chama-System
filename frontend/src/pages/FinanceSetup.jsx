@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
@@ -18,6 +18,15 @@ export default function FinanceSetup() {
   const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState(null);
   const [balances, setBalances] = useState({});
+  // Each fund's own one-time carry-in, the same idea as a member's balance: the
+  // tea float, registration already collected, and so on.
+  const [funds, setFunds] = useState({});
+  const [newFund, setNewFund] = useState({
+    name: '',
+    isGroupFund: true,
+    tracksExpenses: true,
+  });
+  const [addingFund, setAddingFund] = useState(false);
   // The one-time week collection — a whole week paid in cash for every member,
   // which is what week 91 is: the week the paper ledger closed just before the
   // books opened. It previews before it posts, and it can be taken back out.
@@ -31,24 +40,59 @@ export default function FinanceSetup() {
   const [collecting, setCollecting] = useState(false);
   const [confirming, setConfirming] = useState(null); // 'post' | 'undo' | null
 
+  const apply = useCallback((payload) => {
+    setData(payload);
+    setSettings({
+      ...payload.settings,
+      weekAnchorDate: payload.settings.weekAnchorDate
+        ? String(payload.settings.weekAnchorDate).slice(0, 10)
+        : '',
+    });
+    setBalances(
+      Object.fromEntries(payload.members.map((m) => [m._id, String(m.openingBalance || 0)]))
+    );
+    setFunds(
+      Object.fromEntries((payload.funds || []).map((f) => [f.typeId, String(f.openingBalance || 0)]))
+    );
+  }, []);
+
+  const reload = useCallback(async () => {
+    const res = await api.get('/api/ledger/setup');
+    apply(res.data);
+    return res.data;
+  }, [apply]);
+
   useEffect(() => {
-    api
-      .get('/api/ledger/setup')
-      .then((res) => {
-        setData(res.data);
-        setSettings({
-          ...res.data.settings,
-          weekAnchorDate: res.data.settings.weekAnchorDate
-            ? String(res.data.settings.weekAnchorDate).slice(0, 10)
-            : '',
-        });
-        setBalances(
-          Object.fromEntries(res.data.members.map((m) => [m._id, String(m.openingBalance || 0)]))
-        );
-      })
+    reload()
       .catch((err) => toast(apiMessage(err, 'Could not load the setup'), 'error'))
       .finally(() => setLoading(false));
-  }, [toast]);
+  }, [reload, toast]);
+
+  // A fund the group collects that is not in the system yet — registration,
+  // resignation, welfare. Created here so its one-time total can be entered on
+  // the same screen rather than sending the treasurer somewhere else.
+  async function addFund() {
+    const name = newFund.name.trim();
+    if (!name) {
+      toast('Give the fund a name', 'error');
+      return;
+    }
+    setAddingFund(true);
+    try {
+      await api.post('/api/types', {
+        name,
+        isGroupFund: newFund.isGroupFund,
+        tracksExpenses: newFund.tracksExpenses,
+      });
+      toast(`${name} added — now give it its current total`);
+      setNewFund({ name: '', isGroupFund: true, tracksExpenses: true });
+      await reload();
+    } catch (err) {
+      toast(apiMessage(err), 'error');
+    } finally {
+      setAddingFund(false);
+    }
+  }
 
   function useSuggestions() {
     setBalances(Object.fromEntries(data.members.map((m) => [m._id, String(m.suggested)])));
@@ -68,8 +112,14 @@ export default function FinanceSetup() {
           memberId: m._id,
           openingBalance: Number(balances[m._id] || 0),
         })),
+        funds: (data.funds || []).map((f) => ({
+          typeId: f.typeId,
+          openingBalance: Number(funds[f.typeId] || 0),
+        })),
       });
-      toast(`Saved — ${res.data.balancesSaved} opening balance(s) updated`);
+      toast(
+        `Saved — ${res.data.balancesSaved} member balance(s), ${res.data.fundsSaved ?? 0} fund total(s) updated`
+      );
     } catch (err) {
       toast(apiMessage(err), 'error');
     } finally {
@@ -81,6 +131,7 @@ export default function FinanceSetup() {
   if (!data || !settings) return null;
 
   const enteredTotal = data.members.reduce((s, m) => s + Number(balances[m._id] || 0), 0);
+  const fundsTotal = (data.funds || []).reduce((s, f) => s + Number(funds[f.typeId] || 0), 0);
 
   function describe(d, posted) {
     const each = d.perMember.weekly - d.perMember.chai;
@@ -289,6 +340,134 @@ export default function FinanceSetup() {
               </tr>
             </tfoot>
           </table>
+        </div>
+      </section>
+
+      {/* The group's funds, each with the total it already held. */}
+      <section className="overflow-hidden rounded-xl border border-rule bg-surface">
+        <div className="border-b border-rule px-4 py-3">
+          <h2 className="text-sm font-bold">Funds — what the group already holds (one-time)</h2>
+          <p className="mt-0.5 max-w-3xl text-xs leading-5 text-muted">
+            Each fund&rsquo;s own carry-in, the same idea as a member&rsquo;s balance: the tea float,
+            registration money collected so far, anything the group was holding before this ledger
+            started counting. A fund&rsquo;s balance on every screen is this figure plus what comes
+            in minus what goes out — so a fund nobody carries in reads as empty.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-rule bg-canvas">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">
+                  Fund
+                </th>
+                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">
+                  The ledger counts
+                </th>
+                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">
+                  Carried in
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data.funds || []).map((f) => {
+                const differs = Number(funds[f.typeId] || 0) !== f.openingBalance;
+                return (
+                  <tr key={f.typeId} className="border-b border-rule last:border-b-0">
+                    <td className="px-4 py-2">
+                      <p className="font-medium">
+                        {f.name}
+                        {!f.active && <span className="ml-2 text-xs text-muted">(inactive)</span>}
+                      </p>
+                      <p className="text-xs text-muted">
+                        {[f.isGroupFund ? 'Group fund' : 'Member money', f.tracksExpenses ? 'we spend from it' : '']
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    </td>
+                    <td className="amount px-4 py-2 text-muted">
+                      {money(f.collected + f.derived - f.spent)}
+                      {f.derived > 0 && (
+                        <span className="block text-xs">
+                          includes {money(f.derived)} of automatic tea
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={funds[f.typeId] ?? ''}
+                        onChange={(e) => setFunds({ ...funds, [f.typeId]: e.target.value })}
+                        aria-label={`Carried-in total for ${f.name}`}
+                        className={`amount h-11 w-36 rounded-lg border px-3 text-sm ${
+                          differs ? 'border-primary bg-primary/5' : 'border-rule bg-canvas'
+                        }`}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="border-t border-rule bg-canvas">
+              <tr>
+                <td
+                  className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-muted"
+                  colSpan={2}
+                >
+                  Total carried in
+                </td>
+                <td className="amount px-4 py-3 font-bold">{money(fundsTotal)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {/* Not a nested form: the page is one form, so this is plain fields and a
+            button that posts on its own. */}
+        <div className="flex flex-wrap items-end gap-3 border-t border-rule px-4 py-3">
+          <div className="min-w-48 flex-1">
+            <label htmlFor="newFundName" className="mb-1 block text-xs font-medium">
+              Add a fund the group collects — registration, resignation, welfare…
+            </label>
+            <input
+              id="newFundName"
+              value={newFund.name}
+              onChange={(e) => setNewFund({ ...newFund, name: e.target.value })}
+              placeholder="Registration"
+              className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+            />
+          </div>
+
+          <label className="flex min-h-12 items-center gap-2 text-xs font-medium">
+            <input
+              type="checkbox"
+              checked={newFund.isGroupFund}
+              onChange={(e) => setNewFund({ ...newFund, isGroupFund: e.target.checked })}
+              className="h-4 w-4"
+            />
+            Belongs to the group
+          </label>
+
+          <label className="flex min-h-12 items-center gap-2 text-xs font-medium">
+            <input
+              type="checkbox"
+              checked={newFund.tracksExpenses}
+              onChange={(e) => setNewFund({ ...newFund, tracksExpenses: e.target.checked })}
+              className="h-4 w-4"
+            />
+            We spend from it
+          </label>
+
+          <button
+            type="button"
+            onClick={addFund}
+            disabled={addingFund}
+            className="min-h-11 rounded-lg border border-rule px-4 text-sm font-medium disabled:opacity-60"
+          >
+            {addingFund ? 'Adding…' : 'Add fund'}
+          </button>
         </div>
       </section>
 

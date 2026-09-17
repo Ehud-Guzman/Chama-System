@@ -42,7 +42,13 @@ async function publicOverview(req, res, next) {
 
     const expenseTypes = types.filter((t) => t.tracksExpenses);
     const fundBalances = await Promise.all(
-      expenseTypes.map(async (t) => ({ name: t.name, ...(await fundBalance(t._id)) }))
+      expenseTypes.map(async (t) => ({
+        name: t.name,
+        // The fund's one-time carry-in (the tea float the group already held),
+        // so a balance is what the fund actually holds, not just what this ledger
+        // has watched move.
+        ...(await fundBalance(t._id, { carriedIn: t.openingBalance })),
+      }))
     );
     const totalExpenses = fundBalances.reduce((sum, f) => sum + (f.spent || 0), 0);
 

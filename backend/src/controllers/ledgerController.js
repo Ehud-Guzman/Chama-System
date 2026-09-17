@@ -38,7 +38,9 @@ async function loadContext(memberFilter) {
   const memberIds = members.map((m) => m._id);
 
   const [types, contributions] = await Promise.all([
-    ContributionType.find().select('name isWeekly isGroupFund tracksExpenses active').lean(),
+    ContributionType.find()
+      .select('name isWeekly isGroupFund tracksExpenses active openingBalance openingBalanceNote')
+      .lean(),
     memberIds.length === 0
       ? Promise.resolve([])
       : Contribution.find({ memberId: { $in: memberIds }, deleted: false })
@@ -146,7 +148,15 @@ async function memberLedger(req, res, next) {
     const teaIncome =
       config.chaiAmount * ledger.weeksScored * activeMembers + (teaBeforeCycle[0]?.total || 0);
     const balances = await Promise.all(
-      fundTypes.map((t) => fundBalance(t._id, { extraIncome: bucketForType(t) === 'chai' ? teaIncome : 0 }))
+      fundTypes.map((t) =>
+        fundBalance(t._id, {
+          extraIncome: bucketForType(t) === 'chai' ? teaIncome : 0,
+          // The fund's one-time carry-in, entered on the go-live screen: without
+          // it the Tea Fund (and any other fund) would read as if the group had
+          // only ever collected what this ledger has seen.
+          carriedIn: t.openingBalance,
+        })
+      )
     );
 
     res.json({
@@ -485,10 +495,27 @@ async function getSetup(req, res, next) {
     const settings = await getOrCreateSettings();
     const config = resolveConfig(settings);
 
-    const [members, held] = await Promise.all([
+    const [members, held, types, collectedByType, spentByType, activeMemberCount] = await Promise.all([
       Member.find().sort({ name: 1 }).lean(),
       suggestedOpeningBalances(),
+      ContributionType.find().sort({ name: 1 }).lean(),
+      Contribution.aggregate([
+        { $match: { deleted: false } },
+        { $group: { _id: '$typeId', total: { $sum: '$amount' } } },
+      ]),
+      Expense.aggregate([
+        { $match: { deleted: false } },
+        { $group: { _id: '$typeId', total: { $sum: '$amount' } } },
+      ]),
+      Member.countDocuments({ active: true }),
     ]);
+    const collectedMap = new Map(collectedByType.map((r) => [String(r._id), r.total]));
+    const spentMap = new Map(spentByType.map((r) => [String(r._id), r.total]));
+    // The Tea Fund's income is derived rather than logged, so what the ledger
+    // already counts for it has to be worked out the same way the member page
+    // works it out: the automatic 100 a member for every scored week.
+    const scoredWeeks = Math.max(0, currentWeekNumber(config) - config.cycleStartWeek);
+    const automaticTea = config.chaiAmount * scoredWeeks * activeMemberCount;
 
     res.json({
       settings: {
@@ -516,6 +543,33 @@ async function getSetup(req, res, next) {
         // and nothing here needs more than that.
         suggested: Math.round((held.get(String(m._id)) || 0) * 100) / 100,
       })),
+      // The group's funds, each with the one-time total it already held. Same idea
+      // as a member's opening balance: the money was real before this ledger
+      // existed, so it has to be keyed in once or every fund reads as empty.
+      funds: types.map((t) => {
+        const collected = collectedMap.get(String(t._id)) || 0;
+        const spent = spentMap.get(String(t._id)) || 0;
+        const derived = bucketForType(t) === 'chai' ? automaticTea : 0;
+        const openingBalance = t.openingBalance || 0;
+        return {
+          typeId: t._id,
+          name: t.name,
+          description: t.description || '',
+          isWeekly: Boolean(t.isWeekly),
+          isGroupFund: Boolean(t.isGroupFund),
+          tracksExpenses: Boolean(t.tracksExpenses),
+          isRecoverable: Boolean(t.isRecoverable),
+          active: t.active !== false,
+          openingBalance,
+          openingBalanceNote: t.openingBalanceNote || '',
+          collected,
+          derived,
+          spent,
+          // Where the fund stands today with its carry-in included — the figure to
+          // check the paper book against.
+          balance: openingBalance + collected + derived - spent,
+        };
+      }),
     });
   } catch (err) {
     next(err);
@@ -528,7 +582,8 @@ async function updateSetup(req, res, next) {
   try {
     const settings = await getOrCreateSettings();
     const before = snapshot(settings);
-    const { cycleStartWeek, weeklyAmount, chaiAmount, weekAnchorDate, balances } = req.body || {};
+    const { cycleStartWeek, weeklyAmount, chaiAmount, weekAnchorDate, balances, funds } =
+      req.body || {};
 
     if (weeklyAmount !== undefined) {
       const n = Number(weeklyAmount);
@@ -600,7 +655,42 @@ async function updateSetup(req, res, next) {
       }
     }
 
-    res.json({ settings, balancesSaved: saved });
+    // The funds' own one-time totals, the same shape as the member balances above:
+    // the money each fund already held before this ledger started counting.
+    let savedFunds = 0;
+    if (Array.isArray(funds)) {
+      for (const row of funds) {
+        if (!row || !mongoose.Types.ObjectId.isValid(row.typeId)) continue;
+        const amount = Number(row.openingBalance);
+        if (!Number.isFinite(amount)) continue;
+        const typeBefore = await ContributionType.findById(row.typeId).lean();
+        if (!typeBefore) continue;
+        if ((typeBefore.openingBalance || 0) === amount && row.openingBalanceNote === undefined) {
+          continue;
+        }
+
+        const patch = { openingBalance: amount };
+        if (row.openingBalanceNote !== undefined) {
+          patch.openingBalanceNote = String(row.openingBalanceNote).trim();
+        }
+        const updated = await ContributionType.findByIdAndUpdate(
+          row.typeId,
+          { $set: patch },
+          { new: true }
+        );
+        savedFunds += 1;
+        await logAudit({
+          action: 'update',
+          entityType: 'ContributionType',
+          entityId: updated._id,
+          performedBy: req.user._id,
+          before: typeBefore,
+          after: snapshot(updated),
+        });
+      }
+    }
+
+    res.json({ settings, balancesSaved: saved, fundsSaved: savedFunds });
   } catch (err) {
     next(err);
   }

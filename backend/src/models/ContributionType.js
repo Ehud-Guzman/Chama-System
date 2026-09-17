@@ -21,6 +21,14 @@ const ContributionTypeSchema = new Schema(
 // owed back to the group. Excluded from "total expenses" so outstanding
 // loans don't make the group look like it's run a deficit.
 isRecoverable: { type: Boolean, default: false },
+    // What the fund already held when the books opened — the same one-time
+    // carry-in a member gets in `openingBalance`, entered on the go-live screen.
+    // The Tea Fund's float, registration money collected before this ledger, and
+    // so on. A fund's balance is this, plus what comes in, minus what goes out.
+    openingBalance: { type: Number, default: 0 },
+    // Where the carried-in figure came from (the paper book's column, a bank
+    // line, …), so a figure nobody can account for is visible as unexplained.
+    openingBalanceNote: { type: String, default: '' },
   },
   
   { timestamps: true }

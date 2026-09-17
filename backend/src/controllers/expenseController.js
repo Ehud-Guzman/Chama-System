@@ -20,7 +20,12 @@ async function listExpenses(req, res, next) {
       .populate('loggedBy', 'name')
       .lean();
 
-    const balance = typeId ? await fundBalance(typeId) : null;
+    // The fund's own carry-in counts toward what it can spend: a balance check
+    // that ignored the money the fund already held would wrongly refuse a payout.
+    const type = typeId
+      ? await ContributionType.findById(typeId).select('openingBalance').lean()
+      : null;
+    const balance = typeId ? await fundBalance(typeId, { carriedIn: type?.openingBalance }) : null;
     res.json({ expenses, balance });
   } catch (err) {
     next(err);

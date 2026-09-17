@@ -117,6 +117,16 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   the dashboard (next to the week they are working in) rather than below the member list, and the
   resulting **brought-forward total is one of the headline tiles** on that same header, so the
   figure the books opened with is always visible without scrolling.
+- **The funds get the same one-time carry-in:** the same screen lists every fund the group collects
+  — the Tea Fund, plus registration, resignation, welfare or anything else — each with a
+  **Carried in** figure: what that fund already held before this ledger started counting
+  (`ContributionType.openingBalance`). A fund's balance is then `carried in + collected + derived
+  − spent`, wherever it is shown: the member's page, the public group page, and the balance check
+  before an expense is logged. Without it every fund would read as if the group had never collected
+  anything — the same trap the members' opening balances exist to avoid. A fund the system does not
+  have yet can be **added from that page** (name, whether it belongs to the group, whether the group
+  spends from it) through the ordinary `/api/types` API, so registration and resignation do not need
+  a separate screen.
 - **`openingBalance`** on each member carries his verified paper-ledger balance into the cycle,
   so his money starts where the old sheet left him. It is shown at the top wherever a member
   appears — the header tile on the ledger list, a "Brought forward" tile on his own page, the first
