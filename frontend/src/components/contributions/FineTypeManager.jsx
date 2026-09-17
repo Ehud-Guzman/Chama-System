@@ -83,29 +83,33 @@ export default function FineTypeManager({ onChange }) {
         <ul className="mt-3 divide-y divide-rule">
           {types.map((t) => (
             <li key={t._id} className="py-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {t.name}
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  {/* Name and category sit in their own wrapping row so the
+                      category can never be truncated away along with the name. */}
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <p className="break-words text-sm font-medium">{t.name}</p>
                     <span
-                      className={`ml-2 text-[10px] font-semibold uppercase tracking-widest ${
+                      className={`text-[10px] font-semibold uppercase tracking-widest ${
                         t.category === 'disciplinary' ? 'text-primary' : 'text-accent'
                       }`}
                     >
                       {t.category === 'disciplinary' ? 'Disciplinary' : 'Financial'}
                     </span>
                     {!t.active && (
-                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
                         Inactive
                       </span>
                     )}
-                  </p>
-                  {t.description && <p className="truncate text-xs text-muted">{t.description}</p>}
+                  </div>
+                  {t.description && (
+                    <p className="mt-0.5 break-words text-xs text-muted">{t.description}</p>
+                  )}
                 </div>
                 <button
                   type="button"
                   onClick={() => toggleActive(t)}
-                  className="min-h-11 shrink-0 rounded-lg border border-rule px-3 text-xs font-medium"
+                  className="min-h-11 w-full rounded-lg border border-rule px-3 text-xs font-medium lg:w-auto lg:shrink-0"
                 >
                   {t.active ? 'Deactivate' : 'Reactivate'}
                 </button>
@@ -126,14 +130,14 @@ export default function FineTypeManager({ onChange }) {
                     <button
                       type="button"
                       onClick={() => saveAmount(t)}
-                      className="min-h-10 rounded-lg bg-primary px-3 text-xs font-semibold text-white"
+                      className="min-h-11 rounded-lg bg-primary px-3 text-xs font-semibold text-white"
                     >
                       Save
                     </button>
                     <button
                       type="button"
                       onClick={() => setEditingAmountId(null)}
-                      className="min-h-10 rounded-lg border border-rule px-3 text-xs font-medium"
+                      className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium"
                     >
                       Cancel
                     </button>
@@ -145,7 +149,7 @@ export default function FineTypeManager({ onChange }) {
                       setEditingAmountId(t._id);
                       setAmountValue(String(t.defaultAmount || ''));
                     }}
-                    className="amount text-xs font-medium text-primary"
+                    className="amount inline-flex min-h-11 items-center text-xs font-medium text-primary"
                   >
                     {t.defaultAmount > 0 ? `${money(t.defaultAmount)} default — edit` : 'No default amount — set one'}
                   </button>

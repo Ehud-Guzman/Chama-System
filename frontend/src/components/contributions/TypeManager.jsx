@@ -149,7 +149,7 @@ export default function TypeManager({ onChange }) {
   const fundCount = types.filter((t) => t.tracksExpenses).length;
 
   return (
-    <section className="flex max-h-[700px] flex-col overflow-hidden rounded-xl border border-rule bg-surface lg:max-h-[800px]">
+    <section className="flex flex-col overflow-hidden rounded-xl border border-rule bg-surface xl:max-h-[800px]">
       {/* Header */}
       <div className="border-b border-rule p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -167,21 +167,28 @@ export default function TypeManager({ onChange }) {
         </div>
       </div>
 
-      {/* Content grid */}
-      <div className="flex flex-1 flex-col gap-0 overflow-hidden 2xl:flex-row">
+      {/* Content grid. Below xl the list and the form simply stack and the page
+          does the scrolling — a height-capped card holding two nested scroll
+          areas is miserable on a phone. The cap and the independent columns
+          only apply at xl, where there is room for the form alongside. */}
+      <div className="flex flex-1 flex-col gap-0 xl:flex-row xl:overflow-hidden">
         {/* Types list */}
-        <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="min-w-0 flex-1 xl:overflow-y-auto">
           {types.length === 0 ? (
             <p className="p-5 text-sm text-muted">No contribution types yet.</p>
           ) : (
             <ul className="divide-y divide-rule">
               {types.map((t) => (
                 <li key={t._id} className={`p-4 ${t.active ? '' : 'bg-canvas/60'}`}>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold">{t.name}</p>
+                  {/* The name wraps instead of truncating — "Audit …" hides the
+                      one thing that identifies the row. Text and buttons sit
+                      side by side only from lg: three action buttons beside a
+                      name leave the name nothing to live on at tablet widths. */}
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-bold">{t.name}</p>
                       {t.description && (
-                        <p className="mt-0.5 truncate text-xs text-muted">{t.description}</p>
+                        <p className="mt-0.5 break-words text-xs text-muted">{t.description}</p>
                       )}
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {!t.active && <Badge>Inactive</Badge>}
@@ -191,11 +198,11 @@ export default function TypeManager({ onChange }) {
                         {t.isRecoverable && <Badge>Recoverable</Badge>}
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 sm:shrink-0 sm:justify-end">
+                    <div className="flex flex-wrap gap-2 lg:shrink-0 lg:justify-end">
                       <button
                         type="button"
                         onClick={() => toggleGroupFund(t)}
-                        className="min-h-10 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
+                        className="min-h-11 flex-1 rounded-lg border border-rule px-3 text-xs font-medium lg:flex-none"
                       >
                         {t.isGroupFund ? 'Personal total' : 'Group fund'}
                       </button>
@@ -203,7 +210,7 @@ export default function TypeManager({ onChange }) {
                         <button
                           type="button"
                           onClick={() => toggleRecoverable(t)}
-                          className="min-h-10 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
+                          className="min-h-11 flex-1 rounded-lg border border-rule px-3 text-xs font-medium lg:flex-none"
                         >
                           {t.isRecoverable ? 'Real expense' : 'Recoverable'}
                         </button>
@@ -211,7 +218,7 @@ export default function TypeManager({ onChange }) {
                       <button
                         type="button"
                         onClick={() => toggleActive(t)}
-                        className="min-h-10 flex-1 rounded-lg border border-rule px-3 text-xs font-medium sm:flex-none"
+                        className="min-h-11 flex-1 rounded-lg border border-rule px-3 text-xs font-medium lg:flex-none"
                       >
                         {t.active ? 'Deactivate' : 'Reactivate'}
                       </button>
@@ -234,14 +241,14 @@ export default function TypeManager({ onChange }) {
                           <button
                             type="button"
                             onClick={() => saveWeeklyAmount(t)}
-                            className="min-h-10 rounded-lg bg-primary px-3 text-xs font-semibold text-white"
+                            className="min-h-11 rounded-lg bg-primary px-3 text-xs font-semibold text-white"
                           >
                             Save
                           </button>
                           <button
                             type="button"
                             onClick={() => setEditingWeeklyId(null)}
-                            className="min-h-10 rounded-lg border border-rule px-3 text-xs font-medium"
+                            className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium"
                           >
                             Cancel
                           </button>
@@ -253,7 +260,7 @@ export default function TypeManager({ onChange }) {
                             setEditingWeeklyId(t._id);
                             setWeeklyValue(String(t.weeklyAmount || ''));
                           }}
-                          className="amount rounded-lg bg-primary/10 px-2 py-1 text-xs font-semibold text-primary"
+                          className="amount inline-flex min-h-11 items-center rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary"
                         >
                           {money(t.weeklyAmount)} / week - edit
                         </button>
@@ -269,7 +276,7 @@ export default function TypeManager({ onChange }) {
    {/* Form */}
 <form
   onSubmit={onSubmit}
-  className="w-full space-y-3 border-t border-rule bg-canvas p-4 xl:w-80 xl:border-l xl:border-t-0 xl:overflow-y-auto"
+  className="w-full shrink-0 space-y-3 border-t border-rule bg-canvas p-4 xl:w-80 xl:border-l xl:border-t-0 xl:overflow-y-auto"
 >
           <div>
             <p className="text-sm font-bold">Add type</p>
