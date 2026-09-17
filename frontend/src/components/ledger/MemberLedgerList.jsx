@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import api, { apiMessage } from '../../services/api';
 import { useToast } from '../shared/Toast';
 import { money, shortDate } from '../../utils/format';
 import Loader from '../shared/Loader';
 import FinanceMemberLedger from '../../pages/FinanceMemberLedger';
-import { fetchLedger, getCachedLedger, prefetchMember } from '../../services/ledgerCache';
+import {
+  fetchLedger,
+  getCachedLedger,
+  prefetchMember,
+  revalidateLedger,
+} from '../../services/ledgerCache';
 
 // The one logging surface in the system. Every dashboard that logs money shows
 // this and nothing else: the week's figures, then a list of names — a tap opens
@@ -68,8 +73,24 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
   // tapping a name never leaves the page.
   const [openMember, setOpenMember] = useState(null);
 
+  // Re-reads the list after money moves, so the totals behind the open panel
+  // follow the entry instead of waiting for a remount. The panel clears the cache
+  // before calling this, so the fetch is a real one.
+  const refresh = useCallback(async () => {
+    try {
+      const d = await fetchLedger(api);
+      setData(d);
+      onLoaded?.(d);
+    } catch (err) {
+      toast(apiMessage(err, 'Could not load the ledger'), 'error');
+    }
+    // onLoaded is deliberately left out: callers pass an inline function.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]);
+
   useEffect(() => {
     let cancelled = false;
+    const cached = getCachedLedger();
     fetchLedger(api)
       .then((d) => {
         if (cancelled) return;
@@ -80,6 +101,15 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    // Painted from the cache? Then quietly ask for the current figures too. An
+    // instant list a few seconds old beats a spinner, and this is what stops it
+    // from being minutes old on a phone left open on the dashboard while somebody
+    // else is logging money.
+    if (cached) {
+      revalidateLedger(api).then((d) => {
+        if (!cancelled && d) setData(d);
+      });
+    }
     return () => {
       cancelled = true;
     };
@@ -213,9 +243,14 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
       )}
 
       {/* The member's ledger, over the list rather than instead of it. Closing it
-          puts the treasurer back exactly where they were. */}
+          puts the treasurer back exactly where they were, and logging inside it
+          refreshes the list underneath in place — no remount, no spinner. */}
       {openMember && (
-        <FinanceMemberLedger memberId={openMember} onClose={() => setOpenMember(null)} />
+        <FinanceMemberLedger
+          memberId={openMember}
+          onClose={() => setOpenMember(null)}
+          onChanged={refresh}
+        />
       )}
     </div>
   );

@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
-import { money, shortDate } from '../../utils/format';
+import { money } from '../../utils/format';
 import MemberAvatar from '../members/MemberAvatar';
 
 // Every active member, browsable by anyone — the group chose full openness
 // over a private ledger. Phone numbers arrive already masked from the server.
+// The figure on a card is the member's balance from the same cycle engine the
+// treasurer's ledger uses — not a sum of contribution rows, which is only part
+// of the story once go-live money has been carried into his opening balance.
 export default function DirectoryList() {
   const [members, setMembers] = useState([]);
   const [page, setPage] = useState(1);
@@ -84,18 +87,20 @@ export default function DirectoryList() {
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="min-w-0 truncate font-semibold">{m.name}</p>
                     <p className="amount shrink-0 font-semibold text-accent">
-                      {money(m.totalContributed)}
+                      {money(m.balance ?? m.totalContributed)}
                     </p>
                   </div>
                   <div className="mt-0.5 flex items-baseline justify-between gap-3 text-xs text-muted">
-                    <p className="amount">
+                    <p className="amount truncate">
                       {m.phoneMasked}
                       {m.regNumber ? ` · ${m.regNumber}` : ''}
                     </p>
                     <p className="shrink-0">
-                      {m.lastContributionDate
-                        ? `Last: ${shortDate(m.lastContributionDate)}`
-                        : 'No contributions yet'}
+                      {m.arrears > 0
+                        ? `${money(m.arrears)} behind`
+                        : m.balance
+                          ? 'Held for him'
+                          : 'Nothing held'}
                     </p>
                   </div>
                 </div>

@@ -49,8 +49,11 @@ function nextOfKinError(kin) {
 // fines for a member, and the week-by-week due schedule for every weekly fund,
 // taken from the group cycle (see buildWeeklySchedule) so the passbook always
 // shows the same week number and the same 1,400 the treasurer is working to.
-async function buildFinesAndSchedules(member, contributions) {
-  const [pending, settled, weeklyTypes, settings] = await Promise.all([
+// `settings` is optional: a caller that has already loaded it passes it in, which
+// is one round trip fewer on the public passbook — the screen a member opens
+// most often, usually on a phone on mobile data.
+async function buildFinesAndSchedules(member, contributions, settings) {
+  const [pending, settled, weeklyTypes, loadedSettings] = await Promise.all([
     Fine.find({ memberId: member._id, deleted: false, remaining: { $gt: 0 } })
       .sort({ date: 1 })
       .populate('typeId', 'name')
@@ -60,10 +63,10 @@ async function buildFinesAndSchedules(member, contributions) {
       .populate('typeId', 'name')
       .lean(),
     ContributionType.find({ isWeekly: true, active: true }).lean(),
-    getOrCreateSettings(),
+    settings ? Promise.resolve(settings) : getOrCreateSettings(),
   ]);
 
-  const config = resolveConfig(settings);
+  const config = resolveConfig(loadedSettings);
   const totalOwed = pending.reduce((sum, f) => sum + f.remaining, 0);
   const weeklySchedules = weeklyTypes.map((type) => {
     const typeContributions = contributions.filter(
@@ -99,6 +102,53 @@ async function buildFinesAndSchedules(member, contributions) {
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// The single pass that turns raw contribution rows into what the cycle engine
+// needs: every row tagged with its bucket (weekly / chai / other) and grouped per
+// member, plus the two figures the member lists show next to the balance — what
+// he has paid personally, and when he last paid.
+//
+// Shared by the admin member list and the public directory on purpose. Both score
+// a member's money with the same engine, so the treasurer's ledger and the open
+// directory can never disagree about the same person.
+function summariseContributionRows(rows, types) {
+  const typeById = new Map(types.map((t) => [String(t._id), t]));
+  const byMemberId = new Map();
+  const personalTotals = new Map();
+  const lastDates = new Map();
+
+  for (const row of rows) {
+    const type = typeById.get(String(row.typeId));
+    const isGroupFund = Boolean(type && type.isGroupFund);
+    const key = String(row.memberId);
+
+    if (!byMemberId.has(key)) byMemberId.set(key, []);
+    byMemberId.get(key).push({ ...row, bucket: bucketForType(type), isGroupFund });
+
+    // Group-fund money (tea) belongs to the Group, so it never counts toward what
+    // the member personally paid. grossAmount is preferred so a payment partly
+    // redirected to settle a fine still counts as cash received.
+    const cash = Number(row.grossAmount ?? row.amount) || 0;
+    if (!isGroupFund) personalTotals.set(key, (personalTotals.get(key) || 0) + cash);
+
+    const at = new Date(row.date).getTime();
+    if (!lastDates.has(key) || at > lastDates.get(key)) lastDates.set(key, at);
+  }
+
+  return { byMemberId, personalTotals, lastDates };
+}
+
+// Every row the members on screen need, annotated, alongside the types they hang
+// off — one pair of queries whatever the list is for.
+async function loadContributionRows(memberIds) {
+  const [rows, types] = await Promise.all([
+    Contribution.find({ memberId: { $in: memberIds }, deleted: false })
+      .select('memberId typeId amount grossAmount date')
+      .lean(),
+    ContributionType.find().select('name isWeekly isGroupFund active').lean(),
+  ]);
+  return summariseContributionRows(rows, types);
 }
 
 const REG_COUNTER_NAME = 'memberRegNumber';
@@ -159,34 +209,12 @@ async function listMembers(req, res, next) {
       Member.countDocuments(filter),
     ]);
 
-    const ids = members.map((m) => m._id);
-
-    // One query for the rows this page needs — they carry everything the cards
-    // show (what he has paid, when, and his balance), so the two per-member
+    // Everything the cards show — what he has paid, when, and his balance — comes
+    // from the rows this page needs plus the group cycle, so the two per-member
     // aggregations that used to run alongside it are gone.
-    const [rows, types] = await Promise.all([
-      Contribution.find({ memberId: { $in: ids }, deleted: false })
-        .select('memberId typeId amount grossAmount date')
-        .lean(),
-      ContributionType.find().select('name isGroupFund').lean(),
-    ]);
-    const typeById = new Map(types.map((t) => [String(t._id), t]));
-
-    const byMemberId = new Map();
-    const lastDateMap = new Map();
-    const personalSumMap = new Map();
-    for (const c of rows) {
-      const type = typeById.get(String(c.typeId));
-      const bucket = bucketForType(type);
-      const isGroupFund = Boolean(type && type.isGroupFund);
-      const key = String(c.memberId);
-      if (!byMemberId.has(key)) byMemberId.set(key, []);
-      byMemberId.get(key).push({ ...c, bucket, isGroupFund });
-      const cash = Number(c.grossAmount ?? c.amount) || 0;
-      if (!isGroupFund) personalSumMap.set(key, (personalSumMap.get(key) || 0) + cash);
-      const at = new Date(c.date).getTime();
-      if (!lastDateMap.has(key) || at > lastDateMap.get(key)) lastDateMap.set(key, at);
-    }
+    const { byMemberId, personalTotals, lastDates } = await loadContributionRows(
+      members.map((m) => m._id)
+    );
 
     const settings = await getOrCreateSettings();
     const config = resolveConfig(settings);
@@ -206,9 +234,9 @@ async function listMembers(req, res, next) {
         });
         return {
           ...m,
-          totalContributed: personalSumMap.get(String(m._id)) || 0,
-          lastContributionDate: lastDateMap.has(String(m._id))
-            ? new Date(lastDateMap.get(String(m._id)))
+          totalContributed: personalTotals.get(String(m._id)) || 0,
+          lastContributionDate: lastDates.has(String(m._id))
+            ? new Date(lastDates.get(String(m._id)))
             : null,
           balance: ledger.money,
           arrears: ledger.arrears,
@@ -596,13 +624,15 @@ async function exportMembers(req, res, next) {
 // full phone number is never echoed back even to the member.
 async function buildPublicProfile(member, lookupPhone) {
   const callerIsSelf = lookupPhone && normalizePhone(lookupPhone) === normalizePhone(member.phone);
-  const [docs, breakdown] = await Promise.all([
+  const [docs, breakdown, settings] = await Promise.all([
     Contribution.find({ memberId: member._id, deleted: false })
       .sort({ date: 1, createdAt: 1 })
       .populate('typeId', 'name isGroupFund')
       .lean(),
     typeBreakdown(member._id),
+    getOrCreateSettings(),
   ]);
+  const config = resolveConfig(settings);
 
   // Group-fund contributions (e.g. Chai) still show up as their own ledger
   // row, but don't add to the running personal balance — that money belongs
@@ -623,7 +653,22 @@ async function buildPublicProfile(member, lookupPhone) {
   });
 
   const totalPledged = breakdown.reduce((sum, b) => sum + b.pledged, 0);
-  const { fines, weeklySchedules } = await buildFinesAndSchedules(member, docs);
+  const { fines, weeklySchedules } = await buildFinesAndSchedules(member, docs, settings);
+
+  // The cycle position, from the one engine the treasurer's ledger, the member
+  // list and the reminders all read. "Total contributed" alone reads as 0 once
+  // the paper ledger's money has been carried into openingBalance, so what a
+  // member holds has to come from here — otherwise his own passbook says he has
+  // nothing while the office sees 123,400 against his name.
+  const ledger = computeMemberLedger({
+    member,
+    contributions: docs.map((c) => ({
+      ...c,
+      bucket: bucketForType(c.typeId),
+      isGroupFund: Boolean(c.typeId && c.typeId.isGroupFund),
+    })),
+    config,
+  });
   // Strip admin-only fields (who issued it, which contribution settled it)
   // before this reaches the public passbook.
   const publicFine = (f) => ({
@@ -651,8 +696,29 @@ async function buildPublicProfile(member, lookupPhone) {
     joinDate: member.joinDate || member.createdAt || null,
     contributionsCount: contributions.length,
     finesSettledCount: fines.settled.length,
+    // Logged rows only: what he has paid since the cycle opened, tea excluded.
+    // Kept because the statement exports still print it as its own line, but the
+    // figure that answers "what does he hold?" is `ledger.money` below.
     totalContributed: running,
     totalPledged,
+    // What the member actually holds, and the four figures it is made of, so the
+    // passbook can show its work exactly as the treasurer's page does.
+    ledger: {
+      currentWeek: ledger.currentWeek,
+      cycleStartWeek: config.cycleStartWeek,
+      weeklyAmount: ledger.weeklyAmount,
+      chaiAmount: ledger.chaiAmount,
+      openingBalance: ledger.openingBalance,
+      paid: ledger.paid,
+      required: ledger.required,
+      tea: ledger.chai.due,
+      money: ledger.money,
+      arrears: ledger.arrears,
+      credit: ledger.credit,
+      weeksElapsed: ledger.weeksElapsed,
+      weeksPaid: ledger.weeksPaid,
+      weeksBehind: ledger.weeksBehind,
+    },
     byType: breakdown.map((b) => ({
       type: b.name,
       pledged: b.pledged,
@@ -700,8 +766,27 @@ async function sendStatementExcel(res, profile) {
       Value: profile.regNumber || '',
     },
     {
-      Field: 'Total Contributed',
-      Value: profile.totalContributed || 0,
+      // The figure that answers "what does he hold?" — the same cycle maths the
+      // ledger screen and the passbook show. Total contributed on its own is 0
+      // for every member while the money carried forward sits in openingBalance.
+      Field: 'Held by Member',
+      Value: profile.ledger ? profile.ledger.money : profile.totalContributed || 0,
+    },
+    {
+      Field: 'Carried Forward (opening balance)',
+      Value: profile.ledger ? profile.ledger.openingBalance : 0,
+    },
+    {
+      Field: 'Paid Since Cycle Opened',
+      Value: profile.ledger ? profile.ledger.paid : profile.totalContributed || 0,
+    },
+    {
+      Field: 'Required So Far',
+      Value: profile.ledger ? profile.ledger.required : 0,
+    },
+    {
+      Field: 'Tea (automatic)',
+      Value: profile.ledger ? profile.ledger.tea : 0,
     },
     {
       Field: 'Total Pledged',
@@ -726,7 +811,7 @@ async function sendStatementExcel(res, profile) {
     'Fine Deducted': c.fineDeducted || 0,
     'Gross Amount': c.grossAmount || c.amount || 0,
     'Group Fund': c.isGroupFund ? 'Yes' : 'No',
-    'Running Balance': c.runningBalance || 0,
+    'Paid to date': c.runningBalance || 0,
   }));
 
   const breakdownRows = (profile.byType || []).map((b) => ({
@@ -782,7 +867,11 @@ async function sendStatementExcel(res, profile) {
     { Field: 'Chama', Value: settings.chamaName || '' },
     { Field: 'Member Name', Value: profile.name || '' },
     { Field: 'Registration Number', Value: profile.regNumber || '' },
-    { Field: 'Total Contributed', Value: profile.totalContributed || 0 },
+    { Field: 'Held by Member', Value: profile.ledger ? profile.ledger.money : profile.totalContributed || 0 },
+    { Field: 'Carried Forward (opening balance)', Value: profile.ledger ? profile.ledger.openingBalance : 0 },
+    { Field: 'Paid Since Cycle Opened', Value: profile.ledger ? profile.ledger.paid : profile.totalContributed || 0 },
+    { Field: 'Required So Far', Value: profile.ledger ? profile.ledger.required : 0 },
+    { Field: 'Tea (automatic)', Value: profile.ledger ? profile.ledger.tea : 0 },
     { Field: 'Total Pledged', Value: profile.totalPledged || 0 },
     { Field: 'Outstanding Fines', Value: profile.fines?.totalOwed || 0 },
     { Field: 'Generated On', Value: new Date() },
@@ -796,7 +885,7 @@ async function sendStatementExcel(res, profile) {
     'Payment Method': c.method || '',
     'Fine Deducted': c.fineDeducted || 0,
     'Group Fund': c.isGroupFund ? 'Yes' : 'No',
-    'Running Balance': c.runningBalance || 0,
+    'Paid to date': c.runningBalance || 0,
   }));
 
   const breakdownRows = (profile.byType || []).map((b) => ({
@@ -1027,6 +1116,13 @@ async function memberStatementExcel(req, res, next) {
 // The group chose full transparency over a bank-style private ledger — this
 // deliberately lists every active member. Phone numbers are masked server-side
 // so the response itself never carries a scrapeable full number.
+//
+// The figure on each row is the member's money from the same cycle engine the
+// treasurer's ledger and the admin member list use: openingBalance + what he has
+// paid since the cycle opened − what the weeks have required − tea. Summing
+// contribution rows alone — which is what this endpoint used to do — reports
+// every member as holding nothing, because the money carried across from the
+// paper ledger lives in openingBalance, not in rows.
 async function publicDirectory(req, res, next) {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -1044,31 +1140,38 @@ async function publicDirectory(req, res, next) {
       Member.countDocuments(filter),
     ]);
 
-    const ids = members.map((m) => m._id);
-    const excludedTypeIds = await nonPersonalTypeIds();
-    const [personalSums, lastDates] = await Promise.all([
-      Contribution.aggregate([
-        { $match: { memberId: { $in: ids }, deleted: false, typeId: { $nin: excludedTypeIds } } },
-        { $group: { _id: '$memberId', total: { $sum: '$amount' } } },
-      ]),
-      Contribution.aggregate([
-        { $match: { memberId: { $in: ids }, deleted: false } },
-        { $group: { _id: '$memberId', lastContributionDate: { $max: '$date' } } },
-      ]),
-    ]);
-    const sumMap = new Map(personalSums.map((s) => [String(s._id), s.total]));
-    const lastDateMap = new Map(lastDates.map((s) => [String(s._id), s.lastContributionDate]));
+    const { byMemberId, personalTotals, lastDates } = await loadContributionRows(
+      members.map((m) => m._id)
+    );
+    const settings = await getOrCreateSettings();
+    const config = resolveConfig(settings);
 
     res.json({
-      members: members.map((m) => ({
-        id: m._id,
-        name: m.name,
-        regNumber: m.regNumber || null,
-        photoUrl: m.photoUrl || '',
-        phoneMasked: maskPhone(m.phone),
-        totalContributed: sumMap.get(String(m._id)) || 0,
-        lastContributionDate: lastDateMap.get(String(m._id)) || null,
-      })),
+      members: members.map((m) => {
+        const key = String(m._id);
+        const ledger = computeMemberLedger({
+          member: m,
+          contributions: byMemberId.get(key) || [],
+          config,
+        });
+        return {
+          id: m._id,
+          name: m.name,
+          regNumber: m.regNumber || null,
+          photoUrl: m.photoUrl || '',
+          phoneMasked: maskPhone(m.phone),
+          // What he holds, and what the cycle expects of him so far.
+          balance: ledger.money,
+          paid: ledger.paid,
+          arrears: ledger.arrears,
+          weeksBehind: ledger.weeksBehind,
+          chaiPaid: ledger.chai.due,
+          // Kept alongside `balance` for a caller that only has the old field:
+          // what he has personally paid since the cycle opened, excluding tea.
+          totalContributed: personalTotals.get(key) || 0,
+          lastContributionDate: lastDates.has(key) ? new Date(lastDates.get(key)) : null,
+        };
+      }),
       total,
       page,
       pages: Math.ceil(total / limit) || 1,

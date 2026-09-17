@@ -40,7 +40,9 @@ function Stat({ label, value, accent, alert }) {
 // slides over the list when a name is tapped (no navigation, no new chunk, the
 // list stays put underneath), and as the full page at /admin/finance/:id so a
 // link to one member can still be shared or bookmarked.
-export default function FinanceMemberLedger({ memberId, onClose }) {
+// `onChanged` is how the panel tells the list underneath that the figures moved,
+// so the totals behind it update in place instead of going stale.
+export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
   const params = useParams();
   const id = memberId || params.id;
   const toast = useToast();
@@ -167,9 +169,12 @@ export default function FinanceMemberLedger({ memberId, onClose }) {
       setNote('');
       setDescription('');
       // The list's totals are stale the moment money moves; drop the cache so
-      // both this panel and the list behind it come back fresh.
+      // both this panel and the list behind it come back fresh. The list is
+      // refreshed in place, not remounted, which is what keeps the screen from
+      // blinking after every entry.
       invalidateLedger();
       await load();
+      onChanged?.();
     } catch (err) {
       toast(apiMessage(err), 'error');
     } finally {
@@ -186,6 +191,7 @@ export default function FinanceMemberLedger({ memberId, onClose }) {
       setDeleting(null);
       invalidateLedger();
       await load();
+      onChanged?.();
     } catch (err) {
       toast(apiMessage(err), 'error');
     } finally {

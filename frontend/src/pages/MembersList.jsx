@@ -5,6 +5,14 @@ import MemberCards from '../components/members/MemberCards';
 import MemberForm from '../components/members/MemberForm';
 import CSVImportModal from '../components/members/CSVImportModal';
 import Loader from '../components/shared/Loader';
+import { takeWarmJson, clearWarmJson } from '../services/prefetch';
+
+// The request this page makes, in one place: the prefetch that fills it on hover
+// and the fetch that reads it at mount have to agree on the shape exactly, or the
+// warmed copy is simply never used.
+function listParams(searchTerm, pageNum) {
+  return { search: searchTerm || undefined, page: pageNum, status: 'all' };
+}
 
 export default function MembersList() {
   const toast = useToast();
@@ -19,21 +27,32 @@ export default function MembersList() {
   const [saving, setSaving] = useState(false);
   const debounceRef = useRef(null);
 
-  const load = useCallback(async (searchTerm, pageNum) => {
-    setLoading(true);
-    try {
-      const res = await api.get('/api/members', {
-        params: { search: searchTerm || undefined, page: pageNum, status: 'all' },
-      });
-      setMembers(res.data.members);
-      setPages(res.data.pages);
-      setTotal(res.data.total);
-    } catch {
-      // interceptor handles auth failures; other errors leave the list as-is
-    } finally {
-      setLoading(false);
-    }
+  const apply = useCallback((payload) => {
+    setMembers(payload.members);
+    setPages(payload.pages);
+    setTotal(payload.total);
   }, []);
+
+  const load = useCallback(
+    async (searchTerm, pageNum) => {
+      const params = listParams(searchTerm, pageNum);
+      // A response warmed while the pointer was on the Members link: paint it
+      // immediately and let the request below confirm it, so the page shows names
+      // instead of a spinner for a round trip that has already been paid for.
+      const warmed = takeWarmJson('/api/members', params);
+      if (warmed) apply(warmed);
+      setLoading(!warmed);
+      try {
+        const res = await api.get('/api/members', { params });
+        apply(res.data);
+      } catch {
+        // interceptor handles auth failures; other errors leave the list as-is
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apply]
+  );
 
   useEffect(() => {
     load('', 1);
@@ -57,6 +76,9 @@ export default function MembersList() {
       await api.post('/api/members', form);
       toast('Member added');
       setShowForm(false);
+      // The warmed copy was fetched before this member existed: drop it so the
+      // reload below is the server's answer, not the list from a second ago.
+      clearWarmJson();
       load(search, page);
     } catch (err) {
       toast(apiMessage(err), 'error');
@@ -165,7 +187,10 @@ export default function MembersList() {
       {showImport && (
         <CSVImportModal
           onClose={() => setShowImport(false)}
-          onImported={() => load(search, page)}
+          onImported={() => {
+            clearWarmJson();
+            load(search, page);
+          }}
         />
       )}
     </div>

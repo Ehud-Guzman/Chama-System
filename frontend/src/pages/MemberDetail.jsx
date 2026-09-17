@@ -15,6 +15,7 @@ import FinesPanel from '../components/shared/FinesPanel';
 import WeeklyScheduleTable from '../components/shared/WeeklyScheduleTable';
 import Loader from '../components/shared/Loader';
 import MemberAvatar from '../components/members/MemberAvatar';
+import { takeWarmJson } from '../services/prefetch';
 
 export default function MemberDetail() {
   const { id } = useParams();
@@ -35,6 +36,14 @@ export default function MemberDetail() {
   const photoInputRef = useRef(null);
 
   const load = useCallback(async () => {
+    // Warmed while the pointer was on this member's card, so the page usually
+    // opens with his name and figures already in place; the request below still
+    // runs and replaces it with the server's answer.
+    const warmed = takeWarmJson(`/api/members/${id}`);
+    if (warmed) {
+      setData(warmed);
+      setLoading(false);
+    }
     try {
       const res = await api.get(`/api/members/${id}`);
       setData(res.data);

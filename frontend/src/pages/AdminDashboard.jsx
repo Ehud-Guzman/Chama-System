@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { warmRoute } from '../services/prefetch';
 
 import AddAdminForm from '../components/shared/AddAdminForm';
 import ChangePasswordForm from '../components/shared/ChangePasswordForm';
@@ -12,6 +13,10 @@ function QuickAction({ to, label, description, primary }) {
   return (
     <Link
       to={to}
+      // Warm the screen on intent — hover on a laptop, pointer-down on a phone —
+      // so tapping a workflow tile swaps the page instead of waiting on it.
+      onMouseEnter={() => warmRoute(to)}
+      onPointerDown={() => warmRoute(to)}
       className={`group flex min-h-24 items-start justify-between gap-4 rounded-xl border p-4 transition active:scale-[0.99] ${
         primary
           ? 'border-primary bg-primary text-white shadow-sm hover:bg-primary-dark'

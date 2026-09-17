@@ -15,7 +15,7 @@ const COLS = [
   { key: 'type', label: 'Type', x: MARGIN + 85, width: 130 },
   { key: 'method', label: 'Method', x: MARGIN + 220, width: 70 },
   { key: 'amount', label: 'Amount', x: MARGIN + 295, width: 80, align: 'right' },
-  { key: 'balance', label: 'Balance', x: MARGIN + 380, width: 80, align: 'right' },
+  { key: 'balance', label: 'Paid to date', x: MARGIN + 380, width: 80, align: 'right' },
 ];
 
 function drawTableHeader(doc, y) {
@@ -98,7 +98,7 @@ function renderStatementPdf(res, profile, chamaName) {
     y += rowHeight;
   }
 
-  y = ensureRoom(doc, y, 70);
+  y = ensureRoom(doc, y, 90);
   doc
     .moveTo(MARGIN, y + 4)
     .lineTo(MARGIN + 460, y + 4)
@@ -106,9 +106,35 @@ function renderStatementPdf(res, profile, chamaName) {
     .stroke();
   y += 14;
 
-  doc.font('Helvetica-Bold').fontSize(11);
-  doc.text(`Total contributed (all-time): ${money(profile.totalContributed)}`, MARGIN, y);
-  y += 16;
+  // What he holds, from the same cycle engine the treasurer's ledger uses.
+  // "Total contributed" on its own reads 0 for every member, because the money
+  // carried across from the paper ledger lives in the opening balance rather
+  // than in contribution rows.
+  if (profile.ledger) {
+    doc.font('Helvetica-Bold').fontSize(11);
+    doc.text(
+      `Held by member (week ${profile.ledger.currentWeek}): ${money(profile.ledger.money)}`,
+      MARGIN,
+      y
+    );
+    y += 15;
+    doc
+      .font('Helvetica')
+      .fontSize(9)
+      .fillColor('#666')
+      .text(
+        `Carried forward ${money(profile.ledger.openingBalance)} + paid ${money(profile.ledger.paid)}` +
+          ` − required ${money(profile.ledger.required)} − tea ${money(profile.ledger.tea)}`,
+        MARGIN,
+        y
+      );
+    y += 15;
+    doc.fillColor('#000');
+  }
+
+  doc.font('Helvetica').fontSize(10);
+  doc.text(`Paid in the rows below: ${money(profile.totalContributed)}`, MARGIN, y);
+  y += 15;
   if (profile.totalPledged > 0) {
     doc.font('Helvetica').fontSize(10).text(`Total pledged: ${money(profile.totalPledged)}`, MARGIN, y);
     y += 14;

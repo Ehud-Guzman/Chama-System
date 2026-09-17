@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS } from './navItems';
 import { useAuth } from '../../context/AuthContext';
+import { warmRoute } from '../../services/prefetch';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
@@ -20,6 +21,12 @@ export default function Sidebar() {
             <li key={item.to}>
               <NavLink
                 to={item.to}
+                // Warm the destination while the pointer is over the link: the
+                // page's chunk is already loaded, and on the two screens that
+                // show the ledger its figures are already in the cache, so the
+                // click has nothing left to wait for.
+                onMouseEnter={() => warmRoute(item.to)}
+                onPointerDown={() => warmRoute(item.to)}
                 className={({ isActive }) =>
                   `flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium ${
                     isActive ? 'bg-primary/10 text-primary' : 'text-ink hover:bg-canvas'

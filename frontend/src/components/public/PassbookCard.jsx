@@ -251,11 +251,13 @@ export default function PassbookCard({
           <p className="px-5 py-8 text-center text-sm text-muted">No contributions recorded yet.</p>
         ) : (
           <>
-            {/* Column eyebrows */}
+            {/* Column eyebrows. The right-hand column is cash logged against
+                this member — cumulative, not a balance: what he actually holds
+                is the stamped total below. */}
             <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 px-5 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
               <span>Date · Type</span>
               <span className="text-right">Amount</span>
-              <span className="w-20 text-right">Balance</span>
+              <span className="w-24 text-right">Paid to date</span>
             </div>
 
             <ul>
@@ -285,7 +287,7 @@ export default function PassbookCard({
                     )}
                   </span>
                   <span className="amount text-right text-sm font-semibold">{money(c.amount)}</span>
-                  <span className="amount w-20 text-right text-sm font-medium text-accent">
+                  <span className="amount w-24 text-right text-sm font-medium text-accent">
                     {money(c.runningBalance)}
                   </span>
                 </li>
@@ -327,7 +329,8 @@ export default function PassbookCard({
           </>
         )}
 
-        {/* Stamped total — shown even before a first contribution if a pledge exists */}
+        {/* Stamped total — what he holds now, from the cycle engine, so the
+            passbook can never say 0 while the office sees money against him. */}
         <footer
           className={`border-t-2 border-primary/20 bg-primary/5 px-5 py-5 ${
             animate ? 'total-stamp' : ''
@@ -337,11 +340,26 @@ export default function PassbookCard({
           }
         >
           <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-            Total contributed (all-time)
+            {result.ledger ? `Held by member · week ${result.ledger.currentWeek}` : 'Held by member'}
           </p>
           <p className="amount mt-1 text-3xl font-bold text-primary">
-            {money(result.totalContributed)}
+            {money(result.ledger ? result.ledger.money : result.totalContributed)}
           </p>
+          {result.ledger && (
+            <p className="amount mt-1 text-sm text-muted">
+              {money(result.ledger.openingBalance)} brought forward + {money(result.ledger.paid)}{' '}
+              paid since week {result.ledger.cycleStartWeek} − {money(result.ledger.required)}{' '}
+              required − {money(result.ledger.tea)} tea
+            </p>
+          )}
+          {(result.ledger ? result.ledger.arrears > 0 : false) && (
+            <p className="amount mt-1 text-sm font-medium text-alert">
+              {money(result.ledger.arrears)} behind
+              {result.ledger.weeksBehind > 0
+                ? ` · ${result.ledger.weeksBehind} week${result.ledger.weeksBehind === 1 ? '' : 's'}`
+                : ''}
+            </p>
+          )}
           {result.totalPledged > 0 && (
             <p className="amount mt-1 text-sm text-muted">of {money(result.totalPledged)} pledged</p>
           )}

@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { NAV_ITEMS } from './navItems';
 import { useAuth } from '../../context/AuthContext';
 import { useModal } from '../../hooks/useModal';
+import { warmRoute } from '../../services/prefetch';
 
 // A bottom bar fits four destinations plus a "More" tab before labels start
 // truncating on a 360px phone (8 items => ~45px a column, but "Dashboard" needs
@@ -56,6 +57,9 @@ export default function BottomNav() {
               {/* NavLink already applies aria-current="page" when it is active */}
               <NavLink
                 to={item.to}
+                // A thumb lands before it lifts: warming on pointer-down gives
+                // the chunk (and the ledger) a head start the tap can't.
+                onPointerDown={() => warmRoute(item.to)}
                 className={({ isActive }) =>
                   `${CELL} ${isActive ? 'text-primary' : 'text-muted hover:text-muted/80'}`
                 }
@@ -122,6 +126,7 @@ export default function BottomNav() {
                   <NavLink
                     to={item.to}
                     onClick={closeMore}
+                    onPointerDown={() => warmRoute(item.to)}
                     className={({ isActive }) =>
                       `flex min-h-14 items-center gap-3 rounded-lg px-3 text-sm font-medium ${
                         isActive ? 'bg-primary/10 text-primary' : 'text-ink'

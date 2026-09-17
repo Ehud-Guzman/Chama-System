@@ -80,17 +80,28 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   request; one member's ledger is three round trips; the member list and each member's ledger are
   cached in the browser for 30 seconds and prefetched on touch-down, so tapping a name opens a
   panel *over* the list — no page change, no lazily-loaded chunk, and closing it leaves the scroll
-  exactly where it was. If the hosted app still feels slow, the first thing to check is that the
-  API and the Atlas cluster are in the same region: a cross-region round trip measures around half
-  a second, and no handler tuning beats that. The free tier of some hosts also spins the service
-  down after idling, which makes the first load of the day slow for a reason nothing in this repo
-  can fix.
-- **Member cards count the same money as the ledger:** the cards at `/admin/members` show each
-  member's balance from the cycle engine (opening balance + what he has paid − required − tea),
-  not a sum of contribution rows. After go-live those two are different figures — the money that
-  carried across from the paper ledger lives in `openingBalance` — and a card reading "no
-  contributions yet" next to a ledger that says he holds money is exactly the confusion that
-  avoids.
+  exactly where it was; logging money inside the panel refreshes the list underneath in place.
+  Navigation is warmed on intent (`frontend/src/services/prefetch.js`): hovering or pressing a nav
+  link, a workflow tile or a member card starts the destination's chunk loading and, on the screens
+  that show one, fetches the ledger or the member list into the cache — so the click swaps a page
+  that is already there rather than waiting on the press. The sidebar and bottom bar also stay
+  painted while a page's chunk arrives (`Suspense` sits *inside* the admin shell, not above it), and
+  a list painted from cache quietly revalidates in the background instead of showing stale figures
+  until its 30-second TTL runs out. If the hosted app still feels slow, the first thing to check is
+  that the API and the Atlas cluster are in the same region: a cross-region round trip measures
+  around half a second, and no handler tuning beats that. The free tier of some hosts also spins the
+  service down after idling, which makes the first load of the day slow for a reason nothing in this
+  repo can fix.
+- **Every list counts the same money as the ledger:** the cards at `/admin/members`, the public
+  directory at `/` and a member's own passbook all show his balance from the cycle engine
+  (opening balance + what he has paid − required − tea), not a sum of contribution rows. After
+  go-live those two are different figures — the money that carried across from the paper ledger
+  lives in `openingBalance`, so a row sum reads 0 for everybody — and a card reading "no
+  contributions yet" next to a ledger that says he holds money is exactly the confusion this
+  avoids. The passbook's own row column is labelled "Paid to date" for the same reason: it is cash
+  logged against him, while the stamped total underneath ("Held by member") is what he actually
+  holds. The PDF and Excel statements lead with that same figure and print the four numbers it is
+  made of.
 - **One-time opening balances:** `/admin/finance/setup` (also linked from the dashboard as
   "Opening balances (one-time)") is where each member's current total is keyed in at go-live.
   Every member is listed with his ledger figure already filled in as a suggestion, any of them
@@ -130,9 +141,11 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
 - **Phone normalization:** `+2547…`, `2547…`, `07…` all resolve to one stored format
   (`07XXXXXXXX`) — enforced on member create/edit, CSV import, and public lookup.
 - **Public lookup:** exact phone match only, 5 requests/minute/IP (configurable via env),
-  returns the member's masked phone, member-since date, contribution ledger with running
-  balance, pledges by type, fines (pending + settled) and the weekly schedule. Never returns
-  internal ids or admin metadata.
+  returns the member's masked phone, member-since date, what he holds today with the four figures
+  it is made of, the rows he has logged since the cycle opened, pledges by type, fines (pending +
+  settled) and the weekly schedule. The open directory (`GET /api/public/directory`) lists every
+  active member with the same cycle-engine balance, so the public page and the treasurer's ledger
+  can never disagree about the same person. Never returns internal ids or admin metadata.
 - **Chama documents and minutes (phone-gated):** title deeds, certificates and other group
   records are uploaded from `/admin/documents` (PDF, Word/Excel, or a photo, up to 8 MB) and
   minutes are written at `/admin/minutes`. Both are stored in MongoDB itself — Render/Railway

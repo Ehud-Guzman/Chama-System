@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { money } from '../../utils/format';
 import MemberAvatar from './MemberAvatar';
+import { warmMemberRecord } from '../../services/prefetch';
 
 // Mobile-first member list: stacked cards, no horizontal-scroll tables.
 // Cards flow into columns as the screen widens instead of staying single-file.
@@ -14,6 +15,10 @@ export default function MemberCards({ members }) {
         <li key={m._id}>
           <Link
             to={`/admin/members/${m._id}`}
+            // The record page is warmed on intent — its chunk and this member's
+            // payload — so a tap on a name opens it rather than waiting on it.
+            onMouseEnter={() => warmMemberRecord(m._id)}
+            onPointerDown={() => warmMemberRecord(m._id)}
             className="flex items-center gap-3 rounded-xl border border-rule bg-surface px-4 py-3"
           >
             <MemberAvatar name={m.name} photoUrl={m.photoUrl} />

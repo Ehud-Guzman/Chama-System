@@ -63,6 +63,25 @@ export function invalidateLedger() {
   store.clear();
 }
 
+// Fresh figures without a spinner: the list paints from whatever is cached and
+// then quietly replaces it with what the server says now. The alternative — not
+// refetching until the 30 s TTL runs out — leaves a treasurer looking at
+// yesterday's totals after someone logged money on another phone.
+//
+// Skipped when the cached copy is only a moment old: flitting between the
+// dashboard and the ledger would otherwise re-ask for a list that cannot have
+// changed, on a link that is slow enough to notice.
+const REVALIDATE_AFTER_MS = 5 * 1000;
+
+export function revalidateLedger(api) {
+  const hit = store.get(listKey);
+  if (!hit || Date.now() - hit.at < REVALIDATE_AFTER_MS) return Promise.resolve(null);
+  return api
+    .get('/api/ledger')
+    .then((res) => write(listKey, res.data))
+    .catch(() => null);
+}
+
 export function seedMember(id, data) {
   write(memberKey(id), data);
 }
