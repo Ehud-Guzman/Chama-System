@@ -3,6 +3,7 @@ const Member = require('../models/Member');
 const ContributionType = require('../models/ContributionType');
 const Fine = require('../models/Fine');
 const AuditLog = require('../models/AuditLog');
+const { carriedInTotals } = require('../utils/carriedIn');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
 const { resolveConfig } = require('../utils/weekCycle');
@@ -46,9 +47,15 @@ async function computePerformance() {
 
   const rows = members.map((member) => {
     const own = contribByMember.get(String(member._id)) || [];
-    const totalContributed = own
+    // All time means all time: what he brought in when the books opened (his
+    // verified paper-ledger balance) plus everything logged against him since.
+    // Without the carried-forward figure every member reads Ksh 1,400 on the day
+    // the cycle starts, while holding a hundred thousand.
+    const collected = own
       .filter((c) => !excludedSet.has(String(c.typeId)))
       .reduce((sum, c) => sum + c.amount, 0);
+    const carriedIn = Number(member.openingBalance) || 0;
+    const totalContributed = carriedIn + collected;
     const lastContributionDate = own.reduce(
       (latest, c) => (!latest || c.date > latest ? c.date : latest),
       null
@@ -78,6 +85,9 @@ async function computePerformance() {
       regNumber: member.regNumber || null,
       phone: member.phone,
       totalContributed,
+      // The two halves of that figure, so the screen can say which is which.
+      carriedIn,
+      collected,
       weeksExpected,
       weeksPaid,
       weeksPartial,
@@ -144,18 +154,33 @@ async function summary(req, res, next) {
     const totalCount = byMethod.reduce((sum, m) => sum + m.count, 0);
     const totalExpenses = expensesAgg[0]?.total || 0;
 
+    // What the members put in before this ledger existed. It is real money —
+    // the paper ledger's own totals, verified member by member at go-live — so
+    // the all-time figure has to carry it; the rows only know what has been
+    // logged since. `collected` is the row total kept apart, because the
+    // per-method and per-type breakdowns below it are rows and nothing else.
+    const carriedIn = await carriedInTotals();
+    const collected = totalContributed;
+    const allTime = collected + carriedIn.total;
+
     const contributingActive = await Member.countDocuments({
       _id: { $in: contributingIds },
       active: true,
     });
 
     res.json({
-      totalContributed,
+      totalContributed: allTime,
+      // Named parts, so a screen can show what the total is made of rather than
+      // leaving the difference to be guessed at.
+      carriedIn: carriedIn.total,
+      carriedInMemberBalances: carriedIn.memberBalances,
+      carriedInFundFloats: carriedIn.fundFloats,
+      collected,
       totalExpenses,
-      // Cash actually on hand — contributions minus what's been spent from
-      // expense-tracking funds (e.g. Chai). This is what the dashboard
-      // headline should show, not raw totalContributed.
-      netBalance: totalContributed - totalExpenses,
+      // Everything raised, all time, less what has been spent from
+      // expense-tracking funds (e.g. Chai) — the group's money on hand. It is
+      // the all-time total that answers that question, not the row total.
+      netBalance: allTime - totalExpenses,
       thisWeekTotal: thisWeekAgg[0]?.total || 0,
       contributionCount: totalCount,
       activeMembers,

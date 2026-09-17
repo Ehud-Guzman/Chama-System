@@ -130,6 +130,14 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   copying the members to `backend/data/`). It also takes `--as-of=<time>` for the figures as they stood
   at that moment, `--from-backup=data/reset-backup-….json` for the roll-forward recomputed from the
   imported ledger, and `--member=<name>` to do one person.
+- **"All time" carries the opening balances.** The reports headline, the per-member performance column
+  and the public group page all count what the members and the funds already held when the books opened
+  — read from the same `openingBalance` figures the ledger header shows — plus everything logged since
+  (`GET /api/reports/summary`, `…/performance`, `GET /api/public/overview`). A total built from
+  contribution rows alone reads Ksh 44,800 against the Ksh 3.4M actually on the books, which tells every
+  member that the years they paid into the paper ledger never happened. The breakdowns underneath
+  (by method, by type, by fund) stay rows-only and are labelled **since the books opened**, so the parts
+  are never mistaken for the whole; the headline names its own parts in the same breath.
 - **The funds get the same one-time carry-in:** the same screen lists every fund the group collects
   — the Tea Fund, plus registration, resignation, welfare or anything else — each with a
   **Carried in** figure: what that fund already held before this ledger started counting

@@ -2,6 +2,7 @@ const Member = require('../models/Member');
 const ContributionType = require('../models/ContributionType');
 const Contribution = require('../models/Contribution');
 const { getOrCreateSettings } = require('../utils/settings');
+const { carriedInTotals } = require('../utils/carriedIn');
 const { fundBalance } = require('../utils/fundBalance');
 const { totalFinesCollected } = require('../utils/finesCollected');
 
@@ -37,7 +38,14 @@ async function publicOverview(req, res, next) {
       description: t.description || '',
       totalContributed: totalsMap.get(String(t._id)) || 0,
     }));
-    const totalContributed = byType.reduce((sum, t) => sum + t.totalContributed, 0);
+    const collected = byType.reduce((sum, t) => sum + t.totalContributed, 0);
+    // The money that was already on the books when the cycle opened — the
+    // members' carried-forward balances and the funds' floats. "All-time" has to
+    // mean it, or the public page tells every member that the years they paid
+    // into the paper ledger never happened, and reads as if the group held
+    // nothing but what this ledger has watched move.
+    const carriedIn = await carriedInTotals();
+    const totalContributed = collected + carriedIn.total;
     const thisWeekTotal = thisWeekAgg[0]?.total || 0;
 
     const expenseTypes = types.filter((t) => t.tracksExpenses);
@@ -59,6 +67,12 @@ async function publicOverview(req, res, next) {
       resignedCount,
       byType,
       totalContributed,
+      // Named parts: the members' brought-forward balances, the funds' floats, and
+      // what this ledger has watched come in since the cycle opened.
+      carriedIn: carriedIn.total,
+      carriedInMemberBalances: carriedIn.memberBalances,
+      carriedInFundFloats: carriedIn.fundFloats,
+      collected,
       totalExpenses,
       // What the group actually holds right now: everything raised, minus
       // everything spent from expense-tracking funds. This is the number that

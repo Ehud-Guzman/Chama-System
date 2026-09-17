@@ -34,6 +34,11 @@ export default function GroupOverview({ onChamaName }) {
   <StatTile
     label="Total raised (all-time)"
     value={money(overview.totalContributed)}
+    hint={
+      overview.carriedIn > 0
+        ? `${money(overview.carriedIn)} carried forward · ${money(overview.collected)} since the books opened`
+        : undefined
+    }
   />
   <StatTile
     label="Cash held now"
@@ -42,9 +47,10 @@ export default function GroupOverview({ onChamaName }) {
   />
 </div>
 <p className="mt-3 max-w-3xl text-xs leading-5 text-muted">
-  "Total raised" is everyone's lifetime contributions added up. "Cash held now" is that total
-  minus {money(overview.totalExpenses)} spent from tracked funds — the closer answer to "how
-  much does the group actually have."
+  "Total raised" is everyone's lifetime contributions added up, including the{" "}
+  {money(overview.carriedIn)} the members and the funds already held when the books opened. "Cash
+  held now" is that total minus {money(overview.totalExpenses)} spent from tracked funds — the
+  closer answer to "how much does the group actually have."
   {overview.finesCollected > 0 && (
     <> It also excludes {money(overview.finesCollected)} collected from fines, which the group holds but isn't logged as a contribution.</>
   )}
@@ -59,7 +65,7 @@ export default function GroupOverview({ onChamaName }) {
           {overview.byType.length > 0 && (
             <div className="rounded-xl border border-rule bg-surface p-4 md:p-5">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                Raised by contribution type (all-time)
+                Raised by contribution type (since the books opened)
               </p>
               <ul className="space-y-2">
                 {overview.byType.map((t) => (

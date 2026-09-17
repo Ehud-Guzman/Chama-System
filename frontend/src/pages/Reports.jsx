@@ -198,6 +198,15 @@ export default function Reports() {
               <p className="amount mt-1 text-3xl font-bold text-primary">
                 {money(summary.totalContributed)}
               </p>
+              {/* What the headline is made of, named the way the ledger header
+                  names its own parts. All-time has to include the money the
+                  members and the funds already held when the books opened: no
+                  contribution row can show it, so a total built from rows alone
+                  reads as if the group had never collected anything. */}
+              <p className="amount mt-1 text-sm text-muted">
+                {money(summary.carriedIn)} brought forward from the paper ledger +{" "}
+                {money(summary.collected)} collected since
+              </p>
               <p className="amount mt-1 text-sm text-muted">
                 {money(summary.thisWeekTotal)} this week
               </p>
@@ -222,7 +231,7 @@ export default function Reports() {
               )}
 
               <p className="mt-4 border-t border-rule pt-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                By method
+                By method (since the books opened)
               </p>
               <ul>
                 {summary.byMethod.map((m) => (
@@ -246,7 +255,7 @@ export default function Reports() {
               {summary.byType?.length > 0 && (
                 <>
                   <p className="mt-4 border-t border-rule pt-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                    By type
+                    By type (since the books opened)
                   </p>
                   <ul>
                     {summary.byType.map((t) => (
@@ -390,6 +399,14 @@ export default function Reports() {
                       </td>
                       <td className="amount px-3 py-2 text-right font-semibold">
                         {money(m.totalContributed)}
+                        {/* All-time includes the balance he carried in when the
+                            books opened, since no contribution row can show it —
+                            without that line the figure looks invented. */}
+                        {m.carriedIn > 0 && (
+                          <p className="text-xs font-normal text-muted">
+                            incl. {money(m.carriedIn)} carried forward
+                          </p>
+                        )}
                       </td>
                       <td className="amount px-3 py-2 text-right text-muted">
                         {m.weeksPaid}/{m.weeksExpected}
