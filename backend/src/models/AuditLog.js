@@ -15,6 +15,8 @@ const AuditLogSchema = new Schema(
         'Fine',
         'Expense',
         'Minute',
+        'ChamaDocument',
+        'Notification',
         'User',
       ],
       required: true,

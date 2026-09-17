@@ -8,7 +8,7 @@ import { shortDate, todayISO } from '../utils/format';
 import { exportMinuteAsDocx } from '../utils/exportDocx';
 import { promptForDocxImport } from '../utils/importDocx';
 
-const BLANK = { title: '', date: todayISO(), content: '' };
+const BLANK = { title: '', date: todayISO(), content: '', visibleToMembers: true };
 
 // Admin-only meeting minutes — never exposed on any public route, matching
 // the group's choice to keep individual member issues (fines, disputes)
@@ -73,6 +73,7 @@ export default function Minutes() {
       title: minute.title,
       date: new Date(minute.date).toISOString().slice(0, 10),
       content: minute.content || '',
+      visibleToMembers: minute.visibleToMembers !== false,
     };
     setSelectedId(minute._id);
     setForm(next);
@@ -261,12 +262,17 @@ export default function Minutes() {
                         </button>
                       </div>
                     </div>
-                    <p className="mb-1 text-xs text-muted">
+                    <p className="mb-1 flex items-center gap-2 text-xs text-muted">
                       {new Date(m.date).toLocaleDateString('en-KE', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',
                       })}
+                      {m.visibleToMembers === false && (
+                        <span className="rounded bg-alert/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-alert">
+                          Not for members
+                        </span>
+                      )}
                     </p>
                     {contentPreview && (
                       <p className="text-xs text-muted line-clamp-1">{contentPreview}…</p>
@@ -348,6 +354,24 @@ export default function Minutes() {
                     />
                   </div>
                 </div>
+
+                {/* Minutes go to members' phones by default (that is the point of
+                    collecting them), but one naming a member's disciplinary issue
+                    can be held back — the members' page then never shows it. */}
+                <label className="mt-3 flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.visibleToMembers}
+                    onChange={(e) => setForm({ ...form, visibleToMembers: e.target.checked })}
+                    className="mt-0.5 h-4 w-4"
+                  />
+                  <span>
+                    Visible to members
+                    <span className="block text-xs text-muted">
+                      Shown on the public page to anyone who enters a registered phone number.
+                    </span>
+                  </span>
+                </label>
               </div>
 
               <div className="p-4">

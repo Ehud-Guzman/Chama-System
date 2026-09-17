@@ -1,32 +1,13 @@
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
+import { normalizePhone } from '../utils/phone';
 
 import GroupOverview from '../components/public/GroupOverview';
 import PassbookCard from '../components/public/PassbookCard';
 import DirectoryList from '../components/public/DirectoryList';
 import ResignedMembersList from '../components/public/ResignedMembersList';
-
-// Mirrors the backend normalizer for instant client-side validation
-function normalizePhone(input) {
-  let digits = String(input).replace(/[\s\-().]/g, '');
-
-  if (digits.startsWith('+')) {
-    digits = digits.slice(1);
-  }
-
-  if (!/^\d+$/.test(digits)) {
-    return null;
-  }
-
-  if (digits.length === 12 && digits.startsWith('254')) {
-    digits = '0' + digits.slice(3);
-  } else if (digits.length === 9 && /^[17]/.test(digits)) {
-    digits = '0' + digits;
-  }
-
-  return /^0[17]\d{8}$/.test(digits) ? digits : null;
-}
+import PublicRecords from '../components/public/PublicRecords';
 
 export default function PublicLookup() {
   const [phone, setPhone] = useState('');
@@ -325,6 +306,21 @@ export default function PublicLookup() {
   </section>
 )}
 
+
+        {/* =================================================
+              CHAMA DOCUMENTS & MINUTES
+
+              Locked until a registered phone number is given.
+              A successful lookup above already proved one, so the
+              members' area opens itself rather than asking again.
+          ================================================== */}
+
+          <section className="mt-5" aria-label="Chama documents and minutes">
+            <PublicRecords
+              key={lookedUpPhone || 'locked'}
+              verifiedPhone={lookedUpPhone}
+            />
+          </section>
 
         </header>
 

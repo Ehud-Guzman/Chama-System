@@ -7,3 +7,10 @@ Thumbs.db
 .vscode/
 .idea/
 *.log
+
+# One-off migration scripts that embed real member data (names, phone numbers and
+# contribution amounts). They stay on disk so a migration can be re-run, but they
+# must not be committed: a phone number is the credential for the members area, so
+# a tracked copy hands out the key to the gated documents and minutes.
+backend/src/scripts/importHarambeeContributions.js
+backend/src/scripts/findWrongAmounts.js

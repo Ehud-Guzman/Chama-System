@@ -42,6 +42,17 @@ const directoryLimiter = rateLimit({
   message: { message: 'Too many requests. Please wait a minute and try again.' },
 });
 
+// The document vault is phone-gated but browsed — a member unlocks the list
+// once and then opens several files, so this is more generous than the passbook
+// lookup while still capping scripted scraping of a member's number.
+const documentLimiter = rateLimit({
+  windowMs: 60000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests. Please wait a minute and try again.' },
+});
+
 // A leaked/stolen JWT shouldn't get unlimited guesses at the current
 // password — same budget as login since it's the same kind of attack.
 const passwordChangeLimiter = rateLimit({
@@ -53,4 +64,4 @@ const passwordChangeLimiter = rateLimit({
   message: { message: 'Too many attempts. Please wait a few minutes and try again.' },
 });
 
-module.exports = { loginLimiter, lookupLimiter, overviewLimiter, directoryLimiter, passwordChangeLimiter };
+module.exports = { loginLimiter, lookupLimiter, overviewLimiter, directoryLimiter, documentLimiter, passwordChangeLimiter };

@@ -18,16 +18,22 @@ export default function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:pb-4"
       role="dialog"
       aria-modal="true"
       aria-label={title}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
-      <div ref={containerRef} className="w-full max-w-sm rounded-xl bg-surface p-5 shadow-xl">
-        <h2 className="text-base font-semibold">{title}</h2>
-        {body && <p className="mt-2 text-sm text-muted">{body}</p>}
-        <div className="mt-5 flex gap-3">
+      <div
+        ref={containerRef}
+        className="flex max-h-[85dvh] w-full max-w-sm flex-col rounded-xl bg-surface p-5 shadow-xl"
+      >
+        <h2 className="shrink-0 text-base font-semibold">{title}</h2>
+        {/* The body scrolls rather than pushing the actions off a short screen or
+            behind the on-screen keyboard, so Cancel/Confirm stay reachable
+            whatever the message length. shrink-0 keeps them at full height. */}
+        {body && <p className="mt-2 overflow-y-auto text-sm text-muted">{body}</p>}
+        <div className="mt-5 flex shrink-0 gap-3">
           <button
             type="button"
             onClick={onCancel}

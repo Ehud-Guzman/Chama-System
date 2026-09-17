@@ -1,0 +1,320 @@
+import { useCallback, useEffect, useState } from 'react';
+import api, { apiMessage } from '../services/api';
+import { useToast } from '../components/shared/Toast';
+import Loader from '../components/shared/Loader';
+import MemberAvatar from '../components/members/MemberAvatar';
+import { money } from '../utils/format';
+
+// Who owes what, and a way to email them about it. The figures come from the
+// same weekly schedule the member's own passbook shows, so a reminder can never
+// claim something their statement contradicts.
+export default function Reminders() {
+  const toast = useToast();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(() => new Set());
+  const [search, setSearch] = useState('');
+  const [includeLate, setIncludeLate] = useState(true);
+  const [includeFines, setIncludeFines] = useState(true);
+  const [note, setNote] = useState('');
+  const [sending, setSending] = useState(false);
+  const [results, setResults] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/api/notifications/reminders');
+      setData(res.data);
+      // A reload means the amounts changed — a stale selection would send an
+      // email about figures nobody has looked at.
+      setSelected(new Set());
+    } catch (err) {
+      toast(apiMessage(err, 'Could not load outstanding balances'), 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const members = data?.members || [];
+  const term = search.trim().toLowerCase();
+  const visible = term
+    ? members.filter(
+        (m) =>
+          m.name.toLowerCase().includes(term) ||
+          String(m.regNumber || '').toLowerCase().includes(term)
+      )
+    : members;
+
+  // Emailable = an address we can actually use. Opted-out members are listed so
+  // the treasurer can see why they get nothing, but can't be ticked.
+  const emailable = (m) => Boolean(m.email && m.emailNotifications);
+  const emailableVisible = visible.filter(emailable);
+
+  function toggle(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function send() {
+    if (selected.size === 0) {
+      toast('Select at least one member', 'error');
+      return;
+    }
+
+    setSending(true);
+    setResults(null);
+    try {
+      const res = await api.post('/api/notifications/reminders', {
+        memberIds: [...selected],
+        includeLate,
+        includeFines,
+        note,
+      });
+      setResults(res.data);
+      toast(res.data.sent === 1 ? '1 email sent' : `${res.data.sent} emails sent`);
+      load();
+    } catch (err) {
+      toast(apiMessage(err, 'Could not send the reminders'), 'error');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (loading) return <Loader />;
+
+  return (
+    <div className="space-y-4">
+      <header>
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted">Reminders</p>
+        <h1 className="mt-1 text-2xl font-bold">Outstanding contributions &amp; fines</h1>
+        <p className="mt-1 text-sm text-muted">
+          Email members who are behind on their weekly contribution, or who have unpaid fines.
+        </p>
+      </header>
+
+      {data && !data.configured && (
+        <div className="rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-sm">
+          <p className="font-semibold">Email sending isn&apos;t set up yet</p>
+          <p className="mt-1 text-muted">
+            Add <span className="amount">SMTP_HOST</span>,{' '}
+            <span className="amount">SMTP_PORT</span>, <span className="amount">SMTP_USER</span>,{' '}
+            <span className="amount">SMTP_PASS</span> and <span className="amount">MAIL_FROM</span>{' '}
+            to the backend environment and restart the API. Everything below still works — the
+            send button will just report that it isn&apos;t configured.
+          </p>
+        </div>
+      )}
+
+      {data && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-xl border border-rule bg-surface px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">Owing</p>
+            <p className="amount mt-1 text-xl font-bold">{data.owingCount}</p>
+          </div>
+          <div className="rounded-xl border border-rule bg-surface px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Emailable
+            </p>
+            <p className="amount mt-1 text-xl font-bold">{data.reachableCount}</p>
+          </div>
+          <div className="rounded-xl border border-rule bg-surface px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              No email
+            </p>
+            <p className="amount mt-1 text-xl font-bold">{data.missingEmailCount}</p>
+          </div>
+          <div className="rounded-xl border border-rule bg-surface px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Selected
+            </p>
+            <p className="amount mt-1 text-xl font-bold">{selected.size}</p>
+          </div>
+        </div>
+      )}
+
+      <section className="rounded-xl border border-rule bg-surface p-4">
+        <h2 className="text-sm font-semibold">What to include</h2>
+
+        <div className="mt-2 space-y-2">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={includeLate}
+              onChange={(e) => setIncludeLate(e.target.checked)}
+              className="mt-0.5 h-4 w-4"
+            />
+            <span>
+              Late weekly contributions
+              <span className="block text-xs text-muted">
+                Weeks that have already ended without full payment. The week in progress is never
+                counted as late.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={includeFines}
+              onChange={(e) => setIncludeFines(e.target.checked)}
+              className="mt-0.5 h-4 w-4"
+            />
+            <span>
+              Unpaid fines
+              <span className="block text-xs text-muted">Fines with a balance still owing.</span>
+            </span>
+          </label>
+        </div>
+
+        <label htmlFor="reminder-note" className="mt-3 block text-xs font-medium text-muted">
+          Extra line (optional)
+        </label>
+        <textarea
+          id="reminder-note"
+          rows={2}
+          maxLength={600}
+          placeholder="e.g. Please clear your balance before the meeting on Sunday."
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-rule bg-page px-3 py-2 text-sm"
+        />
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={send}
+            disabled={sending || selected.size === 0}
+            className="min-h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {sending ? 'Sending…' : `Send${selected.size ? ` ${selected.size}` : ''} email${selected.size === 1 ? '' : 's'}`}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelected(new Set(emailableVisible.map((m) => m.id)))}
+            className="min-h-11 rounded-lg border border-rule px-4 text-sm font-medium"
+          >
+            Select all with email
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="min-h-11 rounded-lg border border-rule px-4 text-sm font-medium text-muted"
+          >
+            Clear
+          </button>
+        </div>
+      </section>
+{results && (
+        <section className="rounded-xl border border-rule bg-surface p-4">
+          <h2 className="text-sm font-semibold">
+            Sent {results.sent} · skipped {results.skipped} · failed {results.failed}
+          </h2>
+          <ul className="mt-2 space-y-1 text-xs">
+            {results.results.map((r) => (
+              <li key={String(r.id)} className="flex items-start justify-between gap-3">
+                <span className="min-w-0 truncate">
+                  {r.name}
+                  {r.email ? <span className="text-muted"> · {r.email}</span> : null}
+                </span>
+                <span
+                  className={`shrink-0 font-medium ${
+                    r.status === 'sent'
+                      ? 'text-primary'
+                      : r.status === 'failed'
+                        ? 'text-alert'
+                        : 'text-muted'
+                  }`}
+                >
+                  {r.status === 'sent' ? 'Sent' : r.reason || r.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section className="rounded-xl border border-rule bg-surface">
+        <div className="border-b border-rule p-4">
+          <h2 className="text-sm font-semibold">Members behind ({members.length})</h2>
+          <input
+            type="search"
+            placeholder="Search by name or reg number"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search members"
+            className="mt-3 h-11 w-full rounded-lg border border-rule bg-page px-3 text-sm"
+          />
+        </div>
+
+        {visible.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-muted">
+            {members.length === 0
+              ? 'Nobody is behind on contributions or fines.'
+              : 'No members match that search.'}
+          </p>
+        ) : (
+          <ul className="divide-y divide-rule">
+            {visible.map((m) => (
+              <li key={m.id} className="flex items-start gap-3 p-4">
+                <input
+                  type="checkbox"
+                  checked={selected.has(m.id)}
+                  onChange={() => toggle(m.id)}
+                  disabled={!emailable(m)}
+                  aria-label={`Select ${m.name}`}
+                  className="mt-3 h-4 w-4"
+                />
+
+                <MemberAvatar name={m.name} photoUrl={m.photoUrl} />
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">
+                    {m.name}
+                    {m.regNumber ? (
+                      <span className="amount ml-2 text-xs font-normal text-muted">
+                        {m.regNumber}
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-muted">
+                    {!m.email
+                      ? 'No email address on file'
+                      : m.emailNotifications
+                        ? m.email
+                        : `${m.email} · reminders switched off`}
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
+                    {m.lateTotal > 0 && (
+                      <span className="text-muted">
+                        {m.lateWeeksCount} late week{m.lateWeeksCount === 1 ? '' : 's'} ·{' '}
+                        <span className="amount font-medium text-ink">{money(m.lateTotal)}</span>
+                      </span>
+                    )}
+                    {m.finesTotal > 0 && (
+                      <span className="text-muted">
+                        {m.finesCount} fine{m.finesCount === 1 ? '' : 's'} ·{' '}
+                        <span className="amount font-medium text-ink">{money(m.finesTotal)}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <p className="amount mt-3 shrink-0 text-sm font-semibold text-alert">
+                  {money(m.total)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}

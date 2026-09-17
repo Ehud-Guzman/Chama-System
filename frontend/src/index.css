@@ -32,6 +32,20 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* iOS Safari zooms the whole page in when a focused field's effective
+   font-size is below 16px, and never zooms back out — so tapping the phone
+   field on the home page would zoom and leave the layout stuck. Almost every
+   field in this app is text-sm (14px) for density on desktop, so a 16px floor
+   is applied to touch devices only, leaving the desktop type scale intact.
+   Checkbox/radio are excluded: they take no text and would only get taller. */
+@media (any-pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* The one orchestrated motion moment: passbook ledger rows fade in
    staggered, then the total stamps in. Delays are set inline per row. */
 @keyframes ledger-row-in {

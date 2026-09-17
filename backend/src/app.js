@@ -12,6 +12,7 @@ const {
   lookupLimiter,
   overviewLimiter,
   directoryLimiter,
+  documentLimiter,
 } = require('./middleware/rateLimiter');
 
 const {
@@ -32,6 +33,16 @@ const {
 
 const { publicOverview } = require('./controllers/overviewController');
 
+const {
+  publicListDocuments,
+  publicDocumentFile,
+} = require('./controllers/documentController');
+
+const {
+  publicListMinutes,
+  publicGetMinute,
+} = require('./controllers/minuteController');
+
 // Routes
 const authRoutes = require('./routes/authRoutes');
 const memberRoutes = require('./routes/memberRoutes');
@@ -43,6 +54,9 @@ const fineTypeRoutes = require('./routes/fineTypeRoutes');
 const fineRoutes = require('./routes/fineRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const minuteRoutes = require('./routes/minuteRoutes');
+const documentRoutes = require('./routes/documentRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const backupRoutes = require('./routes/backupRoutes');
 
 const app = express();
@@ -140,6 +154,34 @@ app.get(
   publicMemberStatementExcel
 );
 
+// Public chama documents — the group's title deeds, certificates and other
+// records. Gated on a registered member's phone number: no number, no list.
+app.get(
+  '/api/public/documents',
+  documentLimiter,
+  publicListDocuments
+);
+
+app.get(
+  '/api/public/documents/:id/file',
+  documentLimiter,
+  publicDocumentFile
+);
+
+// Public meeting minutes — phone-gated by the same rule as the document vault:
+// enter a registered member's number, or see nothing.
+app.get(
+  '/api/public/minutes',
+  documentLimiter,
+  publicListMinutes
+);
+
+app.get(
+  '/api/public/minutes/:id',
+  documentLimiter,
+  publicGetMinute
+);
+
 // Public resigned members
 app.get(
   '/api/public/resigned',
@@ -170,6 +212,13 @@ app.use('/api/fines', fineRoutes);
 app.use('/api/expenses', expenseRoutes);
 
 app.use('/api/minutes', minuteRoutes);
+
+app.use('/api/documents', documentRoutes);
+
+app.use('/api/uploads', uploadRoutes);
+
+// Late-contribution / fine reminder emails
+app.use('/api/notifications', notificationRoutes);
 
 app.use('/api/backup', backupRoutes);
 

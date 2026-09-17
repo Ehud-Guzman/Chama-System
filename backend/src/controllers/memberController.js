@@ -12,6 +12,35 @@ const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { renderStatementPdf } = require('../utils/statementPdf');
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
+const { cleanEmail, isValidEmail } = require('../utils/mailer');
+const { destroyImage } = require('../utils/cloudinary');
+
+// Next of kin arrives as a nested object from the member form. Every field is
+// optional, and sending the fields empty is how an admin clears a stale contact.
+function cleanNextOfKin(input) {
+  const source = input && typeof input === 'object' ? input : {};
+  return {
+    name: String(source.name || '').trim(),
+    relationship: String(source.relationship || '').trim(),
+    phone: String(source.phone || '').trim(),
+    email: cleanEmail(source.email),
+  };
+}
+
+// Returns an error message, or null when the contact is usable. A name with no
+// way to reach anyone is the one combination worth rejecting: in the emergency
+// this field exists for, it would be useless.
+function nextOfKinError(kin) {
+  const empty = !kin.name && !kin.phone && !kin.email;
+  if (empty) return null;
+  if (!kin.name) return 'Next of kin needs a name';
+  if (kin.phone && !/^[+\d][\d\s\-()]{6,}$/.test(kin.phone)) {
+    return 'Enter a valid next of kin phone number';
+  }
+  if (!isValidEmail(kin.email)) return 'Enter a valid next of kin email address';
+  if (!kin.phone && !kin.email) return 'Add a phone number or an email for the next of kin';
+  return null;
+}
 
 // Shared by both the admin member view and the public passbook: pending/settled
 // fines for a member, and the week-by-week due schedule for every isWeekly
@@ -171,7 +200,7 @@ async function getMember(req, res, next) {
 // POST /api/members
 async function createMember(req, res, next) {
   try {
-    const { name, phone, email, regNumber, notes, joinDate } = req.body || {};
+    const { name, phone, email, regNumber, notes, joinDate, photoUrl, photoPublicId, nextOfKin, emailNotifications } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ message: 'Name is required' });
     }
@@ -179,15 +208,22 @@ async function createMember(req, res, next) {
     if (!normalized) {
       return res.status(400).json({ message: 'Enter a valid phone number (e.g. 0712 345 678)' });
     }
-    const trimmedEmail = String(email || '').trim();
-    if (trimmedEmail && !/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
+    const trimmedEmail = cleanEmail(email);
+    if (!isValidEmail(trimmedEmail)) {
       return res.status(400).json({ message: 'Enter a valid email address' });
     }
+    const kin = cleanNextOfKin(nextOfKin);
+    const kinError = nextOfKinError(kin);
+    if (kinError) return res.status(400).json({ message: kinError });
 
     const doc = {
       name: String(name).trim(),
       phone: normalized,
       email: trimmedEmail,
+      photoUrl: String(photoUrl || '').trim(),
+      photoPublicId: String(photoPublicId || '').trim(),
+      nextOfKin: kin,
+      emailNotifications: emailNotifications === undefined ? true : Boolean(emailNotifications),
       notes: String(notes || '').trim(),
       createdBy: req.user._id,
     };
@@ -234,7 +270,7 @@ async function updateMember(req, res, next) {
     if (!member) return res.status(404).json({ message: 'Member not found' });
     const before = snapshot(member);
 
-    const { name, phone, email, regNumber, notes, active, joinDate } = req.body || {};
+    const { name, phone, email, regNumber, notes, active, joinDate, photoUrl, photoPublicId, nextOfKin, emailNotifications } = req.body || {};
     if (name !== undefined) {
       if (!String(name).trim()) return res.status(400).json({ message: 'Name cannot be empty' });
       member.name = String(name).trim();
@@ -247,8 +283,8 @@ async function updateMember(req, res, next) {
       member.phone = normalized;
     }
     if (email !== undefined) {
-      const trimmedEmail = String(email).trim();
-      if (trimmedEmail && !/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
+      const trimmedEmail = cleanEmail(email);
+      if (!isValidEmail(trimmedEmail)) {
         return res.status(400).json({ message: 'Enter a valid email address' });
       }
       member.email = trimmedEmail;
@@ -268,8 +304,35 @@ async function updateMember(req, res, next) {
         member.resignationReason = '';
       }
     }
+    if (emailNotifications !== undefined) {
+      member.emailNotifications = Boolean(emailNotifications);
+    }
+    if (nextOfKin !== undefined) {
+      const kin = cleanNextOfKin(nextOfKin);
+      const kinError = nextOfKinError(kin);
+      if (kinError) return res.status(400).json({ message: kinError });
+      member.nextOfKin = kin;
+    }
+
+    // A replaced photo takes its Cloudinary asset with it. The old publicId is
+    // only remembered here and destroyed after a successful save, so a failed
+    // update can never leave a member with neither their old photo nor the new one.
+    const replacedPhotoId =
+      photoPublicId !== undefined &&
+      member.photoPublicId &&
+      member.photoPublicId !== String(photoPublicId).trim()
+        ? member.photoPublicId
+        : null;
+
+    // URL and publicId travel as a pair — receiving only one of them would mean
+    // storing an image nothing can ever delete again.
+    if (photoPublicId !== undefined || photoUrl !== undefined) {
+      member.photoUrl = String(photoUrl || '').trim();
+      member.photoPublicId = String(photoPublicId || '').trim();
+    }
 
     await member.save();
+    if (replacedPhotoId) await destroyImage(replacedPhotoId);
     await logAudit({
       action: 'update',
       entityType: 'Member',
@@ -362,7 +425,7 @@ async function importMembers(req, res, next) {
     let skipped = 0;
     const errors = [];
 
-    for (const { rowNumber, name, phone, regNumber, notes } of rows) {
+    for (const { rowNumber, name, phone, email, regNumber, notes } of rows) {
       if (!name) {
         skipped++;
         errors.push({ row: rowNumber, reason: 'Missing name' });
@@ -372,6 +435,12 @@ async function importMembers(req, res, next) {
       if (!normalized) {
         skipped++;
         errors.push({ row: rowNumber, reason: `Invalid phone "${phone || ''}"` });
+        continue;
+      }
+      const rowEmail = cleanEmail(email);
+      if (!isValidEmail(rowEmail)) {
+        skipped++;
+        errors.push({ row: rowNumber, reason: `Invalid email "${email}"` });
         continue;
       }
       const existing = await Member.findOne({ phone: normalized }).select('_id');
@@ -384,6 +453,7 @@ async function importMembers(req, res, next) {
         const member = await Member.create({
           name,
           phone: normalized,
+          email: rowEmail,
           regNumber: regNumber || (await nextRegNumber()),
           notes: notes || '',
           createdBy: req.user._id,
@@ -416,8 +486,14 @@ async function importMembers(req, res, next) {
 async function importTemplate(req, res, next) {
   try {
     const sheetRows = [
-      { name: 'Jane Wanjiru', phone: '0712345678', regNumber: '', notes: 'Optional note' },
-      { name: '', phone: '', regNumber: '', notes: '' },
+      {
+        name: 'Jane Wanjiru',
+        phone: '0712345678',
+        email: 'jane@example.com',
+        regNumber: '',
+        notes: 'Optional note',
+      },
+      { name: '', phone: '', email: '', regNumber: '', notes: '' },
     ];
     sendWorkbook(res, 'members-import-template.xlsx', [{ name: 'Members', rows: sheetRows }]);
   } catch (err) {
@@ -454,7 +530,16 @@ async function exportMembers(req, res, next) {
 
 // Shared shape for every public-facing member view (phone lookup, directory
 // detail). Never includes loggedBy, internal ids, or admin metadata.
-async function buildPublicProfile(member) {
+// Renders the public-facing passbook for one member. The returned object is
+// also reused as the body of the phone-gated PDF/Excel statements, so it is
+// deliberately kept lean: no audit trail, no "issued by" fields.
+//
+// `lookupPhone` is the number the caller entered at the gate. When it matches
+// the member's own number we let the member see their own contact details
+// (email + next of kin) — otherwise those stay hidden, the same way the
+// full phone number is never echoed back even to the member.
+async function buildPublicProfile(member, lookupPhone) {
+  const callerIsSelf = lookupPhone && normalizePhone(lookupPhone) === normalizePhone(member.phone);
   const [docs, breakdown] = await Promise.all([
     Contribution.find({ memberId: member._id, deleted: false })
       .sort({ date: 1, createdAt: 1 })
@@ -501,6 +586,15 @@ async function buildPublicProfile(member) {
   return {
     name: member.name,
     regNumber: member.regNumber || null,
+    // Public: the directory is open by design, so a profile photo is fine here.
+    photoUrl: member.photoUrl || '',
+    // Masked the same way the directory masks it — a member's own number is
+    // never echoed back in full, even to themselves, so a shared screen or a
+    // screenshot can't leak it.
+    phoneMasked: maskPhone(member.phone),
+    joinDate: member.joinDate || member.createdAt || null,
+    contributionsCount: contributions.length,
+    finesSettledCount: fines.settled.length,
     totalContributed: running,
     totalPledged,
     byType: breakdown.map((b) => ({
@@ -511,6 +605,17 @@ async function buildPublicProfile(member) {
     contributions,
     fines: publicFines,
     weeklySchedules,
+    // When the caller proved their own number at the gate, the member gets to
+    // see their own contact details back. Strangers (or someone looking up a
+    // friend) never see email or next of kin — one of each of those is
+    // personal and one is someone else's contact.
+    ...(callerIsSelf && {
+      email: member.email || '',
+      nextOfKin: member.nextOfKin && Object.keys(member.nextOfKin).length
+        ? { name: member.nextOfKin.name || '', relationship: member.nextOfKin.relationship || '', phone: member.nextOfKin.phone || '', email: member.nextOfKin.email || '' }
+        : null,
+      emailNotifications: member.emailNotifications,
+    }),
   };
 }
 
@@ -715,7 +820,7 @@ async function publicLookupStatement(req, res, next) {
     }
     const member = await Member.findOne({ phone: normalized, active: true }).lean();
     if (!member) return res.status(404).json({ message: 'not_found' });
-    await sendStatement(res, await buildPublicProfile(member));
+    await sendStatement(res, await buildPublicProfile(member, normalized));
   } catch (err) {
     next(err);
   }
@@ -742,40 +847,13 @@ async function publicLookupStatementExcel(req, res, next) {
 
     await sendStatementExcel(
       res,
-      await buildPublicProfile(member)
+      await buildPublicProfile(member, normalized)
     );
   } catch (err) {
     next(err);
   }
 }
-// GET /api/public/lookup/statement/excel?phone= — PUBLIC
-async function publicLookupStatementExcel(req, res, next) {
-  try {
-    const normalized = normalizePhone(String(req.query.phone || ''));
 
-    if (!normalized) {
-      return res.status(400).json({
-        message: 'Enter a valid phone number (e.g. 0712 345 678)',
-      });
-    }
-
-    const member = await Member.findOne({
-      phone: normalized,
-      active: true,
-    }).lean();
-
-    if (!member) {
-      return res.status(404).json({ message: 'not_found' });
-    }
-
-    await sendStatementExcel(
-      res,
-      await buildPublicProfile(member)
-    );
-  } catch (err) {
-    next(err);
-  }
-}
 // GET /api/public/directory/:id/statement/excel — PUBLIC
 async function publicMemberStatementExcel(req, res, next) {
   try {
@@ -833,7 +911,10 @@ async function publicLookup(req, res, next) {
       return res.status(404).json({ message: 'not_found' });
     }
 
-    res.json(await buildPublicProfile(member));
+    // The number that just matched IS the credential, so this caller is the
+    // member: pass it through and they see their own email and next of kin.
+    // Browsing the directory (no phone) keeps those two fields hidden.
+    res.json(await buildPublicProfile(member, normalized));
   } catch (err) {
     next(err);
   }
@@ -927,6 +1008,7 @@ async function publicDirectory(req, res, next) {
         id: m._id,
         name: m.name,
         regNumber: m.regNumber || null,
+        photoUrl: m.photoUrl || '',
         phoneMasked: maskPhone(m.phone),
         totalContributed: sumMap.get(String(m._id)) || 0,
         lastContributionDate: lastDateMap.get(String(m._id)) || null,

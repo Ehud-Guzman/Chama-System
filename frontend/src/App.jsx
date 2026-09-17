@@ -17,6 +17,8 @@ const MemberDetail = lazy(() => import('./pages/MemberDetail.jsx'));
 const ContributionsLog = lazy(() => import('./pages/ContributionsLog.jsx'));
 const Reports = lazy(() => import('./pages/Reports.jsx'));
 const Minutes = lazy(() => import('./pages/Minutes.jsx'));
+const Documents = lazy(() => import('./pages/Documents.jsx'));
+const Reminders = lazy(() => import('./pages/Reminders.jsx'));
 const DisciplinaryFines = lazy(() => import('./pages/DisciplinaryFines.jsx'));
 
 export default function App() {
@@ -75,6 +77,22 @@ export default function App() {
                 element={
                   <RoleGuard roles={['super_admin', 'admin', 'secretary']}>
                     <Minutes />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/reminders"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
+                    <Reminders />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/documents"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer', 'secretary']}>
+                    <Documents />
                   </RoleGuard>
                 }
               />

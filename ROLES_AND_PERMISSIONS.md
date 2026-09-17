@@ -21,6 +21,7 @@ The system has 5 user roles with different access levels:
 - ✅ Create & manage contribution types
 - ✅ Create & manage fine types
 - ✅ Access backup/restore functions
+- ✅ Upload, publish and remove chama documents (title deeds, certificates)
 - ✅ View complete audit trail
 
 **When to use:** Organization leadership, system owner
@@ -40,6 +41,7 @@ The system has 5 user roles with different access levels:
 - ✅ Manage member accounts
 - ✅ Create & manage contribution types
 - ✅ Create & manage fine types
+- ✅ Upload, publish and remove chama documents (title deeds, certificates)
 - ✅ View reports (summary, performance, monthly, weekly)
 - ✅ Modify system settings (chama name, default contribution type)
 - ✅ View complete audit trail
@@ -63,8 +65,10 @@ The system has 5 user roles with different access levels:
 - ✅ View reports (summary, performance, monthly, weekly)
 - ✅ Export reports to Excel
 - ✅ View audit trail (who did what and when)
+- ✅ View chama documents (title deeds, certificates)
 - ❌ Cannot create or manage expenses
 - ❌ Cannot create, settle, or void fines
+- ❌ Cannot upload or remove chama documents
 - ❌ Cannot manage member accounts
 - ❌ Cannot create or manage contribution types
 - ❌ Cannot create or manage fine types
@@ -89,6 +93,7 @@ The system has 5 user roles with different access levels:
 - ✅ View weekly reconciliation
 - ✅ Export reports to Excel
 - ✅ View audit trail (who did what and when)
+- ✅ Upload, publish and remove chama documents (title deeds, certificates)
 - ❌ Cannot modify any data
 - ❌ Cannot create contributions, expenses, or fines
 - ❌ Cannot manage members or accounts
@@ -114,6 +119,7 @@ The system has 5 user roles with different access levels:
 - ❌ Cannot manage expenses
 - ❌ Cannot create fine types
 - ❌ Cannot manage members or system settings
+- ❌ Cannot view or manage chama documents
 - ❌ Cannot view reports
 
 **When to use:** Disciplinary committee member

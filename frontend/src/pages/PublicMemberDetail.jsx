@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import api, { apiMessage } from "../services/api";
 import PassbookCard from "../components/public/PassbookCard";
+import PublicRecords from "../components/public/PublicRecords";
 import Loader from "../components/shared/Loader";
 
 // Reached by browsing the directory rather than typing a phone number —
@@ -62,6 +63,12 @@ export default function PublicMemberDetail() {
             />
           </div>
         )}
+
+        {/* Same phone-gated members' area as the home page: browsing a member's
+            record doesn't prove a phone number, so this one starts locked. */}
+        <div className="mt-4">
+          <PublicRecords />
+        </div>
       </main>
     </div>
   );

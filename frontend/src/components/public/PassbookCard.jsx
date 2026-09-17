@@ -1,27 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
-import api, { apiMessage } from '../../services/api';
+import api from '../../services/api';
 import { useToast } from '../shared/Toast';
 import { money, shortDate, METHOD_LABELS } from '../../utils/format';
+import { blobErrorMessage } from '../../utils/blobError';
+import MemberAvatar from '../members/MemberAvatar';
 import FinesPanel from '../shared/FinesPanel';
 import WeeklyScheduleTable from '../shared/WeeklyScheduleTable';
 
 const PAGE_SIZE = 20;
-
-// Axios error responses arrive as a Blob (not parsed JSON) when the request
-// was made with responseType: 'blob' — unwrap it to get the real server
-// message (e.g. the 429 rate-limit text) instead of a generic fallback.
-async function blobErrorMessage(err, fallback) {
-  const blob = err?.response?.data;
-  if (blob instanceof Blob && blob.type.includes('json')) {
-    try {
-      const parsed = JSON.parse(await blob.text());
-      return parsed.message || fallback;
-    } catch {
-      return fallback;
-    }
-  }
-  return apiMessage(err, fallback);
-}
 
 // One member's full public passbook: header, pledged-vs-contributed by type,
 // the ledger, and a stamped total. Used both for a phone-number search result
@@ -96,13 +82,16 @@ export default function PassbookCard({
       <section className="overflow-hidden rounded-xl border border-rule bg-surface shadow-sm">
         {/* Passbook header */}
         <header className="flex items-start justify-between gap-3 border-b border-rule px-5 py-4">
-          <div className="min-w-0">
-            <h2 className="text-lg font-bold">{result.name}</h2>
-            {result.regNumber && (
-              <p className="amount mt-0.5 text-xs font-medium uppercase tracking-widest text-muted">
-                Member № {result.regNumber}
-              </p>
-            )}
+          <div className="flex min-w-0 items-center gap-3">
+            <MemberAvatar name={result.name} photoUrl={result.photoUrl} />
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-bold">{result.name}</h2>
+              {result.regNumber && (
+                <p className="amount mt-0.5 text-xs font-medium uppercase tracking-widest text-muted">
+                  Member № {result.regNumber}
+                </p>
+              )}
+            </div>
           </div>
           {(statementUrl || statementExcelUrl) && (
             <div className="flex shrink-0 gap-2">
@@ -130,6 +119,112 @@ export default function PassbookCard({
             </div>
           )}
         </header>
+
+        {/* Everything about this member at a glance: who they are (masked
+            phone, member since) and the numbers behind the ledger —
+            contributions logged, what they pledged, fines owed and cleared. */}
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-rule px-5 py-4 md:grid-cols-3">
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Phone
+            </dt>
+            <dd className="amount mt-0.5 text-sm font-medium">{result.phoneMasked || '—'}</dd>
+          </div>
+
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Member since
+            </dt>
+            <dd className="mt-0.5 text-sm font-medium">{shortDate(result.joinDate)}</dd>
+          </div>
+
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Contributions
+            </dt>
+            <dd className="amount mt-0.5 text-sm font-medium">
+              {result.contributionsCount || 0} recorded
+            </dd>
+          </div>
+
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Pledged
+            </dt>
+            <dd className="amount mt-0.5 text-sm font-medium">{money(result.totalPledged)}</dd>
+          </div>
+
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Outstanding fines
+            </dt>
+            <dd
+              className={`amount mt-0.5 text-sm font-medium ${
+                result.fines?.totalOwed > 0 ? 'text-alert' : ''
+              }`}
+            >
+              {money(result.fines?.totalOwed || 0)}
+            </dd>
+          </div>
+
+          <div>
+            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Fines settled
+            </dt>
+            <dd className="amount mt-0.5 text-sm font-medium">
+              {result.finesSettledCount || 0} cleared
+            </dd>
+          </div>
+        </dl>
+
+        {/* Member detail strip. Email, next of kin and the reminder flag arrive
+            only when the caller proved their own number at the gate — the server
+            omits them entirely for anyone else, so this strip is empty for a
+            stranger and for a visitor who arrived by browsing the directory. The
+            phone number is never sent here at all, only the masked form. */}
+        <div className="border-b border-rule px-5 py-4">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            {result.email && (
+              <div>
+                <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  Email
+                </dt>
+                <dd className="truncate mt-0.5 font-medium text-ink/80">
+                  {result.email}
+                </dd>
+              </div>
+            )}
+            {result.nextOfKin?.name && (
+              <div>
+                <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  Next of kin
+                </dt>
+                <dd className="mt-0.5 text-muted">
+                  {result.nextOfKin.name}
+                  {result.nextOfKin.relationship ? ` · ${result.nextOfKin.relationship}` : ''}
+                </dd>
+              </div>
+            )}
+            <div>
+              <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                Notifications
+              </dt>
+              <dd className="mt-0.5">
+                {result.emailNotifications === false ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-dashed border-rule px-2 py-0.5 text-xs text-muted">
+                    <span className="h-1.5 w-1.5 rounded-full bg-muted" />
+                    off
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-ink/10 px-2 py-0.5 text-xs font-medium text-ink">
+                    <span className="h-1.5 w-1.5 rounded-full bg-ink" />
+                    on
+                  </span>
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
 
         {/* Open book: pledged vs. contributed per type, shown whether or not
             there are contributions yet */}

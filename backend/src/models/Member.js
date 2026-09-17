@@ -1,11 +1,34 @@
 const { Schema, model } = require('mongoose');
 
+// A member's emergency contact. Embedded (never its own collection) because it
+// only ever belongs to one member and is always read together with them.
+const NextOfKinSchema = new Schema(
+  {
+    name: { type: String, default: '', trim: true },
+    relationship: { type: String, default: '', trim: true },
+    // Not normalized like the member's own phone: this is often a relative's
+    // number, which may be a landline or a non-Kenyan mobile.
+    phone: { type: String, default: '', trim: true },
+    email: { type: String, default: '', trim: true, lowercase: true },
+  },
+  { _id: false }
+);
+
 const MemberSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     // `unique: true` already creates an index — no need for `index: true` too.
     phone: { type: String, required: true, unique: true, trim: true },
     email: { type: String, default: '', trim: true, lowercase: true },
+    // Cloudinary-hosted profile photo. The publicId is kept alongside the URL so
+    // the old asset can be deleted when a photo is replaced — otherwise every
+    // re-upload leaves an orphan behind in the Cloudinary account.
+    photoUrl: { type: String, default: '' },
+    photoPublicId: { type: String, default: '' },
+    nextOfKin: { type: NextOfKinSchema, default: () => ({}) },
+    // Late-contribution and fine reminder emails. On by default: the point of
+    // collecting an email is to use it. Off for a member who asks us to stop.
+    emailNotifications: { type: Boolean, default: true },
     regNumber: { type: String, unique: true, sparse: true },
     notes: { type: String, default: '' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },

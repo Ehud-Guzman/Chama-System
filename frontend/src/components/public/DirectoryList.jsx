@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { money, shortDate } from '../../utils/format';
+import MemberAvatar from '../members/MemberAvatar';
 
 // Every active member, browsable by anyone — the group chose full openness
 // over a private ledger. Phone numbers arrive already masked from the server.
@@ -75,24 +76,28 @@ export default function DirectoryList() {
             <li key={m.id}>
               <Link
                 to={`/member/${m.id}`}
-                className="block rounded-xl border border-rule bg-surface px-4 py-3"
+                className="flex items-center gap-3 rounded-xl border border-rule bg-surface px-4 py-3"
               >
-                <div className="flex items-baseline justify-between gap-3">
-                  <p className="min-w-0 truncate font-semibold">{m.name}</p>
-                  <p className="amount shrink-0 font-semibold text-accent">
-                    {money(m.totalContributed)}
-                  </p>
-                </div>
-                <div className="mt-0.5 flex items-baseline justify-between gap-3 text-xs text-muted">
-                  <p className="amount">
-                    {m.phoneMasked}
-                    {m.regNumber ? ` · ${m.regNumber}` : ''}
-                  </p>
-                  <p>
-                    {m.lastContributionDate
-                      ? `Last: ${shortDate(m.lastContributionDate)}`
-                      : 'No contributions yet'}
-                  </p>
+                <MemberAvatar name={m.name} photoUrl={m.photoUrl} />
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="min-w-0 truncate font-semibold">{m.name}</p>
+                    <p className="amount shrink-0 font-semibold text-accent">
+                      {money(m.totalContributed)}
+                    </p>
+                  </div>
+                  <div className="mt-0.5 flex items-baseline justify-between gap-3 text-xs text-muted">
+                    <p className="amount">
+                      {m.phoneMasked}
+                      {m.regNumber ? ` · ${m.regNumber}` : ''}
+                    </p>
+                    <p className="shrink-0">
+                      {m.lastContributionDate
+                        ? `Last: ${shortDate(m.lastContributionDate)}`
+                        : 'No contributions yet'}
+                    </p>
+                  </div>
                 </div>
               </Link>
             </li>

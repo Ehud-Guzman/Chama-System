@@ -66,6 +66,29 @@ export const NAV_ITEMS = [
     ),
   },
   {
+    to: '/admin/reminders',
+    label: 'Reminders',
+    roles: ['super_admin', 'admin', 'treasurer'],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+        <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+      </svg>
+    ),
+  },
+  {
+    to: '/admin/documents',
+    label: 'Docs',
+    roles: ['super_admin', 'admin', 'treasurer', 'secretary'],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="4" rx="1" />
+        <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+        <path d="M10 12h4" />
+      </svg>
+    ),
+  },
+  {
     to: '/admin/disciplinary',
     label: 'Discipline',
     roles: ['super_admin', 'admin', 'disciplinary'],
