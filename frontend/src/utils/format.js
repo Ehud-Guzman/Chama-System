@@ -41,10 +41,18 @@ export function isSameCalendarDay(a, b) {
   );
 }
 
-export function todayISO() {
-  const d = new Date();
+// Local calendar date of any value, as the `yyyy-mm-dd` a date input needs.
+// todayISO() only ever describes "now"; this is for dates that come back from
+// the API (week boundaries), which are instants and would land on the previous
+// day if they were formatted in UTC.
+export function isoDateOf(value) {
+  const d = new Date(value);
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function todayISO() {
+  return isoDateOf(new Date());
 }
 
 // File sizes for the document vault — one decimal place above a kilobyte.

@@ -1,43 +1,43 @@
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const { currentWeekNumber, weekRange, cycleWeekNumber } = require('./weekCycle');
 
-// Builds a week-by-week due schedule anchored to the member's own join date,
-// from week 1 through the current week. Each week is judged independently
-// against the type's fixed weeklyAmount — no rollover between weeks.
-function buildWeeklySchedule(joinDate, weeklyAmount, contributions) {
-  const start = new Date(joinDate).getTime();
-  const now = Date.now();
-  const weekCount = Math.max(1, Math.floor((now - start) / WEEK_MS) + 1);
+// Week-by-week due schedule for one fixed weekly amount.
+//
+// Taken from the group cycle — week 92 closing on its Thursday and advancing by
+// itself every Friday — rather than from each member's own join date. Anchoring
+// on joinDate was right while every member's history was imported week by week,
+// but after the Week-92 reset it would show each member 60-odd weeks of
+// "unpaid" that the house never expected of him. Every member is on the same
+// week number as everyone else, and the schedule only reaches back as far as
+// the cycle does.
+//
+// `contributions` are this member's rows for the same fund only. grossAmount is
+// used when present so a payment partly redirected to settle a fine still
+// fulfilled the week from the member's own side.
+function buildWeeklySchedule(config, weeklyAmount, contributions) {
+  const currentWeek = currentWeekNumber(config);
+
+  const paidByWeek = new Map();
+  for (const c of contributions) {
+    const week = cycleWeekNumber(c.date, config);
+    const cash = Number(c.grossAmount ?? c.amount) || 0;
+    paidByWeek.set(week, (paidByWeek.get(week) || 0) + cash);
+  }
 
   const weeks = [];
-  for (let i = 0; i < weekCount; i++) {
-    const startDate = new Date(start + i * WEEK_MS);
-    const endDate = new Date(start + (i + 1) * WEEK_MS - 1);
-    // Use what the member actually handed over (grossAmount), not the net
-    // amount credited to this type — a payment that was partly redirected to
-    // settle a fine still fulfilled this week's due from the member's side.
-    const paid = contributions
-      .filter((c) => {
-        const t = new Date(c.date).getTime();
-        return t >= startDate.getTime() && t <= endDate.getTime();
-      })
-      .reduce((sum, c) => sum + (c.grossAmount || c.amount), 0);
-
+  for (let w = config.cycleStartWeek; w <= currentWeek; w++) {
+    const paid = paidByWeek.get(w) || 0;
     let status = 'unpaid';
-    if (paid >= weeklyAmount && weeklyAmount > 0) status = 'paid';
+    if (weeklyAmount > 0 && paid >= weeklyAmount) status = 'paid';
     else if (paid > 0) status = 'partial';
 
-    // The last week in the range is always "as of today" — flagged so the UI
-    // can mark it distinctly from settled history. This list itself already
-    // grows on its own every time it's built (weekCount is derived from
-    // Date.now()), so no admin action is ever needed to "start" a new week.
+    // isCurrent marks the week still running, so the UI can separate it from
+    // settled history — a week in progress is never "not paid yet".
     weeks.push({
-      weekNumber: i + 1,
-      startDate,
-      endDate,
+      ...weekRange(w, config),
       expected: weeklyAmount,
       paid,
       status,
-      isCurrent: i === weekCount - 1,
+      isCurrent: w === currentWeek,
     });
   }
   return weeks;

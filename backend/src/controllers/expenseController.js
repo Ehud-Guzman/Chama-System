@@ -30,7 +30,7 @@ async function listExpenses(req, res, next) {
 // POST /api/expenses
 async function createExpense(req, res, next) {
   try {
-    const { typeId, amount, date, description } = req.body || {};
+    const { typeId, amount, date, description, note } = req.body || {};
 
     const type = await ContributionType.findById(typeId);
     if (!type || !type.tracksExpenses) {
@@ -46,6 +46,7 @@ async function createExpense(req, res, next) {
       amount: n,
       date: date ? new Date(date) : new Date(),
       description: String(description || '').trim(),
+      note: String(note || '').trim(),
       loggedBy: req.user._id,
     });
 
@@ -72,7 +73,7 @@ async function updateExpense(req, res, next) {
     if (!expense || expense.deleted) return res.status(404).json({ message: 'Expense not found' });
     const before = snapshot(expense);
 
-    const { amount, date, description } = req.body || {};
+    const { amount, date, description, note } = req.body || {};
     if (amount !== undefined) {
       const n = Number(amount);
       if (!Number.isFinite(n) || n <= 0) {
@@ -86,6 +87,7 @@ async function updateExpense(req, res, next) {
       expense.date = d;
     }
     if (description !== undefined) expense.description = String(description).trim();
+    if (note !== undefined) expense.note = String(note).trim();
 
     await expense.save();
     await logAudit({

@@ -14,7 +14,9 @@ const ProtectedRoute = lazy(() => import('./components/layout/ProtectedRoute.jsx
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
 const MembersList = lazy(() => import('./pages/MembersList.jsx'));
 const MemberDetail = lazy(() => import('./pages/MemberDetail.jsx'));
-const ContributionsLog = lazy(() => import('./pages/ContributionsLog.jsx'));
+const FinanceLedger = lazy(() => import('./pages/FinanceLedger.jsx'));
+const FinanceMemberLedger = lazy(() => import('./pages/FinanceMemberLedger.jsx'));
+const FinanceSetup = lazy(() => import('./pages/FinanceSetup.jsx'));
 const Reports = lazy(() => import('./pages/Reports.jsx'));
 const Minutes = lazy(() => import('./pages/Minutes.jsx'));
 const Documents = lazy(() => import('./pages/Documents.jsx'));
@@ -57,13 +59,33 @@ export default function App() {
                 }
               />
               <Route
-                path="/admin/log"
+                path="/admin/finance"
                 element={
                   <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
-                    <ContributionsLog />
+                    <FinanceLedger />
                   </RoleGuard>
                 }
               />
+              <Route
+                path="/admin/finance/setup"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
+                    <FinanceSetup />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/finance/:id"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
+                    <FinanceMemberLedger />
+                  </RoleGuard>
+                }
+              />
+              {/* The old single-entry / weekly-grid log screen is retired — the
+                  member list is the one way in. Kept as a redirect so a bookmark
+                  or an old shared link still lands somewhere useful. */}
+              <Route path="/admin/log" element={<Navigate to="/admin/finance" replace />} />
               <Route
                 path="/admin/reports"
                 element={

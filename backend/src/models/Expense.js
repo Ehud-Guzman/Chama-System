@@ -9,6 +9,10 @@ const ExpenseSchema = new Schema(
     amount: { type: Number, required: true, min: 0 },
     date: { type: Date, required: true, default: Date.now },
     description: { type: String, default: '' },
+    // Same free-text field contributions carry — where the treasurer pastes the
+    // M-Pesa/bank message or receipt line a cashless payment came with, so the
+    // evidence lives on the entry it belongs to instead of in a side file.
+    note: { type: String, default: '' },
     loggedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     deleted: { type: Boolean, default: false },
   },

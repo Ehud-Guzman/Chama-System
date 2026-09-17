@@ -29,13 +29,15 @@ export const NAV_ITEMS = [
     ),
   },
   {
-    to: '/admin/log',
-    label: 'Log',
+    to: '/admin/finance',
+    label: 'Finance',
     roles: ['super_admin', 'admin', 'treasurer'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 5v14" />
-        <path d="M5 12h14" />
+        <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z" />
+        <path d="M8 7h8" />
+        <path d="M8 11h8" />
+        <path d="M8 15h5" />
       </svg>
     ),
   },

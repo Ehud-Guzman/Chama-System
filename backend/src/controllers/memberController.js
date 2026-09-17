@@ -8,6 +8,8 @@ const { logAudit, snapshot } = require('../utils/auditLogger');
 const { parseMembersCSV } = require('../utils/csvImport');
 const { typeBreakdown } = require('../utils/typeBreakdown');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
+const { resolveConfig } = require('../utils/weekCycle');
+const { bucketForType } = require('../utils/ledgerTypes');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { renderStatementPdf } = require('../utils/statementPdf');
 const { getOrCreateSettings } = require('../utils/settings');
@@ -43,10 +45,11 @@ function nextOfKinError(kin) {
 }
 
 // Shared by both the admin member view and the public passbook: pending/settled
-// fines for a member, and the week-by-week due schedule for every isWeekly
-// contribution type, anchored to this member's own joinDate.
+// fines for a member, and the week-by-week due schedule for every weekly fund,
+// taken from the group cycle (see buildWeeklySchedule) so the passbook always
+// shows the same week number and the same 1,400 the treasurer is working to.
 async function buildFinesAndSchedules(member, contributions) {
-  const [pending, settled, weeklyTypes] = await Promise.all([
+  const [pending, settled, weeklyTypes, settings] = await Promise.all([
     Fine.find({ memberId: member._id, deleted: false, remaining: { $gt: 0 } })
       .sort({ date: 1 })
       .populate('typeId', 'name')
@@ -56,18 +59,24 @@ async function buildFinesAndSchedules(member, contributions) {
       .populate('typeId', 'name')
       .lean(),
     ContributionType.find({ isWeekly: true, active: true }).lean(),
+    getOrCreateSettings(),
   ]);
 
+  const config = resolveConfig(settings);
   const totalOwed = pending.reduce((sum, f) => sum + f.remaining, 0);
   const weeklySchedules = weeklyTypes.map((type) => {
     const typeContributions = contributions.filter(
       (c) => String(c.typeId?._id || c.typeId) === String(type._id)
     );
+    // The cycle's own amount wins over the type copy: Settings is authoritative
+    // (constitution §7.1, §7.2) and the two are only kept in step for the older
+    // screens that still read the type's own weeklyAmount.
+    const isChai = bucketForType(type) === 'chai';
     return {
       typeId: type._id,
       typeName: type.name,
-      weeklyAmount: type.weeklyAmount,
-      weeks: buildWeeklySchedule(member.joinDate, type.weeklyAmount, typeContributions),
+      weeklyAmount: isChai ? config.chaiAmount : config.weeklyAmount,
+      weeks: buildWeeklySchedule(config, isChai ? config.chaiAmount : config.weeklyAmount, typeContributions),
     };
   });
 

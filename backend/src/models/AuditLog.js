@@ -2,7 +2,7 @@ const { Schema, model } = require('mongoose');
 
 const AuditLogSchema = new Schema(
   {
-    action: { type: String, enum: ['create', 'update', 'delete'], required: true },
+    action: { type: String, enum: ['create', 'update', 'delete', 'reset'], required: true },
     entityType: {
       type: String,
       enum: [
@@ -18,6 +18,9 @@ const AuditLogSchema = new Schema(
         'ChamaDocument',
         'Notification',
         'User',
+        // Group-wide maintenance rather than a record edit — a ledger reset has
+        // to leave a trace of itself, and this is the only entity it belongs to.
+        'System',
       ],
       required: true,
     },

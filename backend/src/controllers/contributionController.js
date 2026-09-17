@@ -481,11 +481,13 @@ async function deleteContribution(req, res, next) {
 
 // GET /api/contributions/import-template — one row per active member (Name,
 // Reg number), one column per active contribution type using its exact name.
-// Weekly types are pre-filled with their default amount, same as the grid's
-// own defaults, so the treasurer only has to touch cells that differ.
-// Shaped to be filled offline and re-uploaded via the weekly grid's
-// "Upload .xlsx / .csv" — bulkCreateContributions never sees this file
-// directly, the grid parses it client-side first.
+// Weekly types are pre-filled with their default amount.
+//
+// The screen this was written for (the bulk weekly grid) has been retired in
+// favour of logging member by member — the log endpoint, where each payment
+// keeps its own M-Pesa note — so this template and POST /bulk are now only
+// reachable by something calling the API directly. They are left in place
+// because a scripted import is still the right tool for a one-off backfill.
 async function bulkImportTemplate(req, res, next) {
   try {
     const [members, types] = await Promise.all([

@@ -2,143 +2,144 @@ const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const ContributionType = require('../models/ContributionType');
 const { getOrCreateSettings } = require('./settings');
+const { resolveConfig } = require('./weekCycle');
+const { bucketForType, CHAI_TYPE_NAME, WEEKLY_TYPE_NAME } = require('./ledgerTypes');
+const { computeMemberLedger } = require('./memberLedger');
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-// Chama-wide week-by-week reconciliation: for every fixed weekly
-// contribution type (Weekly Contribution, Chai, ...), compares what was
-// actually collected against what was expected from every member who had
-// already joined by that week, so a treasurer can spot exactly which week
-// came up short (or over) without re-adding a physical ledger by hand.
+// Chama-wide week-by-week reconciliation: for every weekly fund (the personal
+// contribution and the Tea Fund), what was actually collected against what was
+// expected from every active member, so the treasurer can see exactly which week
+// came up short and who was in it.
 //
-// Every member is expected to share the same joinDate anchor once imported
-// from the paper ledger (see importWeek60Ledger.js), so week boundaries line
-// up chama-wide the same way buildWeeklySchedule lines them up per member —
-// this just aggregates that same grid across everyone at once.
+// The weeks, the amounts and the member figures all come from the same cycle
+// engine the treasurer logs against (computeMemberLedger) — a reconciliation
+// that counted weeks differently from the ledger it is reconciling would be
+// worse than none at all, and before the Week-92 reset this one anchored on each
+// member's join date and reported the whole imported history as unpaid.
 async function computeWeeklyReconciliation() {
-  const [members, weeklyTypes, settings] = await Promise.all([
-    Member.find({ active: true }).select('name regNumber joinDate resignedAt').lean(),
-    // Group-fund weekly "types" like Chai are a flat deduction taken from
-    // everyone regardless of choice (see importWeek61Ledger.js), never an
-    // optional per-member payment — so there's no such thing as a member
-    // individually "not paying" it. Scoring it the same way as the real
-    // 1,400 Weekly Contribution would flag all 32 members as unpaid, every
-    // week, forever. Only personal weekly types are reconciled here.
-    ContributionType.find({ isWeekly: true, isGroupFund: false, active: true })
-      .select('name weeklyAmount isGroupFund')
-      .lean(),
+  const [members, settings, types] = await Promise.all([
+    // Resigned members are left out: the cycle is the group's live record, and
+    // somebody who has left no longer owes into it.
+    Member.find({ active: true }).select('name regNumber phone openingBalance').lean(),
     getOrCreateSettings(),
+    ContributionType.find().select('name isGroupFund isWeekly tracksExpenses').lean(),
   ]);
 
-  if (members.length === 0 || weeklyTypes.length === 0) return [];
+  if (members.length === 0) return [];
 
-  const anchorTime = Math.min(...members.map((m) => new Date(m.joinDate).getTime()));
-  const weekCount = Math.max(1, Math.floor((Date.now() - anchorTime) / WEEK_MS) + 1);
-  // Weeks before this stay out of the chama-wide view entirely — week
-  // numbers still count from each member's true join date (so "Week 61"
-  // here always matches "Week 61" on the paper ledger), we just skip
-  // rendering/scoring the pre-tracking weeks nobody can reconcile.
-  const trackingStartMs = settings.weeklyTrackingStartDate
-    ? new Date(settings.weeklyTrackingStartDate).getTime()
-    : anchorTime;
-
-  const memberIds = members.map((m) => m._id);
-  const typeIds = weeklyTypes.map((t) => t._id);
+  const config = resolveConfig(settings);
+  const typeById = new Map(types.map((t) => [String(t._id), t]));
 
   const contributions = await Contribution.find({
-    memberId: { $in: memberIds },
-    typeId: { $in: typeIds },
+    memberId: { $in: members.map((m) => m._id) },
     deleted: false,
   })
     .select('memberId typeId amount grossAmount date')
     .lean();
 
+  const byMember = new Map();
+  for (const c of contributions) {
+    const type = typeById.get(String(c.typeId));
+    const annotated = {
+      ...c,
+      bucket: bucketForType(type),
+      isGroupFund: Boolean(type && type.isGroupFund),
+    };
+    const key = String(c.memberId);
+    if (!byMember.has(key)) byMember.set(key, []);
+    byMember.get(key).push(annotated);
+  }
+
+  const ledgers = members.map((member) => ({
+    member,
+    ledger: computeMemberLedger({
+      member,
+      contributions: byMember.get(String(member._id)) || [],
+      config,
+    }),
+  }));
+
+  // The two funds a week is scored against. Tea is scored too — §7.2 has every
+  // member contributing 100 a week — but it is never mixed into the personal
+  // contribution figures above it.
+  const funds = [
+    {
+      type: types.find((t) => t.name === WEEKLY_TYPE_NAME) || null,
+      typeName: WEEKLY_TYPE_NAME,
+      isGroupFund: false,
+      weeklyAmount: config.weeklyAmount,
+      read: (week) => ({ paid: week.personalPaid, item: week }),
+    },
+    {
+      type: types.find((t) => t.name === CHAI_TYPE_NAME) || null,
+      typeName: CHAI_TYPE_NAME,
+      isGroupFund: true,
+      weeklyAmount: config.chaiAmount,
+      read: (week) => ({ paid: week.chaiPaid, item: week }),
+    },
+  ];
+
   const weeks = [];
-  for (let i = 0; i < weekCount; i++) {
-    const startDate = new Date(anchorTime + i * WEEK_MS);
-    const endDate = new Date(anchorTime + (i + 1) * WEEK_MS - 1);
-    // A week only counts as "trackable" once it starts on or after the
-    // configured cutoff — comparing against endDate would let the last
-    // pre-tracking week (which ends just hours into the cutoff day, since
-    // week boundaries inherit the sheet's own time-of-day) slip through.
-    if (startDate.getTime() < trackingStartMs) continue;
-    const startMs = startDate.getTime();
-    const endMs = endDate.getTime();
+  for (const weekNumber of ledgers[0].ledger.weeks.map((w) => w.weekNumber)) {
+    const perFund = [];
 
-    const weekContribs = contributions.filter((c) => {
-      const t = new Date(c.date).getTime();
-      return t >= startMs && t <= endMs;
-    });
+    for (const fund of funds) {
+      let actual = 0;
+      const shortfallMembers = [];
 
-    // A member only owes for a week once they've actually joined, and stops
-    // owing the week they resign.
-    const eligibleMembers = members.filter((m) => {
-      const joined = new Date(m.joinDate).getTime() <= startMs;
-      const stillIn = !m.resignedAt || new Date(m.resignedAt).getTime() > startMs;
-      return joined && stillIn;
-    });
-    const eligibleIds = new Set(eligibleMembers.map((m) => String(m._id)));
-
-    const types = weeklyTypes.map((type) => {
-      const typeContribs = weekContribs.filter((c) => String(c.typeId) === String(type._id));
-      const paidByMember = new Map();
-      for (const c of typeContribs) {
-        const key = String(c.memberId);
-        const amt = c.grossAmount ?? c.amount;
-        paidByMember.set(key, (paidByMember.get(key) || 0) + amt);
+      for (const { member, ledger } of ledgers) {
+        const week = ledger.weeks.find((w) => w.weekNumber === weekNumber);
+        if (!week) continue;
+        const { paid } = fund.read(week);
+        actual += paid;
+        const status = fund.weeklyAmount > 0 && paid >= fund.weeklyAmount ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+        if (status !== 'paid') {
+          shortfallMembers.push({
+            memberId: member._id,
+            name: member.name,
+            regNumber: member.regNumber || null,
+            paid,
+            status,
+          });
+        }
       }
 
-      const actual = [...paidByMember.values()].reduce((s, v) => s + v, 0);
-      const expected = eligibleMembers.length * type.weeklyAmount;
-
-      const shortfallMembers = eligibleMembers
-        .map((m) => {
-          const paid = paidByMember.get(String(m._id)) || 0;
-          const status = paid >= type.weeklyAmount ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
-          return { memberId: m._id, name: m.name, regNumber: m.regNumber || null, paid, status };
-        })
-        .filter((m) => m.status !== 'paid');
-
-      // Contributions logged against members who weren't eligible that week
-      // (e.g. backdated opening-balance entries) still count toward actual
-      // collected cash, but shouldn't be blamed on any "unpaid" member.
-      const untrackedAmount = [...paidByMember.entries()]
-        .filter(([memberId]) => !eligibleIds.has(memberId))
-        .reduce((s, [, amt]) => s + amt, 0);
-
-      return {
-        typeId: type._id,
-        typeName: type.name,
-        isGroupFund: type.isGroupFund,
-        weeklyAmount: type.weeklyAmount,
-        eligibleCount: eligibleMembers.length,
-        expected,
+      perFund.push({
+        typeId: fund.type ? fund.type._id : null,
+        typeName: fund.typeName,
+        isGroupFund: fund.isGroupFund,
+        weeklyAmount: fund.weeklyAmount,
+        eligibleCount: ledgers.length,
+        expected: ledgers.length * fund.weeklyAmount,
         actual,
-        diff: actual - expected,
-        untrackedAmount,
-        shortfallMembers,
-      };
-    });
+        diff: actual - ledgers.length * fund.weeklyAmount,
+        // Nothing can be collected against a cycle week from outside it, so
+        // there is never an untracked tail to explain.
+        untrackedAmount: 0,
+        shortfallMembers: shortfallMembers.sort((a, b) => b.paid - a.paid),
+      });
+    }
 
-    const expectedTotal = types.reduce((s, t) => s + t.expected, 0);
-    const actualTotal = types.reduce((s, t) => s + t.actual, 0);
+    const expectedTotal = perFund.reduce((s, f) => s + f.expected, 0);
+    const actualTotal = perFund.reduce((s, f) => s + f.actual, 0);
     // Comparing raw totals for equality is a poor "is this week okay?" signal:
-    // one member overpaying routinely offsets another underpaying, so the
-    // sums rarely match exactly even on a perfectly fine week. What actually
-    // matters to a treasurer is whether anyone still owes their minimum.
-    const shortfallCount = types.reduce((s, t) => s + t.shortfallMembers.length, 0);
+    // one member overpaying routinely offsets another underpaying, so the sums
+    // rarely match exactly even on a perfectly fine week. What actually matters
+    // to a treasurer is whether anyone still owes their minimum.
+    const shortfallCount = perFund.reduce((s, f) => s + f.shortfallMembers.length, 0);
+    const sample = ledgers[0].ledger.weeks.find((w) => w.weekNumber === weekNumber);
 
     weeks.push({
-      weekNumber: i + 1,
-      startDate,
-      endDate,
-      isCurrent: i === weekCount - 1,
+      weekNumber,
+      startDate: sample.startDate,
+      endDate: sample.endDate,
+      isCurrent: sample.isCurrent,
       expectedTotal,
       actualTotal,
       diff: actualTotal - expectedTotal,
       shortfallCount,
       balanced: shortfallCount === 0,
-      types,
+      types: perFund,
     });
   }
 
@@ -153,3 +154,4 @@ async function computeWeekDetail(weekNumber) {
 }
 
 module.exports = { computeWeeklyReconciliation, computeWeekDetail };
+

@@ -7,6 +7,7 @@
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
     "seed:super-admin": "node src/scripts/seedSuperAdmin.js",
+    "reset:week92": "node src/scripts/resetForWeek92.js",
     "ledger:template": "node src/scripts/createLedgerTemplate.js",
     "ledger:import": "node src/scripts/importLedgerFromSpreadsheet.js",
     "ledger:import-incremental": "node src/scripts/importLedgerIncremental.js"

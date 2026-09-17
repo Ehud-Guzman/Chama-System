@@ -35,6 +35,13 @@ const MemberSchema = new Schema(
     active: { type: Boolean, default: true },
     // Anchor for this member's own weekly-contribution schedule (week 1 starts here).
     joinDate: { type: Date, default: Date.now },
+    // What the member's paper-ledger balance was when the week cycle opened
+    // (verified per member at the audit). Everything the cycle computes sits on
+    // top of it, which is how a member's "money" starts where the old sheet
+    // left him instead of restarting at zero.
+    openingBalance: { type: Number, default: 0 },
+    // Free text for where that figure came from (e.g. "audit 19-Aug-2026").
+    openingBalanceNote: { type: String, default: '' },
     resignedAt: { type: Date, default: null },
     resignationReason: { type: String, default: '' },
   },

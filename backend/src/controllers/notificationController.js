@@ -3,7 +3,9 @@ const Contribution = require('../models/Contribution');
 const ContributionType = require('../models/ContributionType');
 const Fine = require('../models/Fine');
 const { getOrCreateSettings } = require('../utils/settings');
-const { buildWeeklySchedule } = require('../utils/weeklySchedule');
+const { resolveConfig } = require('../utils/weekCycle');
+const { WEEKLY_TYPE_NAME, bucketForType } = require('../utils/ledgerTypes');
+const { computeMemberLedger } = require('../utils/memberLedger');
 const { isMailConfigured, sendMail, buildReminderEmail } = require('../utils/mailer');
 const { logAudit } = require('../utils/auditLogger');
 
@@ -13,18 +15,14 @@ const MAX_RECIPIENTS = 200;
 
 // Works out exactly what a set of members still owes: unpaid weekly
 // contribution weeks and unpaid fines. This is the same maths the member's own
-// passbook shows (buildWeeklySchedule), so an email can never claim something
+// page shows (computeMemberLedger), so an email can never claim something
 // the member's own statement contradicts.
 async function computeMemberDues(members) {
   const ids = members.map((m) => m._id);
   if (ids.length === 0) return new Map();
 
-  const [weeklyTypes, settings, contributions, pendingFines] = await Promise.all([
-    // Group-fund weekly types (Chai) are a flat group deduction, never a member's
-    // personal debt — same exclusion weeklyReconciliation makes.
-    ContributionType.find({ isWeekly: true, isGroupFund: false, active: true })
-      .select('name weeklyAmount')
-      .lean(),
+  const [types, settings, contributions, pendingFines] = await Promise.all([
+    ContributionType.find().select('name isGroupFund isWeekly').lean(),
     getOrCreateSettings(),
     Contribution.find({ memberId: { $in: ids }, deleted: false })
       .select('memberId typeId amount grossAmount date')
@@ -34,39 +32,45 @@ async function computeMemberDues(members) {
       .lean(),
   ]);
 
-  // Weeks before the group started tracking are unreconcilable history (usually
-  // a paper ledger imported as one cumulative snapshot) — emailing members about
-  // them would be both wrong and, understandably, infuriating.
-  const trackingStart = settings.weeklyTrackingStartDate
-    ? new Date(settings.weeklyTrackingStartDate).getTime()
-    : 0;
+  const config = resolveConfig(settings);
+  const typeById = new Map(types.map((t) => [String(t._id), t]));
+  const byMember = new Map();
+  for (const c of contributions) {
+    const type = typeById.get(String(c.typeId));
+    const annotated = {
+      ...c,
+      bucket: bucketForType(type),
+      isGroupFund: Boolean(type && type.isGroupFund),
+    };
+    const key = String(c.memberId);
+    if (!byMember.has(key)) byMember.set(key, []);
+    byMember.get(key).push(annotated);
+  }
 
+  // The week requirements come from the same cycle engine the treasurer logs
+  // against, so a reminder can never quote a different week number or a
+  // different amount from the member's own page. Weeks before the cycle
+  // started simply aren't in the ledger, so unreconcilable history can't be
+  // emailed to anyone — the old per-member-join-date schedule could, and did.
   const dues = new Map();
 
   for (const member of members) {
-    const lateWeeks = [];
+    const ledger = computeMemberLedger({
+      member,
+      contributions: byMember.get(String(member._id)) || [],
+      config,
+    });
 
-    for (const type of weeklyTypes) {
-      const typeContributions = contributions.filter(
-        (c) => String(c.memberId) === String(member._id) && String(c.typeId) === String(type._id)
-      );
-      const weeks = buildWeeklySchedule(member.joinDate, type.weeklyAmount, typeContributions);
-
-      for (const week of weeks) {
-        // The week in progress isn't late yet — a member still has until it ends.
-        if (week.isCurrent) continue;
-        if (trackingStart && week.startDate.getTime() < trackingStart) continue;
-        if (week.status === 'paid') continue;
-        lateWeeks.push({
-          weekNumber: week.weekNumber,
-          startDate: week.startDate,
-          typeName: type.name,
-          expected: week.expected,
-          paid: week.paid,
-          shortfall: Math.max(week.expected - week.paid, 0),
-        });
-      }
-    }
+    const lateWeeks = ledger.weeks
+      .filter((w) => !w.isCurrent && w.status !== 'paid')
+      .map((w) => ({
+        weekNumber: w.weekNumber,
+        startDate: w.startDate,
+        typeName: WEEKLY_TYPE_NAME,
+        expected: ledger.weeklyAmount,
+        paid: w.personalPaid,
+        shortfall: Math.max(ledger.weeklyAmount - w.personalPaid, 0),
+      }));
 
     const fines = pendingFines
       .filter((f) => String(f.memberId) === String(member._id))
@@ -173,7 +177,7 @@ async function sendReminders(req, res, next) {
     }
 
     const members = await Member.find({ _id: { $in: ids }, active: true })
-      .select('name phone email emailNotifications joinDate')
+      .select('name phone email emailNotifications')
       .lean();
 
     const [dues, settings] = await Promise.all([

@@ -15,3 +15,7 @@ Thumbs.db
 # copy restored from that archive can never be committed by accident.
 backend/src/scripts/importHarambeeContributions.js
 backend/src/scripts/findWrongAmounts.js
+
+# A reset/backup dump carries the same material — every member's name, phone
+# number and balance — so it never gets committed either.
+backend/data/reset-backup-*.json

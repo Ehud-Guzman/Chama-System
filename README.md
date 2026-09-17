@@ -45,13 +45,59 @@ set it to the deployed API URL.
   loads no admin code)
 - `/member/:id` — public passbook view for one member, reached by browsing the directory
 - `/admin/login` — admin sign in
-- `/admin/dashboard` · `/admin/members` · `/admin/log` · `/admin/reports` · `/admin/minutes` ·
+- `/admin/dashboard` · `/admin/members` · `/admin/reports` · `/admin/minutes` ·
   `/admin/reminders` · `/admin/documents` · `/admin/disciplinary` — protected
+- `/admin/finance` · `/admin/finance/setup` · `/admin/finance/:id` — the ledger: the member list,
+  one member's page, and the go-live figures. This is the only place money is logged — the admin
+  dashboard shows the same list, `/admin/log` redirects here, and the old weekly grid and
+  per-type/expense panels are gone.
 
 Admin accounts are managed from the Dashboard (visible to the super admin only).
 
 ## Key behaviors
 
+- **The week cycle (the treasurer's maths).** `weekAnchorDate` + `cycleStartWeek` in Settings
+  pin the group to one shared week number — week 92 when this went live, closing on its
+  Thursday — and it advances by itself every Friday, so nobody ever has to "start" a week. Week
+  boundaries are pinned to East African time (a fixed +3) rather than the server's clock, because
+  the API runs on hosts that default to UTC while the treasurer's phone is on EAT. Per member:
+  `required so far = weeklyAmount × weeks elapsed since the opening week` (1,400 in week 92,
+  2,800 in 93, …), and
+  `his money = openingBalance + what he has paid since week 92 − required − tea`. Paying above
+  the 1,400 pushes his money up instead of being swallowed; a week with nothing paid takes 1,400
+  back off it — the "expected total deducted from his money" the members already work to, which
+  is the accumulated credit/arrears of constitution §7.5. The Tea Fund (`chaiAmount`, 100/week)
+  is totalled on its own per §7.2 *and* comes out of the member's money, exactly as the paper
+  ledger's "Previous + Weekly + Extra − Chai = Member Total" did — deducted as it is recorded,
+  never as an assumption, with any shortfall reported rather than silently absorbed. A closed
+  NILL week is flagged for the §7.5 KES 50 fine but never charged automatically — a fine has to
+  be issued with its week and reason.
+- **`openingBalance`** on each member carries his verified paper-ledger balance into the cycle,
+  so his money starts where the old sheet left him. `/admin/finance/setup` suggests each figure
+  from what the ledger already says he holds (`GET /api/ledger/setup`), so the 32 balances never
+  have to be retyped by hand.
+- **One write for the treasurer:** `POST /api/ledger/members/:id/log` with
+  `kind: weekly | extra | chai | expense` decides which collection the entry lands in, so the UI
+  keeps a single "Add a log" panel. Every entry — contributions *and* expenses — carries a free
+  text `note`, which is where the M-Pesa or bank message gets pasted, so the evidence sits on the
+  entry it explains. `clientRequestId` makes a retried submit resolve to the entry already
+  written instead of charging the member twice.
+- **Logging an earlier week:** the member's page has a week strip (every cycle week with its
+  `now` / `settled` / `owing` state). Picking one moves the date into that Friday→Thursday week
+  and prefills what that week still needs, so a late payment is recorded against the week it
+  belongs to instead of landing on today's date as anonymous credit. Where a member is behind,
+  one button fills in the whole arrears total against the earliest week he owes — the cumulative
+  credit of §7.5 then settles the weeks after it on its own, so there is no need to enter a line
+  per week.
+- **The Week-92 reset** (`npm run reset:week92 --prefix backend`, dry run by default;
+  `--confirm-reset` applies it) rolls every member's ledger balance into `openingBalance`, clears
+  contributions, expenses, fines, fine types, contribution types and pledges, and reseeds the
+  three ledger types. It writes a full backup to `backend/data/reset-backup-*.json` first (that
+  file is gitignored — same reason the old import scripts are: it carries real names, phones and
+  balances), leaves an audit entry behind, and keeps members, accounts, minutes, documents and
+  Settings untouched. `--remove-artifacts` also deletes the pseudo-members an old import created
+  ("Opening Balances …", group totals stored as if they were people); `--clear-audit` empties the
+  audit trail as well.
 - **Phone normalization:** `+2547…`, `2547…`, `07…` all resolve to one stored format
   (`07XXXXXXXX`) — enforced on member create/edit, CSV import, and public lookup.
 - **Public lookup:** exact phone match only, 5 requests/minute/IP (configurable via env),
@@ -74,14 +120,15 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   publicId is saved with the member so a replaced photo's old asset is deleted rather than
   orphaned. Without `CLOUDINARY_*` configured, the picker reports that uploads aren't set up and
   everything else keeps working.
-- **Email reminders:** `/admin/reminders` lists every member who is behind on a weekly
-  contribution or has unpaid fines, computed from the same weekly schedule the member's own
-  passbook shows (`POST /api/notifications/reminders` sends). A week still in progress is never
-  counted as late, and weeks before `weeklyTrackingStartDate` are ignored, so nobody is emailed
-  about unreconcilable history. Sending needs `SMTP_*` + `MAIL_FROM`; without them the page says
-  so and the API returns a 503 with the same explanation. Every send is audit-logged, members
-  can be opted out individually (`emailNotifications`), and a member with no address is listed
-  as un-emailable rather than silently skipped.
+- **Email reminders:** `/admin/reminders` lists every member who is behind on the weekly
+  contribution or has unpaid fines, computed from the same cycle engine the member's own page
+  shows (`computeMemberLedger`), so a reminder can never quote a week number or an amount the
+  member isn't seeing himself (`POST /api/notifications/reminders` sends). A week still in
+  progress is never counted as late, and the cycle only reaches back as far as week 92, so
+  nobody is emailed about unreconcilable history. Sending needs `SMTP_*` + `MAIL_FROM`; without
+  them the page says so and the API returns a 503 with the same explanation. Every send is
+  audit-logged, members can be opted out individually (`emailNotifications`), and a member with
+  no address is listed as un-emailable rather than silently skipped.
 - **Member records:** each member carries an email address, a profile photo, a next of kin
   (name, relationship, phone, email) and an email-reminders switch. Next of kin and notes stay
   on the admin side; only the photo and public passbook fields are exposed publicly.

@@ -1,0 +1,593 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import api, { apiMessage } from '../services/api';
+import { useToast } from '../components/shared/Toast';
+import { money, shortDate, todayISO, isoDateOf, METHOD_LABELS } from '../utils/format';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
+import Loader from '../components/shared/Loader';
+
+const METHODS = Object.keys(METHOD_LABELS);
+
+// The four things the treasurer can put on a member's page. `kind` maps
+// straight onto the API's single write endpoint, and the amount each one
+// prefills with is what members actually owe — so the usual entry is: tap the
+// member, tap Weekly, paste the M-Pesa message, tap Log.
+const KINDS = [
+  { value: 'weekly', label: 'Weekly', hint: 'The weekly contribution due' },
+  { value: 'extra', label: 'Extra', hint: 'Above the weekly amount — it stays his' },
+  { value: 'chai', label: 'Chai', hint: 'Tea money — the Group’s, kept on its own' },
+  { value: 'expense', label: 'Expense', hint: 'Money spent from the Tea Fund' },
+];
+
+function Stat({ label, value, accent, alert }) {
+  return (
+    <div className="rounded-xl border border-rule bg-surface p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</p>
+      <p
+        className={`amount mt-1 text-lg font-bold ${
+          alert ? 'text-alert' : accent ? 'text-primary' : ''
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+export default function FinanceMemberLedger() {
+  const { id } = useParams();
+  const toast = useToast();
+
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [kind, setKind] = useState('weekly');
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('mobile');
+  const [date, setDate] = useState(todayISO());
+  const [note, setNote] = useState('');
+  const [description, setDescription] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [showWeeks, setShowWeeks] = useState(false);
+
+  // Stable per-attempt key: it only rotates after a successful submit, so a
+  // retried request resolves to the entry already written instead of charging
+  // the member twice.
+  const requestIdRef = useRef(crypto.randomUUID());
+  const amountRef = useRef(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.get(`/api/ledger/members/${id}`);
+      setData(res.data);
+      return res.data;
+    } catch (err) {
+      toast(apiMessage(err, 'Could not load this member'), 'error');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [id, toast]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const ledger = data?.ledger;
+  const currentWeek = useMemo(() => ledger?.weeks?.find((w) => w.isCurrent), [ledger]);
+  // Which week the entry is being logged against. Defaults to the week running
+  // now; picking an older one is how a payment made late — or cash handed over
+  // at a meeting weeks ago — gets put on the week it belongs to instead of
+  // landing as anonymous credit on today's date.
+  const [targetWeek, setTargetWeek] = useState(null);
+
+  const selectedWeek = useMemo(
+    () => ledger?.weeks?.find((w) => w.weekNumber === targetWeek) || currentWeek,
+    [ledger, targetWeek, currentWeek]
+  );
+
+  // What the selected week still needs from him. Left blank once that week is
+  // covered — logging the full amount again would silently become extra credit.
+  const weekDue = selectedWeek
+    ? Math.max(0, (ledger?.weeklyAmount || 0) - (selectedWeek.personalPaid || 0))
+    : 0;
+  const chaiDue = selectedWeek ? Math.max(0, (ledger?.chaiAmount || 0) - (selectedWeek.chaiPaid || 0)) : 0;
+
+  // Set by the one-tap catch-up so the prefill below doesn't immediately
+  // overwrite the total it just filled in: the amount and the week it belongs to
+  // are decided together, and the effect that follows a week change would
+  // otherwise reset it to a single week's due.
+  const pendingFillRef = useRef(null);
+
+  useEffect(() => {
+    if (!ledger || !selectedWeek) return;
+    if (pendingFillRef.current !== null) {
+      setAmount(pendingFillRef.current);
+      pendingFillRef.current = null;
+      return;
+    }
+    if (kind === 'weekly') setAmount(weekDue > 0 ? String(weekDue) : '');
+    else if (kind === 'chai') setAmount(chaiDue > 0 ? String(chaiDue) : '');
+    else setAmount('');
+  }, [kind, ledger, selectedWeek, weekDue, chaiDue]);
+
+  // Picking a week also moves the date into it: a Friday-to-Thursday week means
+  // the Thursday is the day the money was due, and today's date for a week still
+  // running. Without this a back-filled week would be dated today and land in the
+  // wrong week entirely.
+  useEffect(() => {
+    if (!selectedWeek) return;
+    const end = new Date(selectedWeek.endDate);
+    const today = new Date();
+    setDate(isoDateOf(end.getTime() > today.getTime() ? today : end));
+  }, [selectedWeek]);
+
+
+  // One tap for the common catch-up case: he owes three weeks, so log the lot
+  // against the earliest week he is behind on. The credit then flows forward
+  // through the later weeks on its own, which is why there is no need to enter a
+  // line per week — §7.5's cumulative credit does that work.
+  function coverArrears() {
+    const firstUnsettled = ledger?.weeks?.find((w) => !w.settled);
+    if (!firstUnsettled) return;
+    pendingFillRef.current = String(ledger.arrears);
+    setKind('weekly');
+    setTargetWeek(firstUnsettled.weekNumber);
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    const value = Number(String(amount).replace(/[,\s]/g, ''));
+    if (!Number.isFinite(value) || value <= 0) {
+      toast('Enter an amount greater than zero', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.post(`/api/ledger/members/${id}/log`, {
+        kind,
+        amount: value,
+        method,
+        date,
+        note: note.trim(),
+        description: description.trim(),
+        clientRequestId: requestIdRef.current,
+      });
+      toast(`${money(value)} logged`);
+      requestIdRef.current = crypto.randomUUID();
+      setNote('');
+      setDescription('');
+      await load();
+    } catch (err) {
+      toast(apiMessage(err), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmDelete() {
+    setBusy(true);
+    try {
+      const path = deleting.kind === 'expense' ? `/api/expenses/${deleting._id}` : `/api/contributions/${deleting._id}`;
+      await api.delete(path);
+      toast('Entry deleted');
+      setDeleting(null);
+      await load();
+    } catch (err) {
+      toast(apiMessage(err), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading) return <Loader />;
+  if (!data) {
+    return (
+      <p className="rounded-xl border border-dashed border-rule px-5 py-10 text-center text-sm text-muted">
+        That member could not be loaded. <Link to="/admin/finance" className="text-primary">Back to the ledger</Link>
+      </p>
+    );
+  }
+
+  const { member, week, logs, expenses } = data;
+  const teaFund = (data.funds || []).find((f) => f.name.toLowerCase().includes('chai')) || null;
+  const owed = ledger.movement < 0;
+
+  return (
+    <div className="space-y-5">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link to="/admin/finance" className="text-xs font-medium text-primary">
+            ← All members
+          </Link>
+          <h1 className="mt-1 truncate text-2xl font-bold">{member.name}</h1>
+          <p className="mt-1 text-sm text-muted">
+            {[member.regNumber, member.phone].filter(Boolean).join(' · ')}
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            Week {week.currentWeek} · {shortDate(week.startDate)} → {shortDate(week.endDate)}
+          </p>
+        </div>
+        <Link
+          to={`/admin/members/${member._id}`}
+          className="min-h-11 rounded-lg border border-rule bg-surface px-4 text-sm font-medium leading-[2.75rem]"
+        >
+          Member record
+        </Link>
+      </header>
+
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="His money" value={money(ledger.money)} accent />
+        <Stat label="Expected by now" value={money(ledger.required)} />
+        <Stat
+          label={owed ? 'Behind' : 'Extra saved'}
+          value={money(owed ? ledger.arrears : ledger.credit)}
+          alert={owed}
+        />
+        <Stat label={`Tea this week (of ${money(ledger.chaiAmount)})`} value={money(ledger.chai.thisWeek)} />
+      </section>
+
+      <p className="rounded-xl border border-rule bg-canvas px-4 py-3 text-xs leading-5 text-muted">
+        {money(ledger.openingBalance)} brought forward + {money(ledger.paid)} paid since week 92 −{' '}
+        {money(ledger.required)} required − {money(ledger.chai.paid)} tea ={' '}
+        <span className="amount font-semibold">{money(ledger.money)}</span>. Tea is totalled on its
+        own but comes out of his money, the way the paper ledger did it.
+        {ledger.chai.shortfall > 0 &&
+          ` Tea entered so far is ${money(ledger.chai.paid)} of ${money(
+            ledger.chai.required
+          )} due (${money(ledger.chai.shortfall)} short).`}
+        {ledger.nillWeeksDueFine.length > 0 &&
+          ` ${ledger.nillWeeksDueFine.length} closed week(s) were NILL with no credit standing (${ledger.nillWeeksDueFine
+            .map((w) => 'W' + w)
+            .join(', ')}) — the 50 fine under clause 7.5 has not been charged.`}
+      </p>
+
+      <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.85fr)] lg:items-start">
+        {/* Add a log — the one write the treasurer needs */}
+        <form
+          onSubmit={submit}
+          className="min-w-0 space-y-4 rounded-xl border border-rule bg-surface p-4"
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted">Add a log</p>
+            <p className="mt-1 text-sm text-muted">
+              {KINDS.find((k) => k.value === kind)?.hint}
+            </p>
+          </div>
+
+          <fieldset>
+            <legend className="mb-2 text-xs font-medium">Which week is this for?</legend>
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+              {[...ledger.weeks].reverse().map((w) => {
+                const isPicked = selectedWeek?.weekNumber === w.weekNumber;
+                return (
+                  <button
+                    key={w.weekNumber}
+                    type="button"
+                    onClick={() => setTargetWeek(w.weekNumber)}
+                    aria-pressed={isPicked}
+                    title={`${shortDate(w.startDate)} → ${shortDate(w.endDate)}`}
+                    className={`min-w-20 shrink-0 rounded-lg border px-3 py-2 text-center ${
+                      isPicked ? 'border-primary bg-primary/10 text-primary' : 'border-rule text-muted'
+                    }`}
+                  >
+                    <span className="amount block text-sm font-bold">W{w.weekNumber}</span>
+                    <span className="mt-0.5 block text-[10px] uppercase tracking-wide">
+                      {w.isCurrent ? 'now' : w.settled ? 'settled' : 'owing'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedWeek && (
+              <p className="mt-2 text-xs text-muted">
+                Logging against week {selectedWeek.weekNumber} ({shortDate(selectedWeek.startDate)} →{' '}
+                {shortDate(selectedWeek.endDate)})
+                {selectedWeek.settled && !selectedWeek.isCurrent
+                  ? ' — already settled, so anything logged now counts as extra credit.'
+                  : ` — ${money(weekDue)} still due on the ${money(ledger.weeklyAmount)}.`}
+              </p>
+            )}
+          </fieldset>
+
+          {ledger.weeksBehind > 0 && (
+            <button
+              type="button"
+              onClick={coverArrears}
+              className="min-h-11 w-full rounded-lg border border-alert/40 bg-alert/5 px-3 text-xs font-semibold text-alert"
+            >
+              He is {ledger.weeksBehind} week{ledger.weeksBehind === 1 ? '' : 's'} behind ({' '}
+              {money(ledger.arrears)}) — log it all and catch him up
+            </button>
+          )}
+
+          <fieldset>
+            <legend className="mb-2 text-xs font-medium">What is this?</legend>
+            <div className="flex flex-wrap gap-2">
+              {KINDS.map((k) => (
+                <button
+                  key={k.value}
+                  type="button"
+                  onClick={() => setKind(k.value)}
+                  aria-pressed={kind === k.value}
+                  className={`min-h-11 rounded-lg border px-3 text-xs font-semibold ${
+                    kind === k.value
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-rule text-muted'
+                  }`}
+                >
+                  {k.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="log-amount" className="mb-1 block text-xs font-medium">
+                Amount
+              </label>
+              <input
+                id="log-amount"
+                ref={amountRef}
+                type="text"
+                inputMode="numeric"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0"
+                className="amount h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-base font-semibold"
+              />
+            </div>
+            <div>
+              <label htmlFor="log-date" className="mb-1 block text-xs font-medium">
+                Date
+              </label>
+              <input
+                id="log-date"
+                type="date"
+                max={todayISO()}
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+              />
+            </div>
+          </div>
+
+          {kind === 'weekly' && weekDue === 0 && (
+            <p className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
+              That week is already settled. Anything logged now counts as extra credit on top.
+            </p>
+          )}
+
+          <fieldset>
+            <legend className="mb-2 text-xs font-medium">Paid by</legend>
+            <div className="grid grid-cols-4 gap-2">
+              {METHODS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMethod(m)}
+                  aria-pressed={method === m}
+                  className={`min-h-11 rounded-lg border text-xs font-semibold ${
+                    method === m ? 'border-primary bg-primary/10 text-primary' : 'border-rule text-muted'
+                  }`}
+                >
+                  {METHOD_LABELS[m]}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          {kind === 'expense' && (
+            <div>
+              <label htmlFor="log-description" className="mb-1 block text-xs font-medium">
+                What was it for?
+              </label>
+              <input
+                id="log-description"
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. Tea and mandazi"
+                className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+              />
+            </div>
+          )}
+
+          <div>
+            <label htmlFor="log-note" className="mb-1 block text-xs font-medium">
+              Note <span className="font-normal text-muted">— paste the M-Pesa or bank message here</span>
+            </label>
+            <textarea
+              id="log-note"
+              rows={4}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="SK9X2Q1LMN Confirmed. Ksh1,400.00 sent to WAZO MOJA SELF-HELP GROUP on 17/9/26 at 8:04 AM."
+              className="w-full rounded-lg border border-rule bg-canvas px-3 py-2 text-sm leading-5"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={busy}
+            className="min-h-12 w-full rounded-lg bg-primary text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {busy ? 'Logging…' : 'Log it'}
+          </button>
+        </form>
+
+        <div className="min-w-0 space-y-5">
+          <section>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
+                His entries ({logs.length})
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowWeeks((v) => !v)}
+                className="text-xs font-medium text-primary"
+              >
+                {showWeeks ? 'Hide weeks' : 'Week by week'}
+              </button>
+            </div>
+
+            {logs.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
+                Nothing logged for {member.name} since week {week.currentWeek} yet.
+              </p>
+            ) : (
+              <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
+                {logs.map((l) => (
+                  <li key={l._id} className="flex items-start gap-3 border-b border-rule px-4 py-3 last:border-b-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">
+                        {shortDate(l.date)}
+                        <span className="text-muted">
+                          {' · '}W{l.week} · {l.typeName || 'Contribution'} ·{' '}
+                          {METHOD_LABELS[l.method] || l.method}
+                        </span>
+                      </p>
+                      {l.note && (
+                        <p className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-canvas px-3 py-2 text-xs leading-5 text-muted">
+                          {l.note}
+                        </p>
+                      )}
+                    </div>
+                    <p className="amount shrink-0 font-semibold">{money(l.amount)}</p>
+                    <button
+                      type="button"
+                      onClick={() => setDeleting({ ...l, kind: 'contribution' })}
+                      aria-label={`Delete ${money(l.amount)} on ${shortDate(l.date)}`}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-alert"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {showWeeks && (
+            <section className="overflow-x-auto rounded-xl border border-rule bg-surface">
+              <table className="w-full text-sm">
+                <thead className="border-b border-rule bg-canvas">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Week</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Paid</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Status</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Tea</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...ledger.weeks].reverse().map((w) => (
+                    <tr key={w.weekNumber} className="border-b border-rule last:border-b-0">
+                      <td className="amount px-3 py-2">
+                        {w.weekNumber}
+                        {w.isCurrent && (
+                          <span className="ml-1 text-[10px] uppercase tracking-wide text-primary">now</span>
+                        )}
+                      </td>
+                      <td className="amount px-3 py-2">{money(w.personalPaid)}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
+                            w.status === 'paid'
+                              ? 'bg-primary/10 text-primary'
+                              : w.status === 'partial'
+                                ? 'bg-accent/10 text-accent'
+                                : w.nillFineDue
+                                  ? 'bg-alert/10 text-alert'
+                                  : 'bg-canvas text-muted'
+                          }`}
+                        >
+                          {w.status}
+                          {w.coveredByCredit ? ' (credit)' : ''}
+                        </span>
+                      </td>
+                      <td className="amount px-3 py-2 text-muted">{money(w.chaiPaid)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+
+          <section>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+              Fund spending{teaFund ? ` — Tea Fund holds ${money(teaFund.balance)}` : ''}
+            </h2>
+            {expenses.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
+                Nothing spent from the funds yet.
+              </p>
+            ) : (
+              <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
+                {expenses.map((x) => (
+                  <li key={x._id} className="flex items-start gap-3 border-b border-rule px-4 py-3 last:border-b-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">
+                        {x.description || 'Expense'}
+                        <span className="text-muted">
+                          {' · '}
+                          {x.typeId?.name ? `${x.typeId.name} · ` : ''}
+                          {shortDate(x.date)}
+                        </span>
+                      </p>
+                      {x.note && (
+                        <p className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-canvas px-3 py-2 text-xs leading-5 text-muted">
+                          {x.note}
+                        </p>
+                      )}
+                    </div>
+                    <p className="amount shrink-0 font-semibold text-alert">{money(x.amount)}</p>
+                    <button
+                      type="button"
+                      onClick={() => setDeleting({ ...x, kind: 'expense' })}
+                      aria-label={`Delete expense of ${money(x.amount)}`}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-alert"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={!!deleting}
+        title={deleting?.kind === 'expense' ? 'Delete this expense?' : 'Delete this entry?'}
+        body={
+          deleting
+            ? `${money(deleting.amount)} on ${shortDate(deleting.date)}. The record stays in the audit trail.`
+            : ''
+        }
+        confirmLabel="Delete"
+        danger
+        busy={busy}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleting(null)}
+      />
+    </div>
+  );
+}
+
+// One icon, used by both delete buttons — inline SVG, no icon library, matching
+// LedgerRows.
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    </svg>
+  );
+}
+
+
+
+

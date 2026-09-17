@@ -5,6 +5,8 @@ const Fine = require('../models/Fine');
 const AuditLog = require('../models/AuditLog');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
+const { resolveConfig } = require('../utils/weekCycle');
+const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { totalFinesCollected } = require('../utils/finesCollected');
 const { computeWeeklyReconciliation } = require('../utils/weeklyReconciliation');
@@ -14,11 +16,13 @@ const Expense = require('../models/Expense');
 // total, weekly-schedule consistency (personal weekly types only — group
 // funds like Chai don't reflect individual effort), and pending fines.
 async function computePerformance() {
-  const [members, personalWeeklyTypes, excludedTypeIds] = await Promise.all([
+  const [members, personalWeeklyTypes, excludedTypeIds, settings] = await Promise.all([
     Member.find({ active: true }).sort({ name: 1 }).lean(),
     ContributionType.find({ isWeekly: true, isGroupFund: false, active: true }).lean(),
     nonPersonalTypeIds(),
+    getOrCreateSettings(),
   ]);
+  const config = resolveConfig(settings);
 
   const memberIds = members.map((m) => m._id);
   const [contributions, pendingFines] = await Promise.all([
@@ -56,7 +60,7 @@ async function computePerformance() {
     let weeksUnpaid = 0;
     for (const type of personalWeeklyTypes) {
       const typeContributions = own.filter((c) => String(c.typeId) === String(type._id));
-      const weeks = buildWeeklySchedule(member.joinDate, type.weeklyAmount, typeContributions);
+      const weeks = buildWeeklySchedule(config, config.weeklyAmount, typeContributions);
       weeksExpected += weeks.length;
       weeksPaid += weeks.filter((w) => w.status === 'paid').length;
       weeksPartial += weeks.filter((w) => w.status === 'partial').length;

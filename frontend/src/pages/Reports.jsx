@@ -14,6 +14,7 @@ const ACTION_LABELS = {
   create: "Created",
   update: "Edited",
   delete: "Deleted",
+  reset: "Reset",
 };
 
 async function downloadFile(url, filename, toast) {

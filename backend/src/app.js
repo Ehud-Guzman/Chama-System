@@ -7,6 +7,7 @@ const mongoSanitize = require('express-mongo-sanitize');
 
 const connectDB = require('./config/db');
 const { seedDisciplinaryFineTypes } = require('./utils/seedDisciplinaryFineTypes');
+const { seedLedgerTypes } = require('./utils/ledgerTypes');
 
 const {
   lookupLimiter,
@@ -47,6 +48,7 @@ const {
 const authRoutes = require('./routes/authRoutes');
 const memberRoutes = require('./routes/memberRoutes');
 const contributionRoutes = require('./routes/contributionRoutes');
+const ledgerRoutes = require('./routes/ledgerRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const typeRoutes = require('./routes/typeRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
@@ -199,6 +201,9 @@ app.use('/api/members', memberRoutes);
 
 app.use('/api/contributions', contributionRoutes);
 
+// The treasurer's ledger — member list, per-member logs, week cycle setup
+app.use('/api/ledger', ledgerRoutes);
+
 app.use('/api/reports', reportRoutes);
 
 app.use('/api/types', typeRoutes);
@@ -247,6 +252,7 @@ if (require.main === module) {
 
   connectDB()
     .then(() => seedDisciplinaryFineTypes())
+    .then(() => seedLedgerTypes())
     .then(() => {
       app.listen(PORT, '0.0.0.0', () => {
         console.log(`API running on port ${PORT}`);

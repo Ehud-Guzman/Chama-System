@@ -56,29 +56,40 @@ The system has 5 user roles with different access levels:
 
 ---
 
-## � **Treasurer**
+## 🧾 **Treasurer**
 
-**Purpose:** Financial operations specialist focused on contributions and financial reporting
+**Purpose:** Financial operations specialist — keeps the ledger and reports on it
 
 **Key Permissions:**
-- ✅ Record contributions
+- ✅ **The finance ledger** (`/admin/finance`): the member list, each member's page, and one
+  "Add a log" panel that records weekly contributions, extra payments, tea (Chai) and expenses —
+  each with a free-text note for pasting an M-Pesa or bank message
+- ✅ **Week cycle and opening balances** (`/admin/finance/setup`): the weekly amount, the tea
+  amount, the week number and each member's carry-forward balance
+- ✅ Record contributions, and create/edit/delete expenses
 - ✅ View reports (summary, performance, monthly, weekly)
 - ✅ Export reports to Excel
 - ✅ View audit trail (who did what and when)
 - ✅ View chama documents (title deeds, certificates)
-- ❌ Cannot create or manage expenses
 - ❌ Cannot create, settle, or void fines
-- ❌ Cannot upload or remove chama documents
-- ❌ Cannot manage member accounts
-- ❌ Cannot create or manage contribution types
-- ❌ Cannot create or manage fine types
-- ❌ Cannot modify system settings
+- ❌ Cannot manage member accounts (add/edit/resign members)
+- ❌ Cannot upload or remove chama documents (view only)
+- ❌ Cannot manage contribution types or fine types
+- ❌ Cannot modify chama settings (name, weekly reconciliation start date)
 - ❌ Cannot manage user accounts
 - ❌ Cannot access backup/restore functions
+
+**Exception worth knowing:** the week-cycle figures (weekly amount, tea amount, week number) are
+changed from `/admin/finance/setup`, which the treasurer *can* use — they are the person who
+needs them at go-live — even though `/api/settings` is admin-only. Changing them takes a General
+Assembly resolution under §7.1/§7.2 and is audit-logged either way.
 
 **When to use:** Treasurer, financial officer
 
 **Can Manage:** No one
+
+**Lands on:** `/admin/finance` — the ledger is the treasurer's workspace, not the summary
+dashboard.
 
 ---
 
@@ -130,19 +141,21 @@ The system has 5 user roles with different access levels:
 
 ## 📊 Feature Access Matrix
 
-| Feature | Super Admin | Admin | Secretary | Disciplinary |
-|---------|:-----------:|:-----:|:---------:|:----------:|
-| **Contributions** | R/W | R/W | R | ❌ |
-| **Expenses** | R/W | R/W | R | ❌ |
-| **Fines** | R/W | R/W | R | C (create only) |
-| **Members** | R/W | R/W | R | R (name/phone only) |
-| **Types** (contribution/fine) | R/W | R/W | R | R |
-| **Reports** | R | R | R | ❌ |
-| **Meeting Minutes** | R/W | R/W | R | ❌ |
-| **Admin Accounts** | R/W | C (secretary/disciplinary) | R | ❌ |
-| **Settings** | R/W | R/W | ❌ | ❌ |
-| **Backup/Restore** | R/W | ❌ | ❌ | ❌ |
-| **Audit Log** | R | R | R | ❌ |
+| Feature | Super Admin | Admin | Treasurer | Secretary | Disciplinary |
+|---------|:-----------:|:-----:|:---------:|:---------:|:------------:|
+| **Finance ledger** (`/admin/finance`) | R/W | R/W | R/W | ❌ | ❌ |
+| **Week cycle & opening balances** | R/W | R/W | R/W | ❌ | ❌ |
+| **Contributions** | R/W | R/W | R/W | R | ❌ |
+| **Expenses** | R/W | R/W | R/W | R | ❌ |
+| **Fines** | R/W | R/W | ❌ | R | C (create only) |
+| **Members** | R/W | R/W | R | R | R (name/phone only) |
+| **Types** (contribution/fine) | R/W | R/W | R | R | R |
+| **Reports** | R | R | R | R | ❌ |
+| **Meeting Minutes** | R/W | R/W | ❌ | R/W | ❌ |
+| **Admin Accounts** | R/W | C (secretary/disciplinary) | ❌ | R | ❌ |
+| **Settings** | R/W | R/W | ❌ | ❌ | ❌ |
+| **Backup/Restore** | R/W | ❌ | ❌ | ❌ | ❌ |
+| **Audit Log** | R | R | R | R | ❌ |
 
 **Legend:** R = Read, W = Write, C = Create Only, R/W = Read & Write, ❌ = No Access
 
