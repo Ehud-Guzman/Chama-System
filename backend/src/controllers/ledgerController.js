@@ -226,6 +226,37 @@ function readAmount(value) {
   return Number.isFinite(amount) ? { amount } : { invalid: true };
 }
 
+// What a save-all is about to do to the members' figures, worked out before a
+// single write. One screen holds 32 balances and one button overwrites them, so
+// a sheet that was filled in wrongly (every box reading the weekly 1400) can
+// take a whole cycle of verified paper-ledger figures out in one click, silently.
+// This is the shape the frontend puts in front of the treasurer when the drop is
+// big enough to be worth a second look.
+async function summariseBalanceChange(rows) {
+  if (rows.length === 0) {
+    return { changed: 0, before: 0, after: 0, requiresConfirmation: false };
+  }
+  const current = await Member.find({ _id: { $in: rows.map((r) => r.memberId) } })
+    .select('openingBalance')
+    .lean();
+  const nowById = new Map(current.map((m) => [String(m._id), Number(m.openingBalance) || 0]));
+
+  let before = 0;
+  let after = 0;
+  let changed = 0;
+  for (const row of rows) {
+    const now = nowById.get(String(row.memberId)) || 0;
+    before += now;
+    after += row.amount;
+    if (now !== row.amount) changed += 1;
+  }
+  // Only a *drop* of a quarter or more asks for confirmation: setting the sheet
+  // up for the first time is an increase, and correcting one member is never a
+  // wipe. A save that leaves the total as it was is not worth a dialog either.
+  const requiresConfirmation = changed > 0 && before > 0 && after < before * 0.75;
+  return { changed, before, after, requiresConfirmation };
+}
+
 // POST /api/ledger/members/:id/log — the one write the treasurer needs. Which
 // collection it lands in is decided from the kind, so the UI can keep a single
 // "Add a log" panel instead of a form per record type. `note` is free text and
@@ -602,7 +633,7 @@ async function updateSetup(req, res, next) {
   try {
     const settings = await getOrCreateSettings();
     const before = snapshot(settings);
-    const { cycleStartWeek, weeklyAmount, chaiAmount, weekAnchorDate, balances, funds } =
+    const { cycleStartWeek, weeklyAmount, chaiAmount, weekAnchorDate, balances, funds, confirm } =
       req.body || {};
 
     // Everything is read before anything is written, so a sheet with one unreadable
@@ -640,6 +671,23 @@ async function updateSetup(req, res, next) {
     if (rejected.length > 0) {
       return res.status(400).json({
         message: `These figures are not numbers: ${rejected.join(', ')}. Use digits only, e.g. 1400 or 1,400.`,
+      });
+    }
+
+    // The whole sheet is aimed at the whole group, so a wrong sheet is a wrong
+    // group: this is the one place in the system where a single click can take
+    // 32 verified balances out. A save that would cut the members' total by a
+    // quarter or more is therefore refused once, with both totals and the number
+    // of members it would move, until the caller says it means it (`confirm`).
+    // Nothing is written on this path, so the box the treasurer mistyped is still
+    // there to be fixed.
+    const summary = await summariseBalanceChange(memberRows);
+    if (summary.requiresConfirmation && confirm !== true) {
+      return res.status(409).json({
+        message:
+          `This would change ${summary.changed} member balance(s) and take the total from ${summary.before} to ` +
+          `${summary.after}. If that is what the paper ledger says, confirm and it will be saved.`,
+        confirmation: summary,
       });
     }
 
@@ -741,7 +789,7 @@ async function updateSetup(req, res, next) {
       });
     }
 
-    res.json({ settings, balancesSaved: saved, fundsSaved: savedFunds });
+    res.json({ settings, balancesSaved: saved, fundsSaved: savedFunds, summary });
   } catch (err) {
     next(err);
   }

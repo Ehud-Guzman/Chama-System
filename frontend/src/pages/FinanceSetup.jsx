@@ -57,6 +57,9 @@ export default function FinanceSetup() {
   const [preview, setPreview] = useState(null);
   const [collecting, setCollecting] = useState(false);
   const [confirming, setConfirming] = useState(null); // 'post' | 'undo' | null
+  // A save that would cut the members' total hard comes back as a 409 carrying
+  // both totals — this holds that answer while the treasurer decides.
+  const [massSave, setMassSave] = useState(null);
 
   const apply = useCallback((payload) => {
     setData(payload);
@@ -117,8 +120,8 @@ export default function FinanceSetup() {
     toast('Suggestions loaded — check them, then save');
   }
 
-  async function save(e) {
-    e.preventDefault();
+  async function save(e, { confirm: massConfirm } = {}) {
+    e?.preventDefault?.();
 
     // Every box is checked before anything is sent, and the offending one is named:
     // a figure like "1,4oo" used to be dropped without a word, which looked exactly
@@ -150,17 +153,31 @@ export default function FinanceSetup() {
           typeId: f.typeId,
           openingBalance: funds[f.typeId],
         })),
+        // Only sent once the treasurer has seen what a big drop would do — see
+        // the 409 branch below. The API refuses a sheet that cuts the members'
+        // total by a quarter or more without it.
+        confirm: massConfirm === true ? true : undefined,
       });
       const memberSaved = res.data.balancesSaved ?? 0;
       const fundSaved = res.data.fundsSaved ?? 0;
+      const total = res.data.summary?.after;
       toast(
         memberSaved + fundSaved === 0
           ? 'Saved — nothing had changed'
-          : `Saved — ${memberSaved} member balance(s) and ${fundSaved} fund total(s) changed`
+          : `Saved — ${memberSaved} member balance(s) and ${fundSaved} fund total(s) changed${
+              total === undefined ? '' : `, members now total ${money(total)}`
+            }`
       );
       await reload();
     } catch (err) {
       const status = err.response?.status;
+      // A save that would wipe the members' total is held back once, with both
+      // totals in hand, rather than written and regretted: the boxes stay filled
+      // in so the wrong one can be fixed, or the drop confirmed deliberately.
+      if (status === 409 && err.response?.data?.confirmation) {
+        setMassSave(err.response.data.confirmation);
+        return;
+      }
       toast(
         apiMessage(
           err,
@@ -179,6 +196,10 @@ export default function FinanceSetup() {
   if (!data || !settings) return null;
 
   const enteredTotal = data.members.reduce((s, m) => s + Number(balances[m._id] || 0), 0);
+  // What the boxes held when the page loaded — one save replaces all of them, so
+  // showing this beside the entered total is what makes a mis-typed sheet obvious
+  // before it is written rather than after.
+  const storedMembersTotal = data.members.reduce((s, m) => s + Number(m.openingBalance || 0), 0);
   const fundsTotal = (data.funds || []).reduce((s, f) => s + Number(funds[f.typeId] || 0), 0);
 
   function describe(d, posted) {
@@ -385,7 +406,14 @@ export default function FinanceSetup() {
                 <td className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-muted" colSpan={2}>
                   Total entered
                 </td>
-                <td className="amount px-4 py-3 font-bold">{money(enteredTotal)}</td>
+                <td className="px-4 py-3">
+                  <p className="amount font-bold">{money(enteredTotal)}</p>
+                  {enteredTotal !== storedMembersTotal && (
+                    <p className="amount text-xs text-muted">
+                      saved now: {money(storedMembersTotal)}
+                    </p>
+                  )}
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -651,6 +679,31 @@ export default function FinanceSetup() {
         busy={collecting}
         onConfirm={undoCollect}
         onCancel={() => setConfirming(null)}
+      />
+
+      {/* The one button that can take 32 verified balances out at once, so a save
+          that would cut the total by a quarter or more stops here first. The API
+          refused the request (409) and nothing has been written. */}
+      <ConfirmDialog
+        open={Boolean(massSave)}
+        title="This save cuts the members' total"
+        body={
+          massSave
+            ? `${massSave.changed} member balance(s) would change and the total would go from ${money(
+                massSave.before
+              )} to ${money(
+                massSave.after
+              )}. Nothing is lost if you go ahead — the figures it replaces stay in the audit trail and can be put back — but check the boxes first.`
+            : ''
+        }
+        confirmLabel="Save it anyway"
+        danger
+        busy={busy}
+        onConfirm={() => {
+          setMassSave(null);
+          save(null, { confirm: true });
+        }}
+        onCancel={() => setMassSave(null)}
       />
 
     </form>

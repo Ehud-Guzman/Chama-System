@@ -19,3 +19,5 @@ backend/src/scripts/findWrongAmounts.js
 # A reset/backup dump carries the same material — every member's name, phone
 # number and balance — so it never gets committed either.
 backend/data/reset-backup-*.json
+# The same holds for the copy `npm run balances:restore` takes before it writes.
+backend/data/opening-balances-*.json

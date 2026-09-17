@@ -117,6 +117,19 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   the dashboard (next to the week they are working in) rather than below the member list, and the
   resulting **brought-forward total is one of the headline tiles** on that same header, so the
   figure the books opened with is always visible without scrolling.
+  A save that would **cut** the members' total by a quarter or more is held back once: the API answers
+  `409` with both totals and the number of members it would move (`summary`), the screen puts them in a
+  confirm dialog, and only a deliberate second click (`confirm: true`) writes it. Nothing is written on
+  the refused path, so the mistyped box is still there to fix. The footer under the table also prints the
+  entered total beside the total already saved — the one comparison that makes a wrong sheet obvious
+  *before* it is stored rather than after.
+- **A wrong sheet can be put back:** every save writes a before/after snapshot of each member to the
+  audit trail, so the figures it replaced are never actually lost.
+  `npm run balances:restore --prefix backend` reads them back and prints, member by member, what each
+  balance is now and what it would become — a dry run by default, `--confirm-write` applies it (after
+  copying the members to `backend/data/`). It also takes `--as-of=<time>` for the figures as they stood
+  at that moment, `--from-backup=data/reset-backup-….json` for the roll-forward recomputed from the
+  imported ledger, and `--member=<name>` to do one person.
 - **The funds get the same one-time carry-in:** the same screen lists every fund the group collects
   — the Tea Fund, plus registration, resignation, welfare or anything else — each with a
   **Carried in** figure: what that fund already held before this ledger started counting
@@ -185,6 +198,20 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   Settings untouched. `--remove-artifacts` also deletes the pseudo-members an old import created
   ("Opening Balances …", group totals stored as if they were people); `--clear-audit` empties the
   audit trail as well.
+- **Putting a balance back** (`npm run balances:restore --prefix backend`, dry run by default) is the
+  undo for that screen: it reads the before/after snapshots the audit trail kept of each member and
+  prints what every balance is now against what it would become. `--confirm-write` applies it after
+  copying the members to `backend/data/opening-balances-*.json`, and the write is itself audit-logged,
+  so a wrong undo is recoverable too.
+- **The week-91 batch from the command line** (`npm run ledger:collect-week --prefix backend`, dry run by
+  default) is the same write as the go-live screen's bulk entry, for when the API is not deployed: it
+  posts the week's 1,400 contribution and 100 tea for every active member, dated on the Thursday that
+  week closed, skipping anyone who already has a row that week and anyone the batch already posted
+  (`week91-<memberId>-weekly` / `-chai`). `--week=`, `--weekly=`, `--chai=`, `--method=` and `--note=`
+  change what it posts, and `--undo --confirm-write` takes the whole batch back out — the same rows the
+  screen's Undo removes. Post it while `Week number now` is **92**, not 91: a week that ended before the
+  cycle opened is history (its tea is deducted and added to the Tea Fund), whereas the cycle's own
+  opening week is the baseline and carries no tea at all.
 - **Phone normalization:** `+2547…`, `2547…`, `07…` all resolve to one stored format
   (`07XXXXXXXX`) — enforced on member create/edit, CSV import, and public lookup.
 - **Public lookup — your own record, nobody else's:** exact phone match only, 5 requests/minute/IP
