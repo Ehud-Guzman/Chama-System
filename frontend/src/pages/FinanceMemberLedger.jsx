@@ -590,16 +590,34 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                           forward, so they are listed for reference and never scored again.
                         </td>
                       </tr>
-                      {[...data.history].reverse().map((w) => (
-                        <tr key={w.weekNumber} className="border-b border-rule text-muted last:border-b-0">
-                          <td className="amount px-3 py-2">{w.weekNumber}</td>
-                          <td className="amount px-3 py-2">—</td>
-                          <td className="px-3 py-2 text-xs">Carried forward</td>
-                          <td className="amount px-3 py-2">
-                            {shortDate(w.startDate)} – {shortDate(w.endDate)}
-                          </td>
-                        </tr>
-                      ))}
+                      {[...data.history].reverse().map((w) => {
+                        // A week before the cycle that was collected — the one-time
+                        // week-91 entry — shows its money and its tea. The rest are
+                        // carried forward inside the opening balance, which is what
+                        // the row above explains.
+                        const collected = w.paid > 0 || w.chaiPaid > 0;
+                        return (
+                          <tr
+                            key={w.weekNumber}
+                            className="border-b border-rule text-muted last:border-b-0"
+                          >
+                            <td className="amount px-3 py-2">{w.weekNumber}</td>
+                            <td className="amount px-3 py-2">{collected ? money(w.paid || 0) : '—'}</td>
+                            <td className="px-3 py-2">
+                              {collected ? (
+                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
+                                  Collected
+                                </span>
+                              ) : (
+                                <span className="text-xs">Carried forward</span>
+                              )}
+                            </td>
+                            <td className="amount px-3 py-2">
+                              {collected && w.chaiPaid > 0 ? money(w.chaiPaid) : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </>
                   )}
                 </tbody>

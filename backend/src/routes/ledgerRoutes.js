@@ -3,6 +3,8 @@ const {
   listLedger,
   memberLedger,
   createLog,
+  collectWeek,
+  undoCollectWeek,
   getSetup,
   updateSetup,
 } = require('../controllers/ledgerController');
@@ -16,6 +18,10 @@ router.use(requireAuth, requireRole('super_admin', 'admin', 'treasurer'));
 router.get('/', listLedger);
 router.get('/setup', getSetup);
 router.patch('/setup', updateSetup);
+// A whole week collected for everybody at once — the one-time week-91 entry —
+// with a dry run and an undo, because it is the one bulk write in the system.
+router.post('/collect-week', collectWeek);
+router.delete('/collect-week', undoCollectWeek);
 router.get('/members/:id', memberLedger);
 router.post('/members/:id/log', createLog);
 

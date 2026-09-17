@@ -8,7 +8,7 @@ const { logAudit, snapshot } = require('../utils/auditLogger');
 const { parseMembersCSV } = require('../utils/csvImport');
 const { typeBreakdown } = require('../utils/typeBreakdown');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
-const { resolveConfig, cycleHistory } = require('../utils/weekCycle');
+const { resolveConfig, cycleHistory, weekNumberForDate } = require('../utils/weekCycle');
 const { bucketForType } = require('../utils/ledgerTypes');
 const { computeMemberLedger } = require('../utils/memberLedger');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
@@ -78,6 +78,21 @@ async function buildFinesAndSchedules(member, contributions, settings) {
     const isChai = bucketForType(type) === 'chai';
     const amount = isChai ? config.chaiAmount : config.weeklyAmount;
     const weeks = buildWeeklySchedule(config, amount, typeContributions);
+    // Weeks before the cycle that were collected — the one-time week-91 entry —
+    // carry their figures, so the schedule shows what was actually paid instead of
+    // a dash for every week back to week one. They stay unscored: their money is
+    // part of the member's brought-forward total.
+    const historyPaidByWeek = new Map();
+    for (const c of typeContributions) {
+      const collected = weekNumberForDate(c.date, config);
+      if (collected >= config.cycleStartWeek) continue;
+      const cash = Number(c.grossAmount ?? c.amount) || 0;
+      historyPaidByWeek.set(collected, (historyPaidByWeek.get(collected) || 0) + cash);
+    }
+    const history = cycleHistory(config).map((w) => ({
+      ...w,
+      paid: historyPaidByWeek.get(w.weekNumber) || 0,
+    }));
     return {
       typeId: type._id,
       typeName: type.name,
@@ -98,8 +113,9 @@ async function buildFinesAndSchedules(member, contributions, settings) {
       // The group's earlier weeks (1..91 today), so the schedule reads back to
       // week one exactly as the paper ledger numbered it. They are marked
       // isHistory and carry no expectation — the money for them is inside the
-      // member's carried-forward balance.
-      history: cycleHistory(config),
+      // member's carried-forward balance — but any that were collected carry the
+      // amounts they were collected for.
+      history,
     };
   });
 

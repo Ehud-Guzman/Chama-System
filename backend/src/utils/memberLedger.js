@@ -1,4 +1,4 @@
-const { cycleWeekNumber, weekRange, currentWeekNumber } = require('./weekCycle');
+const { weekNumberForDate, weekRange, currentWeekNumber } = require('./weekCycle');
 
 // Everything one member's ledger shows, computed in a single pass.
 //
@@ -74,10 +74,24 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   let chaiPaid = 0;
   let otherPaid = 0;
   let otherGroupPaid = 0;
+  // Tea by the cup, for weeks the automatic deduction does not reach: the weeks
+  // before the cycle opened (1..91), where the tea was collected off the paper
+  // ledger and can only be known from what was logged. The one-time week-91
+  // entry is the case this exists for. Inside the scored window the automatic
+  // figure already covers tea, so a row there is reported, never counted twice.
+  let chaiBeforeCycle = 0;
+  // Money collected in those same weeks, so the week list can show it against the
+  // week it was actually collected in instead of it vanishing into week 92.
+  const historyPaid = new Map();
 
   for (const c of contributions) {
-    const week = cycleWeekNumber(c.date, config);
-    const row = weekMap.get(week);
+    // The week the money was collected in, unclamped. A payment dated before the
+    // cycle opened has no row in the live window — it belongs to one of the weeks
+    // the ledger only lists — so it is kept aside as history rather than folded
+    // into the opening week.
+    const trueWeek = weekNumberForDate(c.date, config);
+    const isHistory = trueWeek < config.cycleStartWeek;
+    const row = isHistory ? null : weekMap.get(trueWeek);
     // grossAmount is what the member physically handed over when part of a
     // payment was redirected to settle a fine. The ledger follows cash in, so
     // the week is credited the full amount the member actually paid.
@@ -92,6 +106,7 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
       if (row) row.extraPaid += cash;
     } else if (c.bucket === 'chai') {
       chaiPaid += cash;
+      if (isHistory) chaiBeforeCycle += cash;
       if (row) row.chaiPaid += cash;
     } else if (c.isGroupFund) {
       // A group fund left over from the old type set (registration fees and the
@@ -102,6 +117,16 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
       if (row) row.otherPaid += cash;
     }
     if (row) row.logs.push(c._id);
+
+    if (isHistory) {
+      const entry =
+        historyPaid.get(trueWeek) ||
+        { weekNumber: trueWeek, paid: 0, chaiPaid: 0, logs: [] };
+      if (c.bucket === 'weekly' || c.bucket === 'extra') entry.paid += cash;
+      if (c.bucket === 'chai') entry.chaiPaid += cash;
+      entry.logs.push(c._id);
+      historyPaid.set(trueWeek, entry);
+    }
   }
 
   const weeks = [...weekMap.values()].map((w) => {
@@ -161,8 +186,11 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   const movement = paid - required;
   const chaiWeek = weeks.find((w) => w.isCurrent);
   // Tea comes out of his money like the week's other deduction, so the balance he
-  // sees is the same figure the paper ledger's total column used to hold.
-  const money = openingBalance + movement - chaiDue;
+  // sees is the same figure the paper ledger's total column used to hold. The
+  // automatic figure covers the scored weeks; tea collected for the weeks before
+  // the cycle opened was logged, so it is added to it here.
+  const teaOffMoney = chaiDue + chaiBeforeCycle;
+  const money = openingBalance + movement - teaOffMoney;
 
   return {
     currentWeek,
@@ -185,15 +213,17 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
     arrears: movement < 0 ? -movement : 0,
     credit: movement > 0 ? movement : 0,
     chai: {
-      // Automatic and never owed: charged for every scored week of the cycle so
-      // far, and shown per member so the total each has put into the Group's fund
-      // is always visible. Nothing is taken for the opening week.
-      due: chaiDue,
+      // Everything taken off his money for tea: the automatic figure for every
+      // scored week of the cycle, plus the tea logged for the weeks before it
+      // opened (the one-time week-91 entry). Nothing is taken for the opening week.
+      due: teaOffMoney,
+      automatic: chaiDue,
+      beforeCycle: chaiBeforeCycle,
       perWeek: config.chaiAmount,
       weeks: weeksScored,
       thisWeek: chaiWeek ? chaiWeek.chaiAmount : 0,
-      // Anything logged against the old tea type before it became automatic —
-      // reported, never counted, because the automatic figure already covers it.
+      // What the rows themselves add up to — the automatic figure inside the
+      // window, and the record for any tea collected before it.
       recorded: chaiPaid,
     },
     weeksPaid: weeks.filter((w) => w.status === 'paid').length,
@@ -205,6 +235,9 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
     weeksBehind,
     weeksUnsettled: weeks.filter((w) => !w.settled).length,
     nillWeeksDueFine: weeks.filter((w) => w.nillFineDue).map((w) => w.weekNumber),
+    // Weeks 1..(cycleStartWeek-1) that have money logged against them, so the
+    // week list can show what was collected in them (the one-time week-91 entry).
+    historyPaid: [...historyPaid.values()].sort((a, b) => a.weekNumber - b.weekNumber),
     weeks,
   };
 }

@@ -124,6 +124,20 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   "Held by member", not a row sum that says 0). `/admin/finance/setup` suggests each figure from
   what the ledger already says he holds (`GET /api/ledger/setup`), so the 32 balances never have to
   be retyped by hand.
+- **A whole week collected in one go (one-time):** `/admin/finance/setup` carries a bulk entry for a
+  week that was paid in cash for everybody at once — **week 91**, the week the paper ledger closed
+  just before the books opened, is the case it exists for. It posts two rows per active member (the
+  week's contribution and the week's tea) dated on the Thursday that week closed, so the money shows
+  against week 91 rather than against the opening week, and each member's figure moves by the
+  contribution less the tea while the Tea Fund gains the tea. It **previews before it writes
+  anything**, every row carries a deterministic `clientRequestId` so running it twice posts nothing
+  the second time and a dropped response cannot double a member up, and
+  `DELETE /api/ledger/collect-week?weekNumber=91` soft-deletes the batch again — the trail stays in
+  the audit log as one System entry carrying the member ids and the totals.
+- **Tea before the cycle:** the automatic `chaiAmount` covers the *scored* weeks. Tea for the weeks
+  the ledger only lists (1–91) was collected off the paper ledger, so it is counted from the rows
+  logged for those weeks (`chai.beforeCycle`) — that is what puts the week-91 tea into the Tea Fund
+  and takes it off the member, without the automatic figure counting it twice.
 - **One write for the treasurer:** `POST /api/ledger/members/:id/log` with
   `kind: weekly | expense` decides which collection the entry lands in, so the UI keeps a single
   "Add a log" panel. There is no tea entry and no "extra contribution" — tea is deducted

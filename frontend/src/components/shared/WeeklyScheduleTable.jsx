@@ -110,8 +110,12 @@ function ScheduleSection({ schedule: s }) {
                   <span className="amount text-xs">
                     {shortDate(w.startDate)} – {shortDate(w.endDate)}
                   </span>
-                  <span className="text-right text-xs">—</span>
-                  <span className="text-right text-xs">Carried forward</span>
+                  <span className="amount text-right text-xs">
+                    {w.paid > 0 ? money(w.paid) : '—'}
+                  </span>
+                  <span className="text-right text-xs">
+                    {w.paid > 0 ? 'Collected' : 'Carried forward'}
+                  </span>
                 </li>
               ))}
             </ul>
