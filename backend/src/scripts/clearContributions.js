@@ -29,6 +29,11 @@
  *   One week only, or the expenses too:
  *     node src/scripts/clearContributions.js --week=91 --confirm-write
  *     node src/scripts/clearContributions.js --expenses --confirm-write
+ *
+ *   A clean slate for the activity screen, too:
+ *     node src/scripts/clearContributions.js --audit --confirm-write      (money entries)
+ *     node src/scripts/clearContributions.js --audit-all --confirm-write  (the whole trail)
+ *     node src/scripts/clearContributions.js --hard --audit --confirm-write
  */
 require('dotenv').config();
 
@@ -40,6 +45,7 @@ const Contribution = require('../models/Contribution');
 const Expense = require('../models/Expense');
 const Member = require('../models/Member');
 const ContributionType = require('../models/ContributionType');
+const AuditLog = require('../models/AuditLog');
 const User = require('../models/User');
 const { logAudit } = require('../utils/auditLogger');
 const { getOrCreateSettings } = require('../utils/settings');
@@ -54,6 +60,14 @@ const WITH_EXPENSES = process.argv.includes('--expenses');
 // and the audit entry still records the count, the total and whose money it was,
 // so the trail survives even though the rows do not.
 const HARD = process.argv.includes('--hard');
+// --audit also takes the money rows' entries out of the audit trail. There are
+// thousands of them — one old import left 2,891 contribution entries, and the trail
+// groups them by member — and they describe rows that no longer exist, so a go-live
+// clean slate wants them gone. --audit-all empties the trail outright.
+const AUDIT = process.argv.includes('--audit');
+const AUDIT_ALL = process.argv.includes('--audit-all');
+// The entities whose entries describe money rows and nothing else.
+const MONEY_AUDIT_ENTITIES = ['Contribution', 'Expense', 'Pledge', 'Fine', 'FineType', 'ContributionType'];
 
 // Reads `--flag=value`, or null when the flag is absent or given without a value.
 function argValue(flag) {
@@ -92,6 +106,17 @@ const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
     .lean();
   const expenses = WITH_EXPENSES
     ? await Expense.find({ deleted: false }).select('typeId amount date note').lean()
+    : [];
+
+  // The trail's part of the plan, counted before anything is written.
+  const auditFilter = AUDIT || AUDIT_ALL ? (AUDIT_ALL ? {} : { entityType: { $in: MONEY_AUDIT_ENTITIES } }) : null;
+  const auditCount = auditFilter ? await AuditLog.countDocuments(auditFilter) : 0;
+  const auditByEntity = auditFilter
+    ? await AuditLog.aggregate([
+        { $match: auditFilter },
+        { $group: { _id: '$entityType', n: { $sum: 1 } } },
+        { $sort: { n: -1 } },
+      ])
     : [];
 
   const total = rows.reduce((s, r) => s + (Number(r.grossAmount ?? r.amount) || 0), 0);
@@ -143,8 +168,15 @@ const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
       )}`
     );
   }
+  if (auditFilter) {
+    console.log(
+      `  audit trail${AUDIT_ALL ? ' (everything)' : ' money entries'}: ${auditCount} entr${
+        auditCount === 1 ? 'y' : 'ies'
+      }` + (auditByEntity.length ? ` — ${auditByEntity.map((e) => `${e._id} ${e.n}`).join(', ')}` : '')
+    );
+  }
 
-  if (rows.length === 0 && expenses.length === 0) {
+  if (rows.length === 0 && expenses.length === 0 && auditCount === 0) {
     console.log('\nNothing live to clear.');
     await mongoose.disconnect();
     return;
@@ -152,7 +184,8 @@ const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
   if (!CONFIRMED) {
     console.log(
       '\nDRY RUN — nothing written. The rows are marked deleted (soft delete), so every\n' +
-        'screen and total drops them while the record itself stays for the audit trail.'
+        'screen and total drops them while the record itself stays for the audit trail.' +
+        (auditFilter ? '\nThe audit entries are deleted outright once --confirm-write is given.' : '')
     );
     console.log('Re-run with --confirm-write to clear them.');
     await mongoose.disconnect();
@@ -160,13 +193,22 @@ const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
   }
 
   // A copy before a single row moves, the same promise every destructive script
-  // here makes.
+  // here makes. The trail's entries are copied in as well when they are being
+  // cleared: they are the only record of how the figures on the books now got
+  // there, so the file has to carry them or the history is simply gone.
+  const auditRows = auditFilter ? await AuditLog.find(auditFilter).lean() : [];
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupPath = path.resolve(__dirname, '../../data', `contributions-cleared-${stamp}.json`);
   fs.mkdirSync(path.dirname(backupPath), { recursive: true });
   fs.writeFileSync(
     backupPath,
-    JSON.stringify({ takenAt: new Date().toISOString(), week, rows, expenses })
+    JSON.stringify({
+      takenAt: new Date().toISOString(),
+      week,
+      rows,
+      expenses,
+      auditEntries: auditRows,
+    })
   );
   console.log(`\nbackup written: ${backupPath}`);
 
@@ -187,6 +229,11 @@ const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
     removedExpenses = exp.modifiedCount;
     console.log(`cleared ${removedExpenses} expense row(s).`);
   }
+  let removedAudits = 0;
+  if (auditFilter) {
+    removedAudits = (await AuditLog.deleteMany(auditFilter)).deletedCount;
+    console.log(`deleted ${removedAudits} audit entr${removedAudits === 1 ? 'y' : 'ies'}.`);
+  }
 
   // One entry for the whole action, like the reset and the bulk week post: a
   // group-wide maintenance action belongs to the System entity, and the summary
@@ -202,6 +249,7 @@ const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
       week,
       removed,
       removedExpenses,
+      removedAudits,
       total,
       memberIds,
       members: memberIds.map((id) => members.get(id) || id),
