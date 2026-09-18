@@ -4,6 +4,8 @@ const Contribution = require('../models/Contribution');
 const { getOrCreateSettings } = require('../utils/settings');
 const { carriedInTotals } = require('../utils/carriedIn');
 const { fundBalance } = require('../utils/fundBalance');
+const { bucketForType } = require('../utils/ledgerTypes');
+const { resolveConfig, currentWeekNumber } = require('../utils/weekCycle');
 const { totalFinesCollected } = require('../utils/finesCollected');
 
 // GET /api/public/overview — PUBLIC, no phone number needed.
@@ -49,14 +51,38 @@ async function publicOverview(req, res, next) {
     const thisWeekTotal = thisWeekAgg[0]?.total || 0;
 
     const expenseTypes = types.filter((t) => t.tracksExpenses);
+    // The Tea Fund's income is derived, not logged: 100 a member for every week
+    // the cycle has actually scored, plus whatever tea was collected for the weeks
+    // before it opened (the one-time week-91 entry). Worked out here exactly the
+    // way the member's page works it out, because the tea has already come off
+    // every member's money — a fund list reading Chai 0 against a passbook that
+    // shows the tea taken is the group reading two different books.
+    const config = resolveConfig(settings);
+    const chaiType = types.find((t) => bucketForType(t) === 'chai') || null;
+    const weeksScored = Math.max(0, currentWeekNumber(config) - config.cycleStartWeek);
+    const teaBeforeCycle = chaiType
+      ? await Contribution.aggregate([
+          { $match: { deleted: false, typeId: chaiType._id, date: { $lt: config.anchorDate } } },
+          { $group: { _id: null, total: { $sum: { $ifNull: ['$grossAmount', '$amount'] } } } },
+        ])
+      : [];
+    const teaIncome = config.chaiAmount * weeksScored * activeMembers + (teaBeforeCycle[0]?.total || 0);
+
     const fundBalances = await Promise.all(
-      expenseTypes.map(async (t) => ({
-        name: t.name,
-        // The fund's one-time carry-in (the tea float the group already held),
-        // so a balance is what the fund actually holds, not just what this ledger
-        // has watched move.
-        ...(await fundBalance(t._id, { carriedIn: t.openingBalance })),
-      }))
+      expenseTypes.map(async (t) => {
+        const derived = bucketForType(t) === 'chai' ? teaIncome : 0;
+        return {
+          name: t.name,
+          // The part of the balance that was derived rather than collected — the
+          // automatic tea — so a list can say so instead of showing a figure with
+          // nothing behind it in the contribution rows.
+          derived,
+          // The fund's one-time carry-in (the tea float the group already held),
+          // so a balance is what the fund actually holds, not just what this
+          // ledger has watched move.
+          ...(await fundBalance(t._id, { carriedIn: t.openingBalance, extraIncome: derived })),
+        };
+      })
     );
     const totalExpenses = fundBalances.reduce((sum, f) => sum + (f.spent || 0), 0);
 

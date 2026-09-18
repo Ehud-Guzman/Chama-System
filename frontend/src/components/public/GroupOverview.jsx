@@ -89,7 +89,18 @@ export default function GroupOverview({ onChamaName }) {
                 {overview.fundBalances.map((f) => (
                   <li key={f.name} className="flex items-baseline justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate">{f.name}</span>
-                    <span className="amount shrink-0 font-medium">{money(f.balance)}</span>
+                    <span className="amount shrink-0 text-right font-medium">
+                      {money(f.balance)}
+                      {/* Tea is deducted automatically rather than logged, so it is
+                          already in the fund before any cash changes hands. Named
+                          here the way the finance screens name it, rather than
+                          left as a figure with nothing to trace it to. */}
+                      {f.derived > 0 && (
+                        <span className="block text-xs font-normal text-muted">
+                          incl. {money(f.derived)} automatic tea
+                        </span>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>
