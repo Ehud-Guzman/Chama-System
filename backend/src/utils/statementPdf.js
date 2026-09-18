@@ -124,11 +124,11 @@ function renderStatementPdf(res, profile, chamaName) {
       .fillColor('#666')
       .text(
         `Carried forward ${money(profile.ledger.openingBalance)} + paid ${money(profile.ledger.paid)}` +
-          // A member's own copy folds the group's fund deductions into the
+          // A member's own copy folds the tea the Group deducted into the
           // required figure rather than naming the Tea Fund, which is the Group's
           // money and not a contribution of his. The office's copy keeps the two
           // apart, as its ledger does.
-          (profile.groupFundsIncluded
+          (profile.teaFundIncluded
             ? ` − required ${money(profile.ledger.required)} − tea ${money(profile.ledger.tea)}`
             : ` − required ${money(profile.ledger.required + profile.ledger.tea)}`),
         MARGIN,

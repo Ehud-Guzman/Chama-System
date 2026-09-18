@@ -54,6 +54,9 @@ export default function GroupOverview({ onChamaName }) {
   {overview.finesCollected > 0 && (
     <> It also excludes {money(overview.finesCollected)} collected from fines, which the group holds but isn't logged as a contribution.</>
   )}
+  {overview.carriedInMemberBalances > 0 && (
+    <> Of that, {money(overview.carriedInMemberBalances)} is the members&rsquo; own brought-forward money: it is held for them, so it sits in &ldquo;Total raised&rdquo; and in no fund below.</>
+  )}
 </p>
 
       {/* The two per-name breakdowns sit side by side from lg. As full-width
@@ -65,14 +68,23 @@ export default function GroupOverview({ onChamaName }) {
           {overview.byType.length > 0 && (
             <div className="rounded-xl border border-rule bg-surface p-4 md:p-5">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                Raised by contribution type (since the books opened)
+                By contribution type (carried in + collected)
               </p>
               <ul className="space-y-2">
                 {overview.byType.map((t) => (
                   <li key={t.name} className="flex items-baseline justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate">{t.name}</span>
-                    <span className="amount shrink-0 font-medium">
-                      {money(t.totalContributed)}
+                    <span className="amount shrink-0 text-right font-medium">
+                      {money(t.total ?? t.totalContributed)}
+                      {/* A type can hold money with no row against it: it was
+                          already on the books when the ledger opened, keyed in on
+                          the go-live screen. Named here so the figure traces back
+                          to that sheet instead of looking invented. */}
+                      {t.carriedIn > 0 && (
+                        <span className="block text-xs font-normal text-muted">
+                          incl. {money(t.carriedIn)} carried in
+                        </span>
+                      )}
                     </span>
                   </li>
                 ))}
@@ -89,12 +101,16 @@ export default function GroupOverview({ onChamaName }) {
                 {overview.fundBalances.map((f) => (
                   <li key={f.name} className="flex items-baseline justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate">{f.name}</span>
-                    {/* Just the balance. The Tea Fund used to be listed here too,
-                        with its derived income named underneath; it is now left
-                        out of the public page altogether, because the money is the
-                        Group's and no member contributed it. */}
+                    {/* Just the balance, with the part that was carried in named
+                        underneath — every fund the group holds money in, and no
+                        Tea Fund (the Group's own automatic deduction). */}
                     <span className="amount shrink-0 text-right font-medium">
                       {money(f.balance)}
+                      {f.carriedIn > 0 && (
+                        <span className="block text-xs font-normal text-muted">
+                          incl. {money(f.carriedIn)} carried in
+                        </span>
+                      )}
                     </span>
                   </li>
                 ))}

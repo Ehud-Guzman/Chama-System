@@ -76,9 +76,10 @@ async function buildFinesAndSchedules(member, contributions, settings) {
       typeId: type._id,
       typeName: type.name,
       weeklyAmount: amount,
-      // Who the money belongs to, so a member-facing screen can leave the group's
-      // funds out while the office's ledger still shows them.
-      isGroupFund: isChai,
+      // Which fund this is, so a member-facing screen can leave the Group's
+      // automatic tea out while the office's ledger still shows it. Named for what
+      // it is: the schedules list every weekly fund, and only this one is tea.
+      isTeaFund: isChai,
       // Tea is automatic: every week is collected from every member by
       // deduction, so a tea week is never unpaid and is never something a member
       // owes. Shown so each member can see what has gone into the Group's fund.
@@ -673,14 +674,15 @@ async function exportMembers(req, res, next) {
 // (email + next of kin) — otherwise those stay hidden, the same way the
 // full phone number is never echoed back even to the member.
 //
-// `options.includeGroupFunds` keeps the group's own money in the record. The
-// member's lookup leaves it out: the Tea Fund is collected from every member
-// automatically each week and belongs to the Group, so listing it among his
-// contributions reads as money he paid in, which it never was. The office's own
-// export of a member's statement asks for it, so the two cannot drift.
+// `options.includeTeaFund` keeps the Tea Fund in the record. The member's lookup
+// leaves it out: its 100 a week is deducted from every member automatically and
+// the money is the Group's, so listing it among his contributions reads as money
+// he paid in, which it never was. The office's own export of a member's statement
+// asks for it, so the two cannot drift. Every other type — his weekly
+// contribution, and any fund he actually paid into — is listed as it always was.
 async function buildPublicProfile(member, lookupPhone, options = {}) {
   const callerIsSelf = lookupPhone && normalizePhone(lookupPhone) === normalizePhone(member.phone);
-  const showGroupFunds = Boolean(options.includeGroupFunds);
+  const showTeaFund = Boolean(options.includeTeaFund);
   const [docs, breakdown, settings] = await Promise.all([
     Contribution.find({ memberId: member._id, deleted: false })
       .sort({ date: 1, createdAt: 1 })
@@ -691,12 +693,15 @@ async function buildPublicProfile(member, lookupPhone, options = {}) {
   ]);
   const config = resolveConfig(settings);
 
-  // What may be listed. Chai rows are still loaded — they are part of the cycle
+  // What may be listed. Tea rows are still loaded — they are part of the cycle
   // maths and of the office's copy — they are simply not part of the member's
-  // list. Filtering first is safe for the running balance: a group-fund row never
-  // adds to it.
-  const visibleDocs = showGroupFunds ? docs : docs.filter((c) => !c.typeId?.isGroupFund);
-  const visibleBreakdown = showGroupFunds ? breakdown : breakdown.filter((b) => !b.isGroupFund);
+  // list. Filtering first is safe for the running balance: a tea row never adds
+  // to it.
+  const isTeaType = (type) => bucketForType(type) === 'chai';
+  const visibleDocs = showTeaFund ? docs : docs.filter((c) => !isTeaType(c.typeId));
+  const visibleBreakdown = showTeaFund
+    ? breakdown
+    : breakdown.filter((b) => !isTeaType({ name: b.name }));
 
   // Group-fund contributions (e.g. Chai) still show up as their own ledger
   // row, but don't add to the running personal balance — that money belongs
@@ -718,9 +723,9 @@ async function buildPublicProfile(member, lookupPhone, options = {}) {
 
   const totalPledged = visibleBreakdown.reduce((sum, b) => sum + b.pledged, 0);
   const { fines, weeklySchedules } = await buildFinesAndSchedules(member, docs, settings);
-  const visibleSchedules = showGroupFunds
+  const visibleSchedules = showTeaFund
     ? weeklySchedules
-    : weeklySchedules.filter((schedule) => !schedule.isGroupFund);
+    : weeklySchedules.filter((schedule) => !schedule.isTeaFund);
 
   // The cycle position, from the one engine the treasurer's ledger, the member
   // list and the reminders all read. "Total contributed" alone reads as 0 once
@@ -792,12 +797,12 @@ async function buildPublicProfile(member, lookupPhone, options = {}) {
     contributions,
     fines: publicFines,
     // Only the funds the reader is meant to see: for a member's own lookup that
-    // is his personal weekly contribution, never the Tea Fund.
+    // is his personal weekly contribution, never the Group's automatic tea.
     weeklySchedules: visibleSchedules,
-    // Whether this copy names the group's own money. The statement exports read
-    // it so a member's PDF and the office's PDF explain the same total in the
-    // words each is entitled to.
-    groupFundsIncluded: showGroupFunds,
+    // Whether this copy names the Tea Fund. The statement exports read it so a
+    // member's PDF and the office's PDF explain the same total in the words each
+    // is entitled to.
+    teaFundIncluded: showTeaFund,
     // When the caller proved their own number at the gate, the member gets to
     // see their own contact details back. Strangers (or someone looking up a
     // friend) never see email or next of kin — one of each of those is
@@ -852,18 +857,18 @@ async function sendStatementExcel(res, profile) {
       Value: profile.ledger ? profile.ledger.paid : profile.totalContributed || 0,
     },
     {
-      // For a member's own statement this figure also carries the group's fund
-      // deductions (the 100 tea a week), so the summary reconciles without naming
-      // a fund he never contributed to. The office's copy keeps the two apart,
-      // exactly as its ledger does.
+      // For a member's own statement this figure also carries the tea the Group
+      // deducted, so the summary reconciles without naming a fund he never
+      // contributed to. The office's copy keeps the two apart, exactly as its
+      // ledger does.
       Field: 'Required So Far',
       Value: profile.ledger
-        ? profile.groupFundsIncluded
+        ? profile.teaFundIncluded
           ? profile.ledger.required
           : profile.ledger.required + profile.ledger.tea
         : 0,
     },
-    ...(profile.groupFundsIncluded
+    ...(profile.teaFundIncluded
       ? [
           {
             Field: 'Tea (automatic)',
@@ -1088,7 +1093,7 @@ async function memberStatement(req, res, next) {
   try {
     const member = await Member.findById(req.params.id).lean();
     if (!member) return res.status(404).json({ message: 'Member not found' });
-    await sendStatement(res, await buildPublicProfile(member, undefined, { includeGroupFunds: true }));
+    await sendStatement(res, await buildPublicProfile(member, undefined, { includeTeaFund: true }));
   } catch (err) {
     next(err);
   }
@@ -1137,9 +1142,9 @@ async function memberStatementExcel(req, res, next) {
 
     await sendStatementExcel(
       res,
-      // The office's copy: it keeps the group's funds in it, as the finance ledger
-      // does — a member's own download from the lookup leaves them out.
-      await buildPublicProfile(member, undefined, { includeGroupFunds: true })
+      // The office's copy: it keeps the Tea Fund in it, as the finance ledger
+      // does — a member's own download from the lookup leaves it out.
+      await buildPublicProfile(member, undefined, { includeTeaFund: true })
     );
   } catch (err) {
     next(err);

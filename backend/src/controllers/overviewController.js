@@ -5,7 +5,6 @@ const { getOrCreateSettings } = require('../utils/settings');
 const { carriedInTotals } = require('../utils/carriedIn');
 const { fundBalance } = require('../utils/fundBalance');
 const { bucketForType } = require('../utils/ledgerTypes');
-const { resolveConfig, currentWeekNumber, scoredWeeks } = require('../utils/weekCycle');
 const { totalFinesCollected } = require('../utils/finesCollected');
 
 // GET /api/public/overview — PUBLIC, no phone number needed.
@@ -34,11 +33,23 @@ async function publicOverview(req, res, next) {
         totalFinesCollected(),
       ]);
 
+    // The Tea Fund is the one type the public page does not name: its 100 a week
+    // is deducted from every member automatically rather than paid in, and its
+    // income is derived rather than logged, so there is nothing in the books a
+    // reader could trace the figure to. The office's own screens keep it.
+    const isTea = (t) => bucketForType(t) === 'chai';
+
     const totalsMap = new Map(totals.map((t) => [String(t._id), t.total]));
     const byType = types.map((t) => ({
       name: t.name,
       description: t.description || '',
       isGroupFund: Boolean(t.isGroupFund),
+      isTeaFund: isTea(t),
+      // What the fund already held when the books opened — money that is real and
+      // already inside the page's totals, and which would otherwise leave a fund
+      // the paper ledger says is full reading as Ksh 0 here because no rows exist
+      // against it yet.
+      carriedIn: Number(t.openingBalance) || 0,
       totalContributed: totalsMap.get(String(t._id)) || 0,
     }));
     const collected = byType.reduce((sum, t) => sum + t.totalContributed, 0);
@@ -51,76 +62,54 @@ async function publicOverview(req, res, next) {
     const totalContributed = collected + carriedIn.total;
     const thisWeekTotal = thisWeekAgg[0]?.total || 0;
 
-    const expenseTypes = types.filter((t) => t.tracksExpenses);
-    // The Tea Fund's income is derived, not logged: 100 a member for every week
-    // the cycle has actually scored, plus whatever tea was collected for the weeks
-    // before it opened (the one-time week-91 entry). Worked out here exactly the
-    // way the member's page works it out, because the tea has already come off
-    // every member's money — a fund list reading Chai 0 against a passbook that
-    // shows the tea taken is the group reading two different books.
-    const config = resolveConfig(settings);
-    const chaiType = types.find((t) => bucketForType(t) === 'chai') || null;
-    const weeksScored = scoredWeeks(config);
-    const teaBeforeCycle = chaiType
-      ? await Contribution.aggregate([
-          { $match: { deleted: false, typeId: chaiType._id, date: { $lt: config.anchorDate } } },
-          { $group: { _id: null, total: { $sum: { $ifNull: ['$grossAmount', '$amount'] } } } },
-        ])
-      : [];
-    const teaIncome = config.chaiAmount * weeksScored * activeMembers + (teaBeforeCycle[0]?.total || 0);
-
+    // Every fund the group holds money in, and what it holds: the one-time
+    // carry-in entered at go-live, plus what has come in, minus what has gone out.
+    // Expense-tracking funds alone used to be listed, which left the biggest fund
+    // on the books (Fines & Penalties) missing from a card that claims to show what
+    // each fund holds.
+    const fundTypes = types.filter(
+      (t) => !isTea(t) && (t.isGroupFund || t.tracksExpenses)
+    );
     const fundBalances = await Promise.all(
-      expenseTypes.map(async (t) => {
-        const isGroupFund = Boolean(t.isGroupFund);
-        const derived = bucketForType(t) === 'chai' ? teaIncome : 0;
-        return {
-          name: t.name,
-          // Kept for the filter below and stripped before the response: the
-          // public page does not break the group's funds down by who owns them.
-          isGroupFund,
-          // The part of the balance that was derived rather than collected — the
-          // automatic tea — so a list can say so instead of showing a figure with
-          // nothing behind it in the contribution rows. Internal only: the public
-          // response never carries this figure.
-          derived,
-          // The fund's one-time carry-in (the tea float the group already held),
-          // so a balance is what the fund actually holds, not just what this
-          // ledger has watched move.
-          ...(await fundBalance(t._id, { carriedIn: t.openingBalance, extraIncome: derived })),
-        };
-      })
+      fundTypes.map(async (t) => ({
+        name: t.name,
+        tracksExpenses: Boolean(t.tracksExpenses),
+        // The fund's one-time carry-in is what keeps a fund the paper ledger says
+        // is full from reading as if the group had never collected anything.
+        ...(await fundBalance(t._id, { carriedIn: t.openingBalance })),
+      }))
     );
-    // Every expense-tracking fund's own spending. fundBalance() reports it as
-    // `totalExpenses`; reading a `spent` key here meant this always summed to zero,
-    // so the page showed "Ksh 0 spent from tracked funds" and a "cash held now"
-    // that never came down when the group paid for anything.
-    const totalExpenses = fundBalances.reduce(
-      (sum, f) => sum + (Number(f.totalExpenses) || 0),
-      0
-    );
+    // What the group has spent from the funds it tracks expenses on. fundBalance()
+    // reports that as `totalExpenses`; reading a `spent` key here meant this always
+    // summed to zero, so the page showed "Ksh 0 spent from tracked funds" and a
+    // "cash held now" that never came down when the group paid for anything.
+    const totalExpenses = fundBalances
+      .filter((f) => f.tracksExpenses)
+      .reduce((sum, f) => sum + (Number(f.totalExpenses) || 0), 0);
 
-    // What the public page is allowed to name. The Tea Fund is left out of both
-    // lists — of the contribution types and of the fund balances — because it is
-    // the Group's own money, deducted from every member automatically and
-    // contributed by nobody, and because its income is derived rather than logged
-    // there is nothing in the books a reader could trace it to. The office's own
-    // screens (finance setup, reports) keep the full breakdown.
+    // What the public page names. The Tea Fund is the only type left out, of both
+    // lists; everything else is listed with its carry-in, so a fund whose money is
+    // all brought forward shows that money instead of a misleading Ksh 0.
     const publicByType = byType
-      .filter((t) => !t.isGroupFund)
-      .map(({ name, description, totalContributed }) => ({
+      .filter((t) => !t.isTeaFund)
+      .map(({ name, description, carriedIn, totalContributed }) => ({
         name,
         description,
-        totalContributed,
-      }));
-    const publicFundBalances = fundBalances
-      .filter((f) => !f.isGroupFund)
-      .map(({ name, carriedIn, totalContributed, totalExpenses: spent, balance }) => ({
-        name,
         carriedIn,
         totalContributed,
-        spent,
-        balance,
+        total: carriedIn + totalContributed,
       }));
+    // The fund rows carry the three figures a reader can check: what it already
+    // held, what has been spent from it, and the balance that follows. `collected`
+    // is deliberately not sent: fundBalance() reports "money in" (carry-in plus
+    // rows) under a `totalContributed` name, and two different meanings for one
+    // field across two lists is how a page ends up misreading its own numbers.
+    const publicFundBalances = fundBalances.map(({ name, carriedIn, totalExpenses: spent, balance }) => ({
+      name,
+      carriedIn,
+      spent,
+      balance,
+    }));
 
     res.json({
       chamaName: settings.chamaName,
