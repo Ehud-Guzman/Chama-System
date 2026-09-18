@@ -11,3 +11,9 @@ export const CHAMA_NAME = 'WAZO MOJA SELF-HELP GROUP';
 // below. Kept next to CHAMA_NAME so the wording has one home.
 export const CHAMA_NAME_TOP = 'WAZO MOJA';
 export const CHAMA_NAME_BOTTOM = 'Self-Help Group';
+
+// The mark the public page shows until the group uploads its own logo
+// (Settings → logo, stored on Cloudinary and carried in the public overview).
+// Same reasoning as CHAMA_NAME: a page that prints the group's name with an empty
+// hole beside it reads as broken, so the app ships a placeholder rather than a gap.
+export const CHAMA_LOGO = '/icon.svg';

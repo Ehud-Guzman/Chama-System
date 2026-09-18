@@ -6,6 +6,7 @@ const { carriedInTotals } = require('../utils/carriedIn');
 const { fundBalance } = require('../utils/fundBalance');
 const { bucketForType } = require('../utils/ledgerTypes');
 const { totalFinesCollected } = require('../utils/finesCollected');
+const { visionAndMission } = require('../utils/groupIdentity');
 
 // GET /api/public/overview — PUBLIC, no phone number needed.
 // Group-wide totals only: chama name, membership size, and what has been raised
@@ -113,6 +114,13 @@ async function publicOverview(req, res, next) {
 
     res.json({
       chamaName: settings.chamaName,
+      // The group's own statements and its mark, for the top of the page and its
+      // foot. Both clauses fall back to the published constitution while Settings
+      // holds nothing (utils/groupIdentity) — the vision and mission are meant to
+      // be read by anyone, which is why they travel here and the rest of the
+      // constitution does not.
+      ...visionAndMission(settings),
+      logoUrl: settings.logoUrl || '',
       activeMembers,
       totalMembersEver,
       resignedCount,

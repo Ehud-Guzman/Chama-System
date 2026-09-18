@@ -1,12 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
 import { normalizePhone } from '../utils/phone';
-import { CHAMA_NAME } from '../utils/branding';
+import { CHAMA_NAME, CHAMA_LOGO } from '../utils/branding';
 
 import GroupOverview from '../components/public/GroupOverview';
 import PassbookCard from '../components/public/PassbookCard';
 import PublicRecords from '../components/public/PublicRecords';
+import VisionMission from '../components/public/VisionMission';
 
 export default function PublicLookup() {
   const [phone, setPhone] = useState('');
@@ -14,10 +15,20 @@ export default function PublicLookup() {
   const [result, setResult] = useState(null);
   const [lookedUpPhone, setLookedUpPhone] = useState('');
   const [error, setError] = useState('');
-  const [chamaName, setChamaName] = useState('');
 
-  const onChamaName = useCallback((name) => {
-    setChamaName(name);
+  // Everything the page knows about the group itself: its name, its logo, its
+  // totals and its two statements. One request, because the overview is the
+  // heaviest aggregate the public API computes and the brand row, the totals and
+  // the vision/mission card each need a piece of the same response.
+  const [overview, setOverview] = useState(null);
+
+  useEffect(() => {
+    api
+      .get('/api/public/overview')
+      .then((res) => setOverview(res.data))
+      .catch(() => {
+        // Non-fatal — the page still works for personal lookup without it
+      });
   }, []);
 
   async function onSubmit(e) {
@@ -70,9 +81,20 @@ export default function PublicLookup() {
         ====================================================== */}
         <header className="flex items-center justify-between gap-3">
 
-          <div className="min-w-0">
+          {/* The group's own logo once one has been uploaded (Settings → logo);
+              until then the mark the app ships. Both draw at the same size, so the
+              row does not jump the moment the real one replaces the placeholder.
+              alt is empty on purpose: the group's name is printed right beside it,
+              and a screen reader would otherwise say both. */}
+          <div className="flex min-w-0 items-center gap-2.5">
+            <img
+              src={overview?.logoUrl || CHAMA_LOGO}
+              alt=""
+              className="h-9 w-9 shrink-0 rounded-lg object-contain sm:h-10 sm:w-10"
+            />
+
             <p className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-muted sm:text-xs">
-              {chamaName || CHAMA_NAME}
+              {overview?.chamaName || CHAMA_NAME}
             </p>
           </div>
 
@@ -308,12 +330,17 @@ export default function PublicLookup() {
           </section>
 
         {/* =====================================================
-            GROUP OVERVIEW
+            GROUP OVERVIEW AND THE GROUP'S OWN STATEMENTS
         ====================================================== */}
 
           <section aria-label="Group overview">
-            <GroupOverview onChamaName={onChamaName} />
+            <GroupOverview overview={overview} />
           </section>
+
+          {/* The constitution's own vision and mission (Chapter 2), unless the
+              office has rewritten either in Settings. Last card before the footer:
+              a returning member came for his record, not for a statement. */}
+          <VisionMission vision={overview?.vision} mission={overview?.mission} />
         </main>
 
         {/* =====================================================

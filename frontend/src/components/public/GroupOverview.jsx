@@ -1,5 +1,3 @@
-import { useEffect, useState } from 'react';
-import api from '../../services/api';
 import { money } from '../../utils/format';
 import StatTile from '../shared/StatTile';
 
@@ -8,24 +6,16 @@ import StatTile from '../shared/StatTile';
 // member's own record is opened by proving his own number on the lookup above,
 // never by browsing a list of people.
 //
+// The overview arrives as a prop: the page fetches it once, because the same
+// response also carries the group's name, its logo and its vision and mission.
+// Three components each asking the server for this aggregate would be three
+// times the work for one page load, and it is the heaviest thing the public API
+// computes.
+//
 // The tiles go four across once there is room for them; the two per-name
 // breakdowns below sit side by side from lg, because as full-width cards every
 // amount sat a screen away from the label it belongs to.
-export default function GroupOverview({ onChamaName }) {
-  const [overview, setOverview] = useState(null);
-
-  useEffect(() => {
-    api
-      .get('/api/public/overview')
-      .then((res) => {
-        setOverview(res.data);
-        onChamaName?.(res.data.chamaName);
-      })
-      .catch(() => {
-        // Non-fatal — the page still works for personal lookup without it
-      });
-  }, [onChamaName]);
-
+export default function GroupOverview({ overview }) {
   if (!overview) return null;
 
   return (

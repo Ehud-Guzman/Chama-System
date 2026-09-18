@@ -1,4 +1,4 @@
-const { uploadMemberPhoto, isCloudinaryConfigured, destroyImage } = require('../utils/cloudinary');
+const { uploadMemberPhoto, uploadGroupLogo, isCloudinaryConfigured, destroyImage } = require('../utils/cloudinary');
 
 // POST /api/uploads/member-photo — ADMIN/treasurer, multipart (field: `file`).
 // The browser uploads here rather than straight to Cloudinary so the API secret
@@ -10,6 +10,23 @@ async function uploadPhoto(req, res, next) {
       return res.status(400).json({ message: 'Choose a photo to upload' });
     }
     const { url, publicId } = await uploadMemberPhoto(req.file.buffer);
+    res.status(201).json({ url, publicId });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/uploads/chama-logo — ADMIN, multipart (field: `file`). The group's
+// logo, on the same proxied path as a member photo: the API secret stays on the
+// server and the compression settings can't be tampered with from the browser.
+// The URL comes back to the settings form, which saves the pair with the rest of
+// the settings.
+async function uploadLogo(req, res, next) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Choose an image to upload' });
+    }
+    const { url, publicId } = await uploadGroupLogo(req.file.buffer);
     res.status(201).json({ url, publicId });
   } catch (err) {
     next(err);
@@ -42,4 +59,4 @@ async function removePhoto(req, res, next) {
   }
 }
 
-module.exports = { uploadPhoto, uploadStatus, removePhoto };
+module.exports = { uploadPhoto, uploadLogo, uploadStatus, removePhoto };

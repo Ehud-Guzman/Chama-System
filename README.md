@@ -237,7 +237,13 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   or admin metadata. There is deliberately **no public member directory**: a member's record is
   opened by proving his own number, never by browsing a list of names, balances and phone
   numbers. The home page carries group-wide totals only (`GET /api/public/overview` — chama name,
-  membership size, raised by fund, fund balances), which hold no per-member data at all.
+  membership size, raised by fund, fund balances), which hold no per-member data at all. The same
+  response carries the group's identity for that page: its **logo** (Settings, uploaded to
+  Cloudinary like a member photo) and its **vision and mission**, which default to Chapter 2 of the
+  published constitution — clauses 2.1 and 2.2 — unless an admin rewrites either in Settings
+  (`utils/groupIdentity`). Those two clauses are resolved on the server precisely because the rest
+  of the constitution stays behind the phone gate; a group's vision and mission are meant to be read
+  by anyone, its rules are not.
 - **Chama documents, minutes and the constitution (phone-gated):** title deeds, certificates and
   other group records are uploaded from `/admin/documents` (PDF, Word/Excel, or a photo, up to
   8 MB) and minutes are written at `/admin/minutes`. Both are stored in MongoDB itself —
@@ -261,6 +267,10 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   publicId is saved with the member so a replaced photo's old asset is deleted rather than
   orphaned. Without `CLOUDINARY_*` configured, the picker reports that uploads aren't set up and
   everything else keeps working.
+- **The group's logo:** uploaded from Admin → Chama identity (`POST /api/uploads/chama-logo` — the
+  same proxied Cloudinary path, admin-only because the logo is a Settings field, not a member
+  field). It is stored in its own folder and never face-cropped, and the page falls back to the mark
+  the app ships (`public/icon.svg`) while Settings holds no URL.
 - **Email reminders:** `/admin/reminders` lists every member who is behind on the weekly
   contribution or has unpaid fines, computed from the same cycle engine the member's own page
   shows (`computeMemberLedger`), so a reminder can never quote a week number or an amount the
@@ -358,6 +368,7 @@ bundle as a foreign-looking URL).
 | `LOOKUP_RATE_LIMIT_MAX` | Max lookups per window per IP (default 5) |
 | `CLOUDINARY_URL` *or* `CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` | Member profile photo storage |
 | `CLOUDINARY_FOLDER` | Where photos are stored in the Cloudinary account (default `chama-system/members`) |
+| `CLOUDINARY_BRANDING_FOLDER` | Where the group's logo is stored (default `chama-system/branding`) |
 | `SMTP_HOST` · `SMTP_PORT` · `SMTP_USER` · `SMTP_PASS` · `SMTP_SECURE` | Outgoing mail for reminders |
 | `MAIL_FROM` | Address reminders are sent as — required for sending to work at all |
 | `MAIL_REPLY_TO` | Optional reply-to (e.g. the treasurer's own inbox) |

@@ -7,6 +7,13 @@ const { v2: cloudinary } = require('cloudinary');
 const FOLDER = process.env.CLOUDINARY_FOLDER || 'chama-system/members';
 const AVATAR_PX = 512;
 
+// The group's logo: one image for the whole app rather than a photo per member,
+// so it gets its own folder (never mixed in with the members' pictures) and a
+// gentler transformation. `limit` never enlarges a small upload, and there is no
+// face crop — `gravity: face` on a wordmark is what cuts the ends off a name.
+const LOGO_FOLDER = process.env.CLOUDINARY_BRANDING_FOLDER || 'chama-system/branding';
+const LOGO_MAX_PX = 512;
+
 function isCloudinaryConfigured() {
   // Either a single CLOUDINARY_URL (cloudinary://key:secret@cloud) or the trio.
   return Boolean(
@@ -74,6 +81,38 @@ function uploadMemberPhoto(buffer) {
   });
 }
 
+// The group's logo, streamed to Cloudinary from memory like a member photo.
+// Resolves with the permanent URL plus the publicId, which is what a later
+// replace or removal needs to clean the old asset up.
+function uploadGroupLogo(buffer) {
+  ensureConfigured();
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: LOGO_FOLDER,
+        resource_type: 'image',
+        transformation: [
+          {
+            width: LOGO_MAX_PX,
+            height: LOGO_MAX_PX,
+            crop: 'limit',
+            quality: 'auto',
+            fetch_format: 'auto',
+          },
+        ],
+      },
+      (err, result) => {
+        if (err) {
+          err.status = err.http_code && err.http_code >= 400 && err.http_code < 500 ? 400 : 502;
+          return reject(err);
+        }
+        return resolve({ url: result.secure_url, publicId: result.public_id });
+      }
+    );
+    stream.end(buffer);
+  });
+}
+
 // Best-effort cleanup — a failed delete must never fail the request that
 // triggered it, it only ever leaves one orphaned image behind.
 async function destroyImage(publicId) {
@@ -87,4 +126,4 @@ async function destroyImage(publicId) {
   }
 }
 
-module.exports = { isCloudinaryConfigured, uploadMemberPhoto, destroyImage };
+module.exports = { isCloudinaryConfigured, uploadMemberPhoto, uploadGroupLogo, destroyImage };

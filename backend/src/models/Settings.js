@@ -6,6 +6,17 @@ const SettingsSchema = new Schema(
   {
     chamaName: { type: String, required: true, trim: true, default: 'Our Chama' },
     constitution: { type: String, default: '' },
+    // The two statements the members' page prints under the group's totals.
+    // Blank means "use the published constitution's own Chapter 2 wording" — see
+    // utils/groupIdentity — so the page always has a statement to show even
+    // before anyone has typed one in.
+    vision: { type: String, default: '' },
+    mission: { type: String, default: '' },
+    // The group's logo, shown beside its name on the public page. Uploaded to
+    // Cloudinary like member photos (utils/cloudinary → uploadGroupLogo) and kept
+    // here as the URL plus the publicId that replacing or removing it needs.
+    logoUrl: { type: String, default: '' },
+    logoPublicId: { type: String, default: '' },
     // First week the group-wide weekly reconciliation should evaluate. Weeks
     // before this are pre-tracking history (e.g. a bulk paper-ledger import
     // that only gives a cumulative snapshot, not a per-week breakdown) and
