@@ -316,6 +316,16 @@ async function exportPerformance(req, res, next) {
         : '',
     }));
     sendWorkbook(res, 'member-performance.xlsx', [
+      aboutSheet({
+        name: 'Member performance',
+        settings: await getOrCreateSettings(),
+        req,
+        counts: [['Members', rows.length]],
+        notes:
+          'One line per active member. "Total contributed" includes the balance he carried in ' +
+          'when the books opened; consistency counts personal weekly weeks only, and the ' +
+          'opening week and the week still running are not scored.',
+      }),
       { name: 'Performance', rows: sheetRows },
       {
         name: 'Totals',
@@ -489,10 +499,39 @@ async function exportMonthly(req, res, next) {
       Total: totals.all,
       Members: totals.contributingMembers,
     });
-    sendWorkbook(res, 'monthly-totals.xlsx', [{ name: 'Monthly totals', rows: sheetRows }]);
+    sendWorkbook(res, 'monthly-totals.xlsx', [
+      aboutSheet({
+        name: 'Monthly totals',
+        settings: await getOrCreateSettings(),
+        req,
+        counts: [['Months covered', months.length]],
+        notes:
+          'One line per calendar month (the group\u2019s own month, UTC+3), split by contribution ' +
+          'type, with the members\u2019 own contributions kept apart from the group funds.',
+      }),
+      { name: 'Monthly totals', rows: sheetRows },
+    ]);
   } catch (err) {
     next(err);
   }
+}
+
+// Every export says what it is, who asked for it and when, as its first sheet. A
+// workbook that turns up in a WhatsApp group a year later should be readable
+// without anyone having to remember which screen it came from — and a figure with
+// no stated scope is how two people end up arguing about the same report.
+function aboutSheet({ name, settings, req, counts = [], notes = '' }) {
+  return {
+    name: 'About this export',
+    rows: [
+      { Field: 'Chama', Value: settings?.chamaName || '' },
+      { Field: 'Report', Value: name },
+      ...counts.map(([Field, Value]) => ({ Field, Value })),
+      { Field: 'Generated on', Value: new Date() },
+      { Field: 'Prepared by', Value: req.user?.name || '' },
+      ...(notes ? [{ Field: 'What this counts', Value: notes }] : []),
+    ],
+  };
 }
 
 // GET /api/reports/export — all contributions with member names, .xlsx workbook
@@ -516,7 +555,19 @@ async function exportContributions(req, res, next) {
       Note: c.note || '',
       'Logged by': c.loggedBy?.name || '',
     }));
-    sendWorkbook(res, 'contributions.xlsx', [{ name: 'Contributions', rows: sheetRows }]);
+    sendWorkbook(res, 'contributions.xlsx', [
+      aboutSheet({
+        name: 'Contribution history',
+        settings: await getOrCreateSettings(),
+        req,
+        counts: [['Contribution rows', sheetRows.length]],
+        notes:
+          'Every contribution row logged in this ledger, oldest first. Money carried forward ' +
+          'from the paper ledger is not a row and is not in this sheet, so the total here is ' +
+          'what this ledger has watched come in.',
+      }),
+      { name: 'Contributions', rows: sheetRows },
+    ]);
   } catch (err) {
     next(err);
   }
@@ -591,6 +642,20 @@ async function exportWeekly(req, res, next) {
     }
 
     sendWorkbook(res, 'weekly-reconciliation.xlsx', [
+      aboutSheet({
+        name: 'Weekly reconciliation',
+        settings: await getOrCreateSettings(),
+        req,
+        counts: [
+          ['Weeks covered', weeks.length],
+          ['Shortfall rows', shortfallRows.length],
+        ],
+        notes:
+          'Expected versus actual, week by week, per fixed weekly fund. The opening week expects ' +
+          'nothing (every member\u2019s money for it is already carried forward) and the week still ' +
+          'running is not scored. A week is "short" when at least one eligible member still owes ' +
+          'their weekly minimum.',
+      }),
       { name: 'Weeks', rows: overviewRows },
       { name: 'Shortfalls', rows: shortfallRows },
     ]);
@@ -911,6 +976,16 @@ async function exportFinesReport(req, res, next) {
   try {
     const report = await computeFinesReport();
     sendWorkbook(res, 'fines-report.xlsx', [
+      aboutSheet({
+        name: 'Fines',
+        settings: await getOrCreateSettings(),
+        req,
+        counts: [['Fines on record', report.totals.count]],
+        notes:
+          'Every fine issued and not voided, with the totals, the fine types carrying the debt, ' +
+          'who owes it and how it has moved month by month. Voided fines are excluded: they ' +
+          'were issued and then cancelled, so nothing is owed on them.',
+      }),
       {
         name: 'Totals',
         rows: [

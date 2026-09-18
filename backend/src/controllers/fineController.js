@@ -4,7 +4,9 @@ const FineType = require('../models/FineType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
-const { buildFineReport, renderFineReportPdf, fineReportSheets } = require('../utils/fineReport');
+const { buildFineReport, renderFineReportPdf, fineReportSheets,
+  buildFineGroupReport, renderFineGroupReportPdf, fineGroupReportSheets,
+} = require('../utils/fineReport');
 
 // The disciplinary officer works in his own world: he issues conduct fines and has
 // no business reading the treasurer's. So every read he makes is narrowed to
@@ -248,4 +250,58 @@ async function voidFine(req, res, next) {
   }
 }
 
-module.exports = { listFines, exportMemberFines, createFine, settleFine, voidFine };
+// GET /api/fines/summary — the group's fines in the four cuts a meeting works
+// through: the totals, the fine types carrying the debt, who owes it, and how it
+// has moved month by month. Scoped exactly like listFines, so the disciplinary
+// officer's report can only ever count his own category of fines.
+async function finesSummary(req, res, next) {
+  try {
+    const scope = await scopeForUser(req.user);
+    const fines = await Fine.find({ ...scope.filter, deleted: false })
+      .populate('memberId', 'name regNumber phone active')
+      .populate('typeId', 'name category')
+      .populate('issuedBy', 'name')
+      .lean();
+
+    const report = buildFineGroupReport({ fines, scopeLabel: scope.scopeLabel });
+    report.preparedBy = req.user?.name || '';
+
+    res.json({
+      scopeLabel: report.scopeLabel,
+      totals: report.totals,
+      byType: report.byType,
+      byMember: report.byMember,
+      byMonth: report.byMonth,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/fines/export?format=pdf|xlsx — the same group report as a document.
+async function exportFines(req, res, next) {
+  try {
+    const scope = await scopeForUser(req.user);
+    const [fines, settings] = await Promise.all([
+      Fine.find({ ...scope.filter, deleted: false })
+        .populate('memberId', 'name regNumber phone active')
+        .populate('typeId', 'name category')
+        .populate('issuedBy', 'name')
+        .lean(),
+      getOrCreateSettings(),
+    ]);
+
+    const report = buildFineGroupReport({ fines, scopeLabel: scope.scopeLabel });
+    report.preparedBy = req.user?.name || '';
+
+    const format = String(req.query.format || 'pdf').toLowerCase();
+    if (format === 'xlsx' || format === 'excel') {
+      return sendWorkbook(res, 'fines-group.xlsx', fineGroupReportSheets(report, settings.chamaName));
+    }
+    return renderFineGroupReportPdf(res, report, settings.chamaName);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { listFines, finesSummary, exportFines, exportMemberFines, createFine, settleFine, voidFine };

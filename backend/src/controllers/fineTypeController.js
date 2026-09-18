@@ -2,11 +2,15 @@ const FineType = require('../models/FineType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 
 // GET /api/fine-types?all=true&category= — active only by default, ?all=true
-// includes inactive, ?category=financial|disciplinary filters by category
+// includes inactive, ?category=financial|disciplinary filters by category.
+//
+// The disciplinary officer is shown only conduct types: he issues those, and the
+// financial ones are the treasurer's business — a read he could not use anyway.
 async function listFineTypes(req, res, next) {
   try {
     const filter = req.query.all === 'true' ? {} : { active: true };
     if (req.query.category) filter.category = req.query.category;
+    if (req.user.role === 'disciplinary') filter.category = 'disciplinary';
     const types = await FineType.find(filter).sort({ name: 1 });
     res.json({ types });
   } catch (err) {

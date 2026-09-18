@@ -72,6 +72,72 @@ export default function DisciplinaryFines() {
   const [recordBusy, setRecordBusy] = useState(false);
   const [exporting, setExporting] = useState(null);
 
+  // The group's side of it: every fine in scope, who owes what, and the same
+  // month-by-month cuts the office sees — loaded once, on opening the page.
+  const [group, setGroup] = useState(null);
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupExporting, setGroupExporting] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGroupBusy(true);
+    api
+      .get('/api/fines/summary')
+      .then((res) => {
+        if (!cancelled) setGroup(res.data);
+      })
+      .catch(() => {
+        // Non-fatal: the member record and issuing a fine still work.
+      })
+      .finally(() => {
+        if (!cancelled) setGroupBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fetched as a blob rather than linked directly: a bare link that hits an error
+  // shows raw JSON in the browser instead of the app's own message.
+  async function downloadFines(url, filename, format, setBusy) {
+    setBusy(format);
+    try {
+      const res = await api.get(url, { params: { format }, responseType: 'blob' });
+      const objectUrl = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      toast(await blobErrorMessage(err, 'Could not export the fine record'), 'error');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function exportRecord(format) {
+    if (!selectedMember) return;
+    const slug = selectedMember.regNumber || selectedMember.name;
+    return downloadFines(
+      `/api/fines/member/${selectedMember._id}/export`,
+      `fines-${slug}.${format === 'xlsx' ? 'xlsx' : 'pdf'}`,
+      format,
+      setExporting
+    );
+  }
+
+  function exportGroup(format) {
+    return downloadFines(
+      '/api/fines/export',
+      `fines-group.${format === 'xlsx' ? 'xlsx' : 'pdf'}`,
+      format,
+      setGroupExporting
+    );
+  }
+
   const loadRecord = useCallback(
     async (memberId) => {
       if (!memberId) return;
@@ -91,33 +157,6 @@ export default function DisciplinaryFines() {
   useEffect(() => {
     if (selectedMember?._id) loadRecord(selectedMember._id);
   }, [selectedMember?._id, loadRecord]);
-
-  // Fetched as a blob rather than linked directly: a bare link that hits an error
-  // shows raw JSON in the browser instead of the app's own message.
-  async function exportRecord(format) {
-    if (!selectedMember) return;
-    setExporting(format);
-    try {
-      const res = await api.get(`/api/fines/member/${selectedMember._id}/export`, {
-        params: { format },
-        responseType: 'blob',
-      });
-      const url = URL.createObjectURL(res.data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `fines-${selectedMember.regNumber || selectedMember.name}.${
-        format === 'xlsx' ? 'xlsx' : 'pdf'
-      }`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      toast(await blobErrorMessage(err, 'Could not export the fine record'), 'error');
-    } finally {
-      setExporting(null);
-    }
-  }
 
   async function issue() {
     if (!selectedMember) {
@@ -412,6 +451,202 @@ export default function DisciplinaryFines() {
                   </li>
                 ))}
               </ul>
+            </>
+          )}
+        </section>
+      )}
+      {/* The group's side of the same record: what has been issued across the
+          group, which fine types carry the debt, who owes it, and how it has moved
+          month by month — with the same two documents to hand over. The server
+          narrows it to this role's fines, so the totals match the export exactly. */}
+      {group && (
+        <section className="overflow-hidden rounded-xl border border-rule bg-surface">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rule px-4 py-3">
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold">
+                {group.scopeLabel} — the whole group
+              </h2>
+              <p className="mt-0.5 text-xs text-muted">
+                {group.totals.count} on record
+                {group.totals.membersOwing > 0
+                  ? ` · ${group.totals.membersOwing} member${group.totals.membersOwing === 1 ? '' : 's'} owing`
+                  : ' · nobody owes a fine'}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => exportGroup('pdf')}
+                disabled={groupExporting !== null}
+                className="min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {groupExporting === 'pdf' ? 'Preparing…' : 'Group PDF'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => exportGroup('xlsx')}
+                disabled={groupExporting !== null}
+                className="min-h-11 rounded-lg border border-rule px-4 text-sm font-semibold disabled:opacity-60"
+              >
+                {groupExporting === 'xlsx' ? 'Preparing…' : 'Group Excel'}
+              </button>
+            </div>
+          </div>
+
+          {groupBusy && !group.totals.count ? (
+            <p className="px-4 py-6 text-center text-sm text-muted">Loading the group record…</p>
+          ) : group.totals.count === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-muted">
+              No fines have been issued yet, so there is nothing to report on.
+            </p>
+          ) : (
+            <>
+              <dl className="grid grid-cols-3 divide-x divide-rule border-b border-rule">
+                <div className="min-w-0 px-4 py-3">
+                  <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    Issued in total
+                  </dt>
+                  <dd className="amount mt-0.5 truncate text-sm font-bold">
+                    {money(group.totals.issued)}
+                  </dd>
+                  <dd className="amount text-[11px] text-muted">{group.totals.count} fines</dd>
+                </div>
+
+                <div className="min-w-0 px-4 py-3">
+                  <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    Paid off
+                  </dt>
+                  <dd className="amount mt-0.5 truncate text-sm font-bold text-accent">
+                    {money(group.totals.cleared)}
+                  </dd>
+                  <dd className="amount text-[11px] text-muted">
+                    {group.totals.clearedCount} cleared
+                  </dd>
+                </div>
+
+                <div className="min-w-0 px-4 py-3">
+                  <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    Still owed
+                  </dt>
+                  <dd
+                    className={`amount mt-0.5 truncate text-sm font-bold ${
+                      group.totals.outstanding > 0 ? 'text-alert' : ''
+                    }`}
+                  >
+                    {money(group.totals.outstanding)}
+                  </dd>
+                  <dd className="amount text-[11px] text-muted">
+                    {group.totals.pendingCount} not cleared
+                  </dd>
+                </div>
+              </dl>
+
+              {group.byType.length > 0 && (
+                <div className="border-b border-rule px-4 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    By fine type
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {group.byType.map((type) => (
+                      <li
+                        key={type.name}
+                        className="flex items-baseline justify-between gap-3 text-sm"
+                      >
+                        <span className="min-w-0 truncate">
+                          {type.name}
+                          <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                            {type.category}
+                          </span>
+                        </span>
+                        <span className="amount shrink-0 text-right font-medium">
+                          {money(type.issued)}
+                          {type.outstanding > 0 && (
+                            <span className="block text-[11px] font-normal text-alert">
+                              {money(type.outstanding)} owed
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* The biggest debtors first, because that is the list a meeting
+                  works down. Capped so a phone screen is not an endless scroll;
+                  the full list is in the export. */}
+              {group.byMember.some((m) => m.outstanding > 0) && (
+                <div className="border-b border-rule px-4 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    Who owes what
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {group.byMember
+                      .filter((m) => m.outstanding > 0)
+                      .slice(0, 10)
+                      .map((m) => (
+                        <li
+                          key={m.memberId}
+                          className="flex items-baseline justify-between gap-3 text-sm"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate">
+                              {m.name}
+                              {m.active === false && (
+                                <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                                  resigned
+                                </span>
+                              )}
+                            </span>
+                            <span className="amount block text-[11px] text-muted">
+                              {m.regNumber || m.phone} · {m.fines}{' '}
+                              {m.fines === 1 ? 'fine' : 'fines'}
+                            </span>
+                          </span>
+                          <span className="amount shrink-0 font-semibold text-alert">
+                            {money(m.outstanding)}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                  {group.byMember.filter((m) => m.outstanding > 0).length > 10 && (
+                    <p className="mt-2 text-[11px] text-muted">
+                      Showing the 10 largest of{' '}
+                      {group.byMember.filter((m) => m.outstanding > 0).length} members owing —
+                      the export lists every one, with their phone numbers.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {group.byMonth.length > 0 && (
+                <div className="px-4 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    Month by month
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {group.byMonth.slice(0, 12).map((month) => (
+                      <li
+                        key={month.month}
+                        className="flex items-baseline justify-between gap-3 text-sm"
+                      >
+                        <span className="amount">{month.month}</span>
+                        <span className="amount shrink-0 text-right font-medium">
+                          {money(month.issued)}
+                          <span className="block text-[11px] font-normal text-muted">
+                            {month.count} issued
+                            {month.outstanding > 0
+                              ? ` · ${money(month.outstanding)} owed`
+                              : ''}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </>
           )}
         </section>

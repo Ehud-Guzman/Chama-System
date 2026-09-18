@@ -1,6 +1,8 @@
 const router = require('express').Router();
 const {
   listFines,
+  finesSummary,
+  exportFines,
   exportMemberFines,
   createFine,
   settleFine,
@@ -12,9 +14,11 @@ router.use(requireAuth);
 
 // The disciplinary officer reads and issues his own category of fines — the
 // controller narrows every read of his to disciplinary-category types — and can
-// export one member's whole record as a document. Settling and voiding stay with
-// the office, and only the office sees financial fines.
+// export one member's whole record, or the group's, as a document. Settling and
+// voiding stay with the office, and only the office sees financial fines.
 router.get('/', requireRole('super_admin', 'admin', 'disciplinary'), listFines);
+router.get('/summary', requireRole('super_admin', 'admin', 'disciplinary'), finesSummary);
+router.get('/export', requireRole('super_admin', 'admin', 'disciplinary'), exportFines);
 router.get(
   '/member/:memberId/export',
   requireRole('super_admin', 'admin', 'disciplinary'),
