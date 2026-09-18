@@ -361,6 +361,21 @@ export default function PublicLookup() {
               Admin
             </Link>
           </div>
+
+          {/* The credit, at the very bottom where one belongs. The link opens in a
+              new tab so a member never loses the page — and the phone number he
+              just typed — by tapping it. */}
+          <p className="mt-4">
+            Created and managed by{' '}
+            <a
+              href="https://glimmerink.co.ke/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-primary underline-offset-2 hover:underline"
+            >
+              GlimmerInk Creations
+            </a>
+          </p>
         </footer>
 
       </div>
