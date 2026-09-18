@@ -117,19 +117,18 @@ function weeksElapsed(config, now = Date.now()) {
   return currentWeekNumber(config, now) - config.cycleStartWeek + 1;
 }
 
-// The scored weeks that have *closed* — the ones that carry an expectation right
-// now. The week running today is not one of them: its Thursday is still to come,
-// and 1,400 plus the tea are counted for a week the day after it closes.
+// The weeks that carry an expectation right now: the cycle's weeks after the
+// opening week, **the week running today included**. Its 1,400 and 100 of tea are
+// what the group collects on the coming Thursday, and a member's money is the
+// figure after they come off — §7.5's "expected total deducted from his money".
 //
-// This is what keeps the figures a go-live is set up with exactly as the
-// treasurer keyed them. Those totals are the members' money as at the last
-// Thursday; the money for the week now running is collected on the coming
-// Thursday and counted from the day after, so the ledger's expectations and the
-// group's collections move together instead of the ledger billing a week nobody
-// has been asked for yet. Open the books on a Friday and nothing is due; by the
-// following Friday one week is, and the collection that closed it is already in.
+// The opening week is the one week that is never scored: the totals keyed into a
+// go-live are the members' money for it, tea already deducted, so billing the week
+// again would take a week's 1,400 and 100 off a balance that was verified without
+// them. Deductions therefore begin with the week after it — week 93 today — from
+// the first day of that week, not from the day it closes.
 function scoredWeeks(config, now = Date.now()) {
-  return Math.max(0, currentWeekNumber(config, now) - 1 - config.cycleStartWeek);
+  return Math.max(0, currentWeekNumber(config, now) - config.cycleStartWeek);
 }
 
 // Every week number the group has ever had, back to week 1, for the weeks

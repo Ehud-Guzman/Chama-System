@@ -70,10 +70,10 @@ async function computePerformance() {
       const weeks = buildWeeklySchedule(config, config.weeklyAmount, typeContributions);
       // The opening week is the baseline: it carried no expectation and no
       // payment, so counting it would drag every member's consistency down and
-      // report a week nobody could have paid. The week still running is not
-      // expected of anybody yet either — its Thursday is to come — which is the
-      // same rule the 1,400 and the tea follow.
-      const scored = weeks.filter((w) => !w.isBaseline && !w.isCurrent);
+      // report a week nobody could have paid. Every week after it counts from its
+      // first day, the week running now included — the same rule the 1,400 and the
+      // tea follow.
+      const scored = weeks.filter((w) => !w.isBaseline);
       weeksExpected += scored.length;
       weeksPaid += scored.filter((w) => w.status === 'paid').length;
       weeksPartial += scored.filter((w) => w.status === 'partial').length;

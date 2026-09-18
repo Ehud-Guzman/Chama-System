@@ -344,13 +344,9 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                     )} is still collected, and it stands as credit against week ${
                       selectedWeek.weekNumber + 1
                     }.`
-                  : selectedWeek.isCurrent
-                    ? ` — the week running now. Its ${money(
-                        ledger.weeklyAmount
-                      )} is counted the day after it closes, so logging it here is what settles it.`
-                    : selectedWeek.settled
-                      ? ' — already settled, so anything logged now counts as extra credit.'
-                      : ` — ${money(weekDue)} still due on the ${money(ledger.weeklyAmount)}.`}
+                  : selectedWeek.settled && !selectedWeek.isCurrent
+                    ? ' — already settled, so anything logged now counts as extra credit.'
+                    : ` — ${money(weekDue)} still due on the ${money(ledger.weeklyAmount)}.`}
               </p>
             )}
             {data.history?.length > 0 && (
