@@ -26,6 +26,10 @@ async function typeBreakdown(memberId) {
     .map((t) => ({
       typeId: t._id,
       name: t.name,
+      // Carried so a caller can keep group-fund money out of a view meant for the
+      // member himself (the passbook hides the Tea Fund; the office's own screens
+      // show it).
+      isGroupFund: Boolean(t.isGroupFund),
       pledged: pledgeMap.get(String(t._id)) || 0,
       contributed: sumMap.get(String(t._id)) || 0,
     }))

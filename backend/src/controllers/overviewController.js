@@ -38,6 +38,7 @@ async function publicOverview(req, res, next) {
     const byType = types.map((t) => ({
       name: t.name,
       description: t.description || '',
+      isGroupFund: Boolean(t.isGroupFund),
       totalContributed: totalsMap.get(String(t._id)) || 0,
     }));
     const collected = byType.reduce((sum, t) => sum + t.totalContributed, 0);
@@ -70,12 +71,17 @@ async function publicOverview(req, res, next) {
 
     const fundBalances = await Promise.all(
       expenseTypes.map(async (t) => {
+        const isGroupFund = Boolean(t.isGroupFund);
         const derived = bucketForType(t) === 'chai' ? teaIncome : 0;
         return {
           name: t.name,
+          // Kept for the filter below and stripped before the response: the
+          // public page does not break the group's funds down by who owns them.
+          isGroupFund,
           // The part of the balance that was derived rather than collected — the
           // automatic tea — so a list can say so instead of showing a figure with
-          // nothing behind it in the contribution rows.
+          // nothing behind it in the contribution rows. Internal only: the public
+          // response never carries this figure.
           derived,
           // The fund's one-time carry-in (the tea float the group already held),
           // so a balance is what the fund actually holds, not just what this
@@ -84,14 +90,44 @@ async function publicOverview(req, res, next) {
         };
       })
     );
-    const totalExpenses = fundBalances.reduce((sum, f) => sum + (f.spent || 0), 0);
+    // Every expense-tracking fund's own spending. fundBalance() reports it as
+    // `totalExpenses`; reading a `spent` key here meant this always summed to zero,
+    // so the page showed "Ksh 0 spent from tracked funds" and a "cash held now"
+    // that never came down when the group paid for anything.
+    const totalExpenses = fundBalances.reduce(
+      (sum, f) => sum + (Number(f.totalExpenses) || 0),
+      0
+    );
+
+    // What the public page is allowed to name. The Tea Fund is left out of both
+    // lists — of the contribution types and of the fund balances — because it is
+    // the Group's own money, deducted from every member automatically and
+    // contributed by nobody, and because its income is derived rather than logged
+    // there is nothing in the books a reader could trace it to. The office's own
+    // screens (finance setup, reports) keep the full breakdown.
+    const publicByType = byType
+      .filter((t) => !t.isGroupFund)
+      .map(({ name, description, totalContributed }) => ({
+        name,
+        description,
+        totalContributed,
+      }));
+    const publicFundBalances = fundBalances
+      .filter((f) => !f.isGroupFund)
+      .map(({ name, carriedIn, totalContributed, totalExpenses: spent, balance }) => ({
+        name,
+        carriedIn,
+        totalContributed,
+        spent,
+        balance,
+      }));
 
     res.json({
       chamaName: settings.chamaName,
       activeMembers,
       totalMembersEver,
       resignedCount,
-      byType,
+      byType: publicByType,
       totalContributed,
       // Named parts: the members' brought-forward balances, the funds' floats, and
       // what this ledger has watched come in since the cycle opened.
@@ -106,7 +142,7 @@ async function publicOverview(req, res, next) {
       // answers a different question (lifetime raised).
       netBalance: totalContributed - totalExpenses,
       thisWeekTotal,
-      fundBalances,
+      fundBalances: publicFundBalances,
       finesCollected,
     });
   } catch (err) {

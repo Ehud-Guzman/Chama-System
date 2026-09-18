@@ -43,6 +43,18 @@ const documentLimiter = rateLimit({
   message: { message: 'Too many requests. Please wait a minute and try again.' },
 });
 
+// Recording a decision on a chapter is the one write a member makes, and a member
+// who is reading properly records two dozen of them in one sitting — far more
+// requests per minute than a browse. Generous enough to finish the whole
+// constitution on a phone, still capped so nobody can script bulk voting.
+const constitutionDecisionLimiter = rateLimit({
+  windowMs: 60000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many decisions at once. Please wait a minute and try again.' },
+});
+
 // A leaked/stolen JWT shouldn't get unlimited guesses at the current
 // password — same budget as login since it's the same kind of attack.
 const passwordChangeLimiter = rateLimit({
@@ -54,4 +66,4 @@ const passwordChangeLimiter = rateLimit({
   message: { message: 'Too many attempts. Please wait a few minutes and try again.' },
 });
 
-module.exports = { loginLimiter, lookupLimiter, overviewLimiter, documentLimiter, passwordChangeLimiter };
+module.exports = { loginLimiter, lookupLimiter, overviewLimiter, documentLimiter, passwordChangeLimiter, constitutionDecisionLimiter };

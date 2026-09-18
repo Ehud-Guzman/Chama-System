@@ -7,8 +7,9 @@ import {
   shortDateTime,
   METHOD_LABELS,
 } from "../utils/format";
-import { whatsappLink } from "../utils/messaging";
 import Loader from "../components/shared/Loader";
+import MemberPerformanceList from "../components/reports/MemberPerformanceList";
+import MemberChartModal from "../components/reports/MemberChartModal";
 
 const ACTION_LABELS = {
   create: "Created",
@@ -31,13 +32,6 @@ async function downloadFile(url, filename, toast) {
   }
 }
 
-function consistencyClass(pct) {
-  if (pct === null || pct === undefined) return "text-muted";
-  if (pct >= 80) return "text-accent";
-  if (pct >= 50) return "text-primary";
-  return "text-alert";
-}
-
 export default function Reports() {
   const toast = useToast();
   const [tab, setTab] = useState("summary"); // summary | performance | monthly | weekly
@@ -45,8 +39,12 @@ export default function Reports() {
   const [audit, setAudit] = useState({ entries: [], page: 1, pages: 1 });
   const [performance, setPerformance] = useState(null);
   const [months, setMonths] = useState(null);
+  const [monthTotals, setMonthTotals] = useState(null);
   const [weeks, setWeeks] = useState(null);
   const [openWeek, setOpenWeek] = useState(null);
+  // The member whose chart is open. Held as the row the table gave us, so the
+  // sheet can name him before its own figures arrive.
+  const [chartMember, setChartMember] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const loadAudit = useCallback(async (page = 1) => {
@@ -75,7 +73,10 @@ export default function Reports() {
     if (tab === "monthly" && !months) {
       api
         .get("/api/reports/monthly")
-        .then((res) => setMonths(res.data.months))
+        .then((res) => {
+          setMonths(res.data.months);
+          setMonthTotals(res.data.totals || null);
+        })
         .catch(() => {});
     }
     if (tab === "weekly" && !weeks) {
@@ -165,7 +166,9 @@ export default function Reports() {
         </div>
       </header>
 
-      <div className="flex gap-2">
+      {/* Tabs wrap rather than scroll: four labels never fit one 360px row, and a
+          tab you have to scroll to find is a tab nobody finds. */}
+      <div className="flex flex-wrap gap-2">
         {[
           ["summary", "Summary"],
           ["weekly", "Weekly reconciliation"],
@@ -370,97 +373,16 @@ export default function Reports() {
               No active members yet.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-rule bg-surface">
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-rule text-left text-[10px] font-semibold uppercase tracking-widest text-muted">
-                    <th className="px-3 py-2">Member</th>
-                    <th className="px-3 py-2 text-right">Total (all-time)</th>
-                    <th className="px-3 py-2 text-right">Weeks paid</th>
-                    <th className="px-3 py-2 text-right">Consistency</th>
-                    <th className="px-3 py-2 text-right">Fines owed</th>
-                    <th className="px-3 py-2 text-right">Last contribution</th>
-                    <th className="px-3 py-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {performance.map((m) => (
-                    <tr
-                      key={m.memberId}
-                      className="border-b border-rule last:border-b-0"
-                    >
-                      <td className="px-3 py-2">
-                        <p className="truncate font-medium">{m.name}</p>
-                        {m.regNumber && (
-                          <p className="amount text-xs text-muted">
-                            {m.regNumber}
-                          </p>
-                        )}
-                      </td>
-                      <td className="amount px-3 py-2 text-right font-semibold">
-                        {money(m.totalContributed)}
-                        {/* All-time includes the balance he carried in when the
-                            books opened, since no contribution row can show it —
-                            without that line the figure looks invented. */}
-                        {m.carriedIn > 0 && (
-                          <p className="text-xs font-normal text-muted">
-                            incl. {money(m.carriedIn)} carried forward
-                          </p>
-                        )}
-                      </td>
-                      <td className="amount px-3 py-2 text-right text-muted">
-                        {m.weeksPaid}/{m.weeksExpected}
-                        {m.weeksPartial > 0
-                          ? ` (+${m.weeksPartial} partial)`
-                          : ""}
-                      </td>
-                      <td
-                        className={`amount px-3 py-2 text-right font-semibold ${consistencyClass(m.consistency)}`}
-                      >
-                        {m.consistency === null ? "—" : `${m.consistency}%`}
-                      </td>
-                      <td className="amount px-3 py-2 text-right">
-                        {m.pendingFines > 0 ? (
-                          <span className="text-alert">
-                            {money(m.pendingFines)}
-                          </span>
-                        ) : (
-                          <span className="text-muted">—</span>
-                        )}
-                      </td>
-                      <td className="amount px-3 py-2 text-right text-xs text-muted">
-                        {shortDate(m.lastContributionDate)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {(m.consistency !== null && m.consistency < 80) ||
-                        m.pendingFines > 0 ? (
-                          <a
-                            href={whatsappLink(
-                              m.phone,
-                              `Hi ${m.name.split(" ")[0]}, this is a reminder from the chama.${
-                                m.pendingFines > 0
-                                  ? ` You have ${money(m.pendingFines)} in unpaid fines.`
-                                  : ""
-                              }`,
-                            )}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs font-medium text-primary"
-                          >
-                            Remind
-                          </a>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            /* Cards on a phone, the table from md up — and every row opens that
+               member's own chart. */
+            <MemberPerformanceList members={performance} onOpenChart={setChartMember} />
           )}
+
           <p className="mt-2 text-xs text-muted">
             Consistency = weeks paid in full ÷ weeks expected since joining,
             personal weekly contribution types only (group funds like Chai
-            aren't counted as individual effort).
+            aren't counted as individual effort). Tap a member to open their
+            contribution chart.
           </p>
         </section>
       )}
@@ -474,6 +396,56 @@ export default function Reports() {
               No contributions logged yet.
             </p>
           ) : (
+            <>
+              {/* The headline the office reads first: what the members themselves
+                  put in across every month, kept apart from the group funds that
+                  came in alongside them. */}
+              {monthTotals && (
+                <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      Member contributions
+                    </p>
+                    <p className="amount mt-0.5 truncate text-lg font-bold text-primary">
+                      {money(monthTotals.personal)}
+                    </p>
+                    <p className="text-[11px] text-muted">all months</p>
+                  </div>
+
+                  <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      Group funds
+                    </p>
+                    <p className="amount mt-0.5 truncate text-lg font-bold">
+                      {money(monthTotals.groupFund)}
+                    </p>
+                    <p className="text-[11px] text-muted">tea and other funds</p>
+                  </div>
+
+                  <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      Everything
+                    </p>
+                    <p className="amount mt-0.5 truncate text-lg font-bold">
+                      {money(monthTotals.all)}
+                    </p>
+                    <p className="amount text-[11px] text-muted">
+                      {monthTotals.count} rows logged
+                    </p>
+                  </div>
+
+                  <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      Members paying
+                    </p>
+                    <p className="amount mt-0.5 text-lg font-bold">
+                      {monthTotals.contributingMembers}
+                    </p>
+                    <p className="text-[11px] text-muted">at least once</p>
+                  </div>
+                </div>
+              )}
+
             <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
               {months.map((m) => (
                 <li
@@ -488,7 +460,8 @@ export default function Reports() {
                   </div>
                   <p className="amount mt-0.5 text-xs text-muted">
                     {money(m.personalTotal)} personal ·{" "}
-                    {money(m.groupFundTotal)} group funds
+                    {money(m.groupFundTotal)} group funds ·{" "}
+                    {m.memberCount} {m.memberCount === 1 ? "member" : "members"}
                   </p>
                   <details className="mt-1">
                     <summary className="cursor-pointer text-xs font-medium text-primary">
@@ -509,6 +482,7 @@ export default function Reports() {
                 </li>
               ))}
             </ul>
+            </>
           )}
         </section>
       )}
@@ -525,7 +499,8 @@ export default function Reports() {
             <>
               <p className="mb-3 text-xs text-muted">
                 Expected vs actual, per week, across every fixed weekly
-                contribution type. The totals rarely match exactly on their own
+                contribution type, with the members&rsquo; own contributions named
+                on every week. The totals rarely match exactly on their own
                 — one member overpaying offsets another falling short — so a
                 week is only flagged{" "}
                 <span className="font-semibold text-alert">short</span> when one
@@ -545,9 +520,9 @@ export default function Reports() {
                           openWeek === w.weekNumber ? null : w.weekNumber,
                         )
                       }
-                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                      className="flex w-full flex-col gap-1 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                     >
-                      <span className="flex items-center gap-2">
+                      <span className="flex flex-wrap items-center gap-2">
                         <span className="amount text-sm font-semibold">
                           Week {w.weekNumber}
                         </span>
@@ -564,8 +539,21 @@ export default function Reports() {
                         <span className="amount text-xs text-muted">
                           {shortDate(w.startDate)} – {shortDate(w.endDate)}
                         </span>
+
+                        {/* What the members themselves paid in this week — the
+                            figure the week is judged on, kept apart from the tea
+                            every member is charged automatically. */}
+                        <span className="amount w-full text-xs text-muted sm:w-auto">
+                          Members {money(w.memberTotal)}
+                          {!w.isBaseline && w.memberEligibleCount > 0 && (
+                            <span>
+                              {" "}
+                              · {w.memberPaidCount}/{w.memberEligibleCount} paid in full
+                            </span>
+                          )}
+                        </span>
                       </span>
-                      <span className="flex items-center gap-3">
+                      <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span
                           className={`text-xs font-semibold ${w.balanced ? "text-accent" : "text-alert"}`}
                         >
@@ -662,6 +650,11 @@ export default function Reports() {
             </>
           )}
         </section>
+      )}
+      {/* One member's own chart — opened from his row in the performance list,
+          either shape of it. */}
+      {chartMember && (
+        <MemberChartModal member={chartMember} onClose={() => setChartMember(null)} />
       )}
     </div>
   );

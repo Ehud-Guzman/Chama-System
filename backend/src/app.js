@@ -8,11 +8,13 @@ const mongoSanitize = require('express-mongo-sanitize');
 const connectDB = require('./config/db');
 const { seedDisciplinaryFineTypes } = require('./utils/seedDisciplinaryFineTypes');
 const { seedLedgerTypes, seedGroupFunds } = require('./utils/ledgerTypes');
+const { ensureDocumentCategories } = require('./utils/documentCategories');
 
 const {
   lookupLimiter,
   overviewLimiter,
   documentLimiter,
+  constitutionDecisionLimiter,
 } = require('./middleware/rateLimiter');
 
 const {
@@ -27,7 +29,7 @@ const {
 } = require('./controllers/memberController');
 
 const { publicOverview } = require('./controllers/overviewController');
-const { publicConstitution } = require('./controllers/constitutionController');
+const { publicConstitution, publicConstitutionDecision } = require('./controllers/constitutionController');
 
 const {
   publicListDocuments,
@@ -136,6 +138,13 @@ app.get(
   publicConstitution
 );
 
+// A member recording his own verdict on a chapter — the one write a member makes.
+app.post(
+  '/api/public/constitution/decision',
+  constitutionDecisionLimiter,
+  publicConstitutionDecision
+);
+
 // Public chama documents — the group's title deeds, certificates and other
 // records. Gated on a registered member's phone number: no number, no list.
 app.get(
@@ -229,6 +238,9 @@ if (require.main === module) {
     // The funds the group keeps: seeded so the go-live screen lists them all
     // without anybody typing ten fund names in.
     .then(() => seedGroupFunds())
+    // The document vault's headings: seeded so a vault that has never been filed
+    // in still offers the group's own six.
+    .then(() => ensureDocumentCategories())
     .then(() => {
       app.listen(PORT, '0.0.0.0', () => {
         console.log(`API running on port ${PORT}`);

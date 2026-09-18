@@ -10,6 +10,42 @@ function toDateInput(value) {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 }
 
+// The relationships offered as you type. Free text is allowed on top of these:
+// the office knows this family, and "Uncle" has to be writable.
+const KIN_RELATIONSHIPS = [
+  'Spouse',
+  'Son',
+  'Daughter',
+  'Child',
+  'Father',
+  'Mother',
+  'Brother',
+  'Sister',
+  'In-law',
+  'Guardian',
+  'Other',
+];
+
+// The quick-add chips. These are the three the office is asked for most often.
+const KIN_QUICK_ADD = ['Spouse', 'Child', 'In-law'];
+
+function blankKin(relationship = '') {
+  return { name: '', relationship, phone: '', email: '' };
+}
+
+// A member's contacts, whichever shape the API sent back: the list, the single
+// object older records still hold, or nothing at all.
+function kinFrom(value) {
+  const raw = Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : [];
+  const list = raw.map((k) => ({
+    name: k?.name || '',
+    relationship: k?.relationship || '',
+    phone: k?.phone || '',
+    email: k?.email || '',
+  }));
+  return list.length ? list : [blankKin('Spouse')];
+}
+
 // Create/edit member form, rendered inside a modal sheet.
 export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
   const [form, setForm] = useState({
@@ -22,12 +58,7 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
     photoUrl: initial?.photoUrl || '',
     photoPublicId: initial?.photoPublicId || '',
     emailNotifications: initial?.emailNotifications !== false,
-    nextOfKin: {
-      name: initial?.nextOfKin?.name || '',
-      relationship: initial?.nextOfKin?.relationship || '',
-      phone: initial?.nextOfKin?.phone || '',
-      email: initial?.nextOfKin?.email || '',
-    },
+    nextOfKin: kinFrom(initial?.nextOfKin),
   });
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState('');
@@ -35,8 +66,29 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
   const containerRef = useModal(true, onCancel);
 
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
-  const setKin = (field) => (e) =>
-    setForm({ ...form, nextOfKin: { ...form.nextOfKin, [field]: e.target.value } });
+
+  // One contact in the list, by position. The whole list is sent on save, so the
+  // server never has to guess which entry changed.
+  const setKin = (index, field) => (e) =>
+    setForm((prev) => ({
+      ...prev,
+      nextOfKin: prev.nextOfKin.map((kin, i) =>
+        i === index ? { ...kin, [field]: e.target.value } : kin
+      ),
+    }));
+
+  const addKin = (relationship = '') =>
+    setForm((prev) => ({ ...prev, nextOfKin: [...prev.nextOfKin, blankKin(relationship)] }));
+
+  const removeKin = (index) =>
+    setForm((prev) => ({
+      ...prev,
+      // Never leave the list empty: an empty fieldset reads as broken, and one
+      // blank row is exactly what "no contacts" looks like on save.
+      nextOfKin: prev.nextOfKin.length === 1
+        ? [blankKin('Spouse')]
+        : prev.nextOfKin.filter((_, i) => i !== index),
+    }));
 
   // The photo is uploaded as soon as it's picked rather than on submit: saving
   // the member then stays a single JSON request carrying the resulting URL, and
@@ -233,68 +285,129 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
             className="w-full rounded-xl border border-rule px-4 py-3 text-sm"
           />
         </div>
-        {/* Next of kin — the person to call in an emergency. Name plus at least
-            one way to reach them is what the server checks for. */}
+        {/* Next of kin — the people to call in an emergency. A list, because a
+            member names more than one: a spouse, the children, the in-laws. Name
+            plus at least one way to reach each of them is what the server checks
+            for, entry by entry. */}
         <fieldset className="rounded-xl border border-rule p-3">
           <legend className="px-1 text-xs font-semibold uppercase tracking-widest text-muted">
             Next of kin
           </legend>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="kin-name" className="mb-1 block text-xs font-medium">
-                Name
-              </label>
-              <input
-                id="kin-name"
-                type="text"
-                value={form.nextOfKin.name}
-                onChange={setKin('name')}
-                className="h-11 w-full rounded-xl border border-rule px-3 text-sm"
-              />
-            </div>
+          <p className="text-xs text-muted">
+            Add as many as you need — spouse, children, in-laws. Each one needs a name
+            and a phone number or an email.
+          </p>
 
-            <div>
-              <label htmlFor="kin-relationship" className="mb-1 block text-xs font-medium">
-                Relationship
-              </label>
-              <input
-                id="kin-relationship"
-                type="text"
-                placeholder="e.g. Spouse, brother"
-                value={form.nextOfKin.relationship}
-                onChange={setKin('relationship')}
-                className="h-11 w-full rounded-xl border border-rule px-3 text-sm"
-              />
-            </div>
+          <ul className="mt-2 space-y-3">
+            {form.nextOfKin.map((kin, index) => (
+              <li
+                key={index}
+                className="rounded-xl border border-rule bg-page p-3"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    Contact {index + 1}
+                    {kin.relationship ? ` · ${kin.relationship}` : ''}
+                  </p>
 
-            <div>
-              <label htmlFor="kin-phone" className="mb-1 block text-xs font-medium">
-                Phone
-              </label>
-              <input
-                id="kin-phone"
-                type="tel"
-                inputMode="tel"
-                placeholder="07XX XXX XXX"
-                value={form.nextOfKin.phone}
-                onChange={setKin('phone')}
-                className="amount h-11 w-full rounded-xl border border-rule px-3 text-sm"
-              />
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => removeKin(index)}
+                    className="min-h-9 rounded-lg px-2 text-xs font-medium text-alert"
+                  >
+                    Remove
+                  </button>
+                </div>
 
-            <div>
-              <label htmlFor="kin-email" className="mb-1 block text-xs font-medium">
-                Email
-              </label>
-              <input
-                id="kin-email"
-                type="email"
-                value={form.nextOfKin.email}
-                onChange={setKin('email')}
-                className="amount h-11 w-full rounded-xl border border-rule px-3 text-sm"
-              />
-            </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label htmlFor={`kin-name-${index}`} className="sr-only">
+                      Contact {index + 1} name
+                    </label>
+                    <input
+                      id={`kin-name-${index}`}
+                      type="text"
+                      placeholder="Name"
+                      value={kin.name}
+                      onChange={setKin(index, 'name')}
+                      className="h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label htmlFor={`kin-relationship-${index}`} className="sr-only">
+                      Contact {index + 1} relationship
+                    </label>
+                    <input
+                      id={`kin-relationship-${index}`}
+                      type="text"
+                      list="kin-relationship-options"
+                      placeholder="Relationship — spouse, daughter, in-law…"
+                      value={kin.relationship}
+                      onChange={setKin(index, 'relationship')}
+                      className="h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor={`kin-phone-${index}`} className="sr-only">
+                      Contact {index + 1} phone
+                    </label>
+                    <input
+                      id={`kin-phone-${index}`}
+                      type="tel"
+                      inputMode="tel"
+                      placeholder="07XX XXX XXX"
+                      value={kin.phone}
+                      onChange={setKin(index, 'phone')}
+                      className="amount h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor={`kin-email-${index}`} className="sr-only">
+                      Contact {index + 1} email
+                    </label>
+                    <input
+                      id={`kin-email-${index}`}
+                      type="email"
+                      placeholder="Email (optional)"
+                      value={kin.email}
+                      onChange={setKin(index, 'email')}
+                      className="amount h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm"
+                    />
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <datalist id="kin-relationship-options">
+            {KIN_RELATIONSHIPS.map((relationship) => (
+              <option key={relationship} value={relationship} />
+            ))}
+          </datalist>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {KIN_QUICK_ADD.map((relationship) => (
+              <button
+                key={relationship}
+                type="button"
+                onClick={() => addKin(relationship)}
+                className="min-h-11 rounded-lg border border-rule bg-surface px-3 text-xs font-medium text-primary"
+              >
+                + {relationship}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => addKin()}
+              className="min-h-11 rounded-lg border border-rule bg-surface px-3 text-xs font-medium"
+            >
+              + Another contact
+            </button>
           </div>
         </fieldset>
 

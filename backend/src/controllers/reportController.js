@@ -226,7 +226,9 @@ async function exportPerformance(req, res, next) {
 }
 
 // Shared by /monthly and /monthly/export: total contributed per calendar
-// month, split into personal vs group-fund money.
+// month, split into personal vs group-fund money, plus how many members actually
+// put money in. The member figures are the ones the office reads — a month total
+// on its own says nothing about whether the members paid it or a fund did.
 async function computeMonthly() {
   const excludedTypeIds = await nonPersonalTypeIds();
   const excludedSet = new Set(excludedTypeIds.map(String));
@@ -241,8 +243,12 @@ async function computeMonthly() {
           // midnight and 3am into the previous month.
           month: { $dateToString: { format: '%Y-%m', date: '$date', timezone: 'Africa/Nairobi' } },
           typeId: '$typeId',
+          // Kept in the key so a month can also report how many members it took
+          // to raise its total.
+          memberId: '$memberId',
         },
         total: { $sum: '$amount' },
+        count: { $sum: 1 },
       },
     },
     {
@@ -259,31 +265,80 @@ async function computeMonthly() {
         _id: 0,
         month: '$_id.month',
         typeId: '$_id.typeId',
+        memberId: '$_id.memberId',
         typeName: '$type.name',
+        typeIsGroupFund: { $ifNull: ['$type.isGroupFund', false] },
         total: 1,
+        count: 1,
       },
     },
   ]);
 
   const byMonth = new Map();
+  const contributingMembers = new Set();
+
   for (const r of rows) {
     if (!byMonth.has(r.month)) {
-      byMonth.set(r.month, { month: r.month, total: 0, personalTotal: 0, groupFundTotal: 0, byType: [] });
+      byMonth.set(r.month, {
+        month: r.month,
+        total: 0,
+        personalTotal: 0,
+        groupFundTotal: 0,
+        count: 0,
+        memberCount: 0,
+        members: new Set(),
+        byType: [],
+      });
     }
     const entry = byMonth.get(r.month);
     entry.total += r.total;
-    if (excludedSet.has(String(r.typeId))) entry.groupFundTotal += r.total;
-    else entry.personalTotal += r.total;
-    entry.byType.push({ name: r.typeName, total: r.total });
+    entry.count += r.count;
+
+    const isGroupFund = Boolean(r.typeIsGroupFund) || excludedSet.has(String(r.typeId));
+    if (isGroupFund) {
+      entry.groupFundTotal += r.total;
+    } else {
+      entry.personalTotal += r.total;
+      // Only members who put in their own money count as contributing for the
+      // month; a Tea Fund row is collected from everyone automatically.
+      entry.members.add(String(r.memberId));
+      contributingMembers.add(String(r.memberId));
+    }
+
+    // One line per contribution type however many members paid into it.
+    const typeEntry = entry.byType.find((t) => t.name === r.typeName);
+    if (typeEntry) {
+      typeEntry.total += r.total;
+    } else {
+      entry.byType.push({ name: r.typeName, total: r.total, isGroupFund });
+    }
   }
 
-  return [...byMonth.values()].sort((a, b) => (a.month < b.month ? 1 : -1));
+  const months = [...byMonth.values()]
+    .map((entry) => ({ ...entry, memberCount: entry.members.size, members: undefined }))
+    .sort((a, b) => (a.month < b.month ? 1 : -1));
+
+  for (const month of months) month.byType.sort((a, b) => b.total - a.total);
+
+  // The same figures across every month, for the headline the screen shows above
+  // the list: "member contributions, all months" is the number that answers
+  // "how much have the members actually put in?".
+  const totals = {
+    all: months.reduce((sum, m) => sum + m.total, 0),
+    personal: months.reduce((sum, m) => sum + m.personalTotal, 0),
+    groupFund: months.reduce((sum, m) => sum + m.groupFundTotal, 0),
+    count: months.reduce((sum, m) => sum + m.count, 0),
+    contributingMembers: contributingMembers.size,
+  };
+
+  return { months, totals };
 }
 
 // GET /api/reports/monthly — total raised per calendar month
 async function monthly(req, res, next) {
   try {
-    res.json({ months: await computeMonthly() });
+    const { months, totals } = await computeMonthly();
+    res.json({ months, totals });
   } catch (err) {
     next(err);
   }
@@ -292,14 +347,37 @@ async function monthly(req, res, next) {
 // GET /api/reports/monthly/export — same data as an .xlsx workbook, one row per month × type
 async function exportMonthly(req, res, next) {
   try {
-    const months = await computeMonthly();
+    const { months, totals } = await computeMonthly();
     const sheetRows = [];
     for (const m of months) {
       for (const t of m.byType) {
-        sheetRows.push({ Month: m.month, Type: t.name, Total: t.total });
+        sheetRows.push({
+          Month: m.month,
+          Type: t.name,
+          'Member contributions': t.isGroupFund ? 0 : t.total,
+          'Group funds': t.isGroupFund ? t.total : 0,
+          Total: t.total,
+        });
       }
-      sheetRows.push({ Month: m.month, Type: 'TOTAL (all types)', Total: m.total });
+      // The month's member figure is the point of the sheet, so it gets its own
+      // line rather than being left to be summed up by hand.
+      sheetRows.push({
+        Month: m.month,
+        Type: 'MEMBERS THIS MONTH',
+        'Member contributions': m.personalTotal,
+        'Group funds': m.groupFundTotal,
+        Total: m.total,
+        Members: m.memberCount,
+      });
     }
+    sheetRows.push({
+      Month: 'ALL MONTHS',
+      Type: 'TOTAL',
+      'Member contributions': totals.personal,
+      'Group funds': totals.groupFund,
+      Total: totals.all,
+      Members: totals.contributingMembers,
+    });
     sendWorkbook(res, 'monthly-totals.xlsx', [{ name: 'Monthly totals', rows: sheetRows }]);
   } catch (err) {
     next(err);
@@ -372,6 +450,11 @@ async function exportWeekly(req, res, next) {
       Week: w.weekNumber,
       'Start date': w.startDate.toISOString().slice(0, 10),
       'End date': w.endDate.toISOString().slice(0, 10),
+      // The members' own money first: it is the figure the week is judged on.
+      'Member contributions': w.memberTotal,
+      'Members paid': w.memberPaidCount,
+      'Members eligible': w.memberEligibleCount,
+      'Group funds': w.groupFundTotal,
       Expected: w.expectedTotal,
       Actual: w.actualTotal,
       Diff: w.diff,
@@ -405,6 +488,166 @@ async function exportWeekly(req, res, next) {
   }
 }
 
+// Month helpers. The group's calendar is Kenya (UTC+3), and the label is built
+// from a fixed list rather than a locale, so the chart reads the same on every
+// phone regardless of the language the device is set to.
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const CHART_MONTHS = 12;
+
+function monthKeyOf(date) {
+  const shifted = new Date(new Date(date).getTime() + 3 * 60 * 60 * 1000);
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthLabelOf(key) {
+  const [year, month] = key.split('-');
+  return `${MONTH_NAMES[Number(month) - 1]} ${year.slice(2)}`;
+}
+
+// The last 12 month keys, oldest first, ending on the month it is now in Kenya.
+function lastMonthKeys() {
+  const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const keys = [];
+  for (let back = CHART_MONTHS - 1; back >= 0; back--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+    keys.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+  return keys;
+}
+
+// One member's own history — what the chart on his row of the performance report
+// draws. Personal money only: the Tea Fund is collected from everyone
+// automatically, so including it would credit him with effort he never made.
+async function computeMemberReport(memberId) {
+  const [member, types, excludedTypeIds, settings] = await Promise.all([
+    Member.findById(memberId).lean(),
+    ContributionType.find().select('name isWeekly isGroupFund active').lean(),
+    nonPersonalTypeIds(),
+    getOrCreateSettings(),
+  ]);
+  if (!member) return null;
+
+  const rows = await Contribution.find({ memberId: member._id, deleted: false })
+    .select('typeId amount grossAmount date')
+    .lean();
+
+  const typeById = new Map(types.map((t) => [String(t._id), t]));
+  const excludedSet = new Set(excludedTypeIds.map(String));
+  const config = resolveConfig(settings);
+
+  const byMonth = new Map();
+  const byType = new Map();
+  let personalTotal = 0;
+  let groupFundTotal = 0;
+  let otherTotal = 0;
+  let lastContributionDate = null;
+
+  for (const row of rows) {
+    const type = typeById.get(String(row.typeId));
+    const isGroupFund = Boolean(type && type.isGroupFund);
+    // grossAmount preferred, exactly as the ledger does: a payment partly
+    // redirected to settle a fine was still cash received.
+    const cash = Number(row.grossAmount ?? row.amount) || 0;
+
+    // A row that is neither his own money nor a group fund is a system row (an
+    // opening balance, interest). Counted so it can be named, never shown as his.
+    const bucket = isGroupFund ? 'group' : excludedSet.has(String(row.typeId)) ? 'other' : 'personal';
+    if (bucket === 'personal') personalTotal += cash;
+    else if (bucket === 'group') groupFundTotal += cash;
+    else otherTotal += cash;
+
+    const key = monthKeyOf(row.date);
+    if (!byMonth.has(key)) byMonth.set(key, { personal: 0, groupFund: 0, other: 0, count: 0 });
+    const month = byMonth.get(key);
+    month[bucket] += cash;
+    month.count += 1;
+
+    const typeName = type?.name || 'Uncategorised';
+    const typeEntry = byType.get(typeName) || { name: typeName, total: 0, isGroupFund };
+    typeEntry.total += cash;
+    byType.set(typeName, typeEntry);
+
+    const at = new Date(row.date).getTime();
+    if (!lastContributionDate || at > new Date(lastContributionDate).getTime()) {
+      lastContributionDate = row.date;
+    }
+  }
+
+  // A continuous 12-month series: a month he missed shows as zero rather than
+  // being skipped, which is the whole point of looking at a chart.
+  const months = lastMonthKeys().map((key) => {
+    const found = byMonth.get(key);
+    return {
+      month: key,
+      label: monthLabelOf(key),
+      personal: found ? found.personal : 0,
+      groupFund: found ? found.groupFund : 0,
+      other: found ? found.other : 0,
+      total: found ? found.personal + found.groupFund + found.other : 0,
+      count: found ? found.count : 0,
+    };
+  });
+
+  // Consistency, by exactly the rule the performance table uses: the baseline
+  // week and the week still running are not scored.
+  const personalWeeklyTypes = types.filter((t) => t.isWeekly && !t.isGroupFund && t.active !== false);
+  let weeksExpected = 0;
+  let weeksPaid = 0;
+  let weeksPartial = 0;
+  let weeksUnpaid = 0;
+  for (const type of personalWeeklyTypes) {
+    const typeContributions = rows.filter((c) => String(c.typeId) === String(type._id));
+    const weeks = buildWeeklySchedule(config, config.weeklyAmount, typeContributions);
+    const scored = weeks.filter((w) => !w.isBaseline && !w.isCurrent);
+    weeksExpected += scored.length;
+    weeksPaid += scored.filter((w) => w.status === 'paid').length;
+    weeksPartial += scored.filter((w) => w.status === 'partial').length;
+    weeksUnpaid += scored.filter((w) => w.status === 'unpaid').length;
+  }
+
+  return {
+    member: {
+      id: member._id,
+      name: member.name,
+      regNumber: member.regNumber || null,
+      phone: member.phone,
+      photoUrl: member.photoUrl || '',
+      active: member.active !== false,
+      joinDate: member.joinDate || member.createdAt || null,
+    },
+    months,
+    byType: [...byType.values()].sort((a, b) => b.total - a.total),
+    totals: {
+      personal: personalTotal,
+      groupFund: groupFundTotal,
+      other: otherTotal,
+      all: personalTotal + groupFundTotal + otherTotal,
+      carriedIn: Number(member.openingBalance) || 0,
+      contributionCount: rows.length,
+      lastContributionDate,
+    },
+    weekly: {
+      weeksExpected,
+      weeksPaid,
+      weeksPartial,
+      weeksUnpaid,
+      consistency: weeksExpected > 0 ? Math.round((weeksPaid / weeksExpected) * 100) : null,
+    },
+  };
+}
+
+// GET /api/reports/member/:id — one member's own report, for the chart the
+// performance list opens when a member is tapped.
+async function memberReport(req, res, next) {
+  try {
+    const report = await computeMemberReport(req.params.id);
+    if (!report) return res.status(404).json({ message: 'Member not found' });
+    res.json(report);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   summary,
   exportContributions,
@@ -415,4 +658,5 @@ module.exports = {
   exportMonthly,
   weekly,
   exportWeekly,
+  memberReport,
 };

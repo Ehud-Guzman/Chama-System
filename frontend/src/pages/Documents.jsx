@@ -14,7 +14,6 @@ const MAX_FILE_MB = 8;
 // Uploading and deleting is limited to the roles the API allows
 // (see backend/src/routes/documentRoutes.js) — everyone else can look.
 const MANAGER_ROLES = ['super_admin', 'admin', 'secretary'];
-
 // The chama's own records — title deeds, certificates, registration papers.
 // Uploaded here, and published to members' phones (gated on a registered
 // phone number) unless "Visible to members" is switched off.
@@ -24,6 +23,10 @@ export default function Documents() {
   const canManage = MANAGER_ROLES.includes(user?.role);
 
   const [documents, setDocuments] = useState([]);
+  // The categories come from the API and are the group's own list — an admin
+  // adds one here and it is instantly available on the upload form (and to
+  // members, who only ever read the heading).
+  const [categories, setCategories] = useState(DOCUMENT_CATEGORIES);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(BLANK);
   const [file, setFile] = useState(null);
@@ -31,12 +34,16 @@ export default function Documents() {
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [newCategory, setNewCategory] = useState('');
+  const [categoryBusy, setCategoryBusy] = useState(false);
+  const [removingCategory, setRemovingCategory] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get('/api/documents');
       setDocuments(res.data.documents || []);
+      if (res.data.categories?.length) setCategories(res.data.categories);
     } catch (err) {
       toast(apiMessage(err, 'Could not load documents'), 'error');
     } finally {
@@ -48,10 +55,58 @@ export default function Documents() {
     load();
   }, [load]);
 
+  // Keep the upload form pointed at a category that actually exists: a fresh
+  // upload after the old default was removed would otherwise post a heading the
+  // server has never heard of.
+  useEffect(() => {
+    if (!categories.length) return;
+    setForm((prev) =>
+      categories.some((c) => c.value === prev.category)
+        ? prev
+        : { ...prev, category: categories[0].value }
+    );
+  }, [categories]);
+
   function resetForm() {
     setForm(BLANK);
     setFile(null);
     setFileInputKey((k) => k + 1);
+  }
+
+  // Adding a category is a small write of its own: the upload form updates as
+  // soon as the server answers, without a full reload of the vault.
+  async function addCategory() {
+    const label = newCategory.trim();
+    if (!label) {
+      toast('Type the category name first', 'error');
+      return;
+    }
+
+    setCategoryBusy(true);
+    try {
+      const res = await api.post('/api/documents/categories', { label });
+      setCategories(res.data.categories || []);
+      setNewCategory('');
+      toast(`Category "${label}" added`);
+    } catch (err) {
+      toast(apiMessage(err, 'Could not add that category'), 'error');
+    } finally {
+      setCategoryBusy(false);
+    }
+  }
+
+  async function confirmRemoveCategory() {
+    setCategoryBusy(true);
+    try {
+      const res = await api.delete(`/api/documents/categories/${removingCategory.id}`);
+      setCategories(res.data.categories || []);
+      toast(`"${removingCategory.label}" removed`);
+      setRemovingCategory(null);
+    } catch (err) {
+      toast(apiMessage(err, 'Could not remove that category'), 'error');
+    } finally {
+      setCategoryBusy(false);
+    }
   }
 
   async function upload() {
@@ -165,7 +220,7 @@ export default function Documents() {
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 className="h-11 w-full rounded-lg border border-rule bg-page px-3 text-sm"
               >
-                {DOCUMENT_CATEGORIES.map((c) => (
+                {categories.map((c) => (
                   <option key={c.value} value={c.value}>
                     {c.label}
                   </option>
@@ -233,6 +288,68 @@ export default function Documents() {
           <p className="mt-2 text-xs text-muted">
             PDF, Word, Excel or a photo — up to {MAX_FILE_MB} MB.
           </p>
+
+          {/* The group's own headings. Kept in a <details> so the upload form
+              stays the first thing on the screen, and folded away entirely on a
+              phone where the file picker is the only thing being reached for. */}
+          <details className="mt-4 border-t border-rule pt-3">
+            <summary className="cursor-pointer text-sm font-semibold text-primary">
+              Manage categories ({categories.length})
+            </summary>
+
+            <p className="mt-2 text-xs text-muted">
+              Add the headings this group files papers under. Removing one never moves a
+              document already filed under it.
+            </p>
+
+            <ul className="mt-2 divide-y divide-rule rounded-xl border border-rule">
+              {categories.map((c) => (
+                <li key={c.value} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <span className="min-w-0 truncate text-sm">{c.label}</span>
+
+                  {c.builtIn ? (
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      Fallback
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setRemovingCategory(c)}
+                      className="min-h-9 shrink-0 rounded-lg px-2 text-xs font-medium text-alert"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addCategory();
+                  }
+                }}
+                placeholder="e.g. Water project agreement"
+                maxLength={40}
+                className="h-11 w-full rounded-lg border border-rule bg-page px-3 text-sm"
+                aria-label="New category name"
+              />
+
+              <button
+                type="button"
+                onClick={addCategory}
+                disabled={categoryBusy}
+                className="min-h-11 shrink-0 rounded-lg border border-rule px-4 text-sm font-semibold text-primary disabled:opacity-60"
+              >
+                {categoryBusy ? 'Saving…' : 'Add category'}
+              </button>
+            </div>
+          </details>
         </section>
       ) : (
         <p className="rounded-xl border border-rule bg-surface px-4 py-3 text-sm text-muted">
@@ -253,7 +370,8 @@ export default function Documents() {
               <li key={doc.id} className="p-4">
                 <p className="truncate text-sm font-semibold">{doc.title}</p>
                 <p className="mt-0.5 text-xs text-muted">
-                  {documentCategoryLabel(doc.category)} · {shortDate(doc.uploadedAt)}
+                  {documentCategoryLabel(doc.category, categories, doc.categoryLabel)} ·{' '}
+                  {shortDate(doc.uploadedAt)}
                   {doc.uploadedBy ? ` · ${doc.uploadedBy}` : ''}
                 </p>
                 {doc.description && (
@@ -302,6 +420,21 @@ export default function Documents() {
           </ul>
         )}
       </section>
+
+      <ConfirmDialog
+        open={!!removingCategory}
+        title="Remove this category?"
+        body={
+          removingCategory
+            ? `"${removingCategory.label}" will no longer be offered when filing a document. Documents already filed under it keep their heading.`
+            : ''
+        }
+        confirmLabel="Remove"
+        danger
+        busy={categoryBusy}
+        onConfirm={confirmRemoveCategory}
+        onCancel={() => setRemovingCategory(null)}
+      />
 
       <ConfirmDialog
         open={!!deleting}

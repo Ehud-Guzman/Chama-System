@@ -1,7 +1,8 @@
 const { Schema, model } = require('mongoose');
 
-// A member's emergency contact. Embedded (never its own collection) because it
-// only ever belongs to one member and is always read together with them.
+// One of a member's emergency contacts. Embedded (never its own collection)
+// because it only ever belongs to one member and is always read together with
+// them.
 const NextOfKinSchema = new Schema(
   {
     name: { type: String, default: '', trim: true },
@@ -25,7 +26,12 @@ const MemberSchema = new Schema(
     // re-upload leaves an orphan behind in the Cloudinary account.
     photoUrl: { type: String, default: '' },
     photoPublicId: { type: String, default: '' },
-    nextOfKin: { type: NextOfKinSchema, default: () => ({}) },
+    // The people the office calls in an emergency — a spouse, the children, the
+    // in-laws. A list, because one contact is rarely enough. Records created
+    // before the list existed hold a single object here; every read goes through
+    // utils/nextOfKin.nextOfKinList(), which accepts both shapes, so no migration
+    // was needed.
+    nextOfKin: { type: [NextOfKinSchema], default: [] },
     // Late-contribution and fine reminder emails. On by default: the point of
     // collecting an email is to use it. Off for a member who asks us to stop.
     emailNotifications: { type: Boolean, default: true },

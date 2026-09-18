@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api, { apiMessage } from "../services/api";
 import { normalizePhone } from "../utils/phone";
+import { shortDate } from "../utils/format";
 import "../components/public/constitution.css";
 
 function ClauseBody({ blocks }) {
@@ -38,6 +39,133 @@ function ClauseBody({ blocks }) {
   );
 }
 
+/*
+ * ---------------------------------------------------------
+ * CHAPTER DECISION
+ * ---------------------------------------------------------
+ * A member's own verdict on one chapter: approve, or reject with a reason.
+ *
+ * It is recorded once. The API refuses a second decision for the same chapter,
+ * so once one exists this renders as a record rather than as a control — which
+ * is what "not undoable" has to look like on the screen the member actually
+ * uses, as well as in the database.
+ */
+function ChapterDecision({ chapter, decision, busy, error, onDecide }) {
+  const [reasonOpen, setReasonOpen] = useState(false);
+  const [reason, setReason] = useState("");
+
+  if (decision) {
+    const approved = decision.decision === "approved";
+
+    return (
+      <div
+        className={[
+          "constitution-decision",
+          "is-recorded",
+          approved ? "is-approved" : "is-rejected",
+        ].join(" ")}
+      >
+        <div className="constitution-decision-head">
+          <span className="constitution-decision-badge">
+            {approved ? "✓ You approved this chapter" : "✕ You rejected this chapter"}
+          </span>
+
+          <span className="constitution-decision-date">
+            {shortDate(decision.decidedAt)}
+          </span>
+        </div>
+
+        {decision.reason && (
+          <p className="constitution-decision-reason">“{decision.reason}”</p>
+        )}
+
+        <p className="constitution-decision-lock">
+          Recorded once, and it cannot be changed — the office sees it on your
+          member record.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="constitution-decision">
+      <p className="constitution-decision-ask">
+        Chapter {chapter.number} — your decision
+      </p>
+
+      {!reasonOpen ? (
+        <div className="constitution-decision-actions">
+          <button
+            type="button"
+            className="constitution-decision-approve"
+            disabled={busy}
+            onClick={() => onDecide("approved")}
+          >
+            {busy ? "Recording…" : "Approve"}
+          </button>
+
+          <button
+            type="button"
+            className="constitution-decision-reject"
+            disabled={busy}
+            onClick={() => setReasonOpen(true)}
+          >
+            Reject
+          </button>
+        </div>
+      ) : (
+        <div className="constitution-decision-reason-box">
+          <label
+            htmlFor={`chapter-${chapter.number}-reason`}
+            className="constitution-decision-ask"
+          >
+            Why are you rejecting this chapter?
+          </label>
+
+          <textarea
+            id={`chapter-${chapter.number}-reason`}
+            rows={3}
+            maxLength={500}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Say briefly what should change"
+          />
+
+          <div className="constitution-decision-actions">
+            <button
+              type="button"
+              className="constitution-decision-reject"
+              disabled={busy || !reason.trim()}
+              onClick={() => onDecide("rejected", reason.trim())}
+            >
+              {busy ? "Recording…" : "Confirm rejection"}
+            </button>
+
+            <button
+              type="button"
+              className="constitution-decision-cancel"
+              disabled={busy}
+              onClick={() => setReasonOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <p className="constitution-decision-error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <p className="constitution-decision-lock">
+        A decision is recorded once and cannot be undone.
+      </p>
+    </div>
+  );
+}
+
 export default function PublicConstitution() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -63,6 +191,14 @@ export default function PublicConstitution() {
   const [status, setStatus] = useState(linkedPhone ? "loading" : "locked");
   const [gateError, setGateError] = useState("");
   const [doc, setDoc] = useState(null);
+  // The phone that opened the document, kept normalized so a decision can be
+  // posted without asking for the number again.
+  const [unlockedPhone, setUnlockedPhone] = useState("");
+  // What this member has already decided, chapter by chapter, as the server
+  // reports it — the same record the office sees on his profile.
+  const [summary, setSummary] = useState(null);
+  const [savingChapter, setSavingChapter] = useState(null);
+  const [decisionError, setDecisionError] = useState({ chapterNumber: null, message: "" });
 
   const unlock = useCallback(async (rawPhone) => {
     const normalized = normalizePhone(rawPhone);
@@ -81,9 +217,13 @@ export default function PublicConstitution() {
         params: { phone: normalized },
       });
       setDoc(res.data);
+      setSummary(res.data?.summary || null);
+      setUnlockedPhone(normalized);
       setStatus("unlocked");
     } catch (err) {
       setDoc(null);
+      setSummary(null);
+      setUnlockedPhone("");
       setStatus("error");
       setGateError(
         err.response?.status === 404
@@ -114,6 +254,13 @@ export default function PublicConstitution() {
    * ---------------------------------------------------------
    * SEARCH / FILTER
    * ---------------------------------------------------------
+   * `constitutionChapters` has to be in the dependency list: the document is
+   * fetched after the first render, so on that first pass there are no chapters
+   * at all. With `query` alone the memo kept handing back that empty list for the
+   * rest of the session — the chapter menu listed the titles, and tapping one
+   * scrolled to a section that was never rendered, which reads exactly like "the
+   * chapter won't open". While the document is still loading the default `[]` is a
+   * fresh array each render, so the memo simply recomputes (and finds nothing).
    */
   const filteredChapters = useMemo(() => {
     if (!query) return constitutionChapters;
@@ -136,7 +283,7 @@ export default function PublicConstitution() {
         }),
       }))
       .filter((chapter) => chapter.clauses.length > 0);
-  }, [query]);
+  }, [query, constitutionChapters]);
 
   const visibleClauseCount = filteredChapters.reduce(
     (total, chapter) => total + chapter.clauses.length,
@@ -154,6 +301,91 @@ export default function PublicConstitution() {
       [key]: !current[key],
     }));
   };
+
+  /*
+   * ---------------------------------------------------------
+   * CHAPTER OPEN / CLOSE
+   * ---------------------------------------------------------
+   * The whole chapter at once. The chapter menu drops the reader at a chapter's
+   * heading, and the first thing wanted there is its clauses — not a second tap
+   * on each one. It also means "open the chapter" always does something visible,
+   * which is what a reader expects a chapter heading to do.
+   */
+  const chapterKeys = (chapter) =>
+    chapter.clauses.map((clause) => `${chapter.number}-${clause.id}`);
+
+  const chapterIsOpen = (chapter) => {
+    const keys = chapterKeys(chapter);
+    return keys.length > 0 && keys.every((key) => openClauses[key]);
+  };
+
+  const toggleChapter = (chapter) => {
+    const keys = chapterKeys(chapter);
+    const closing = chapterIsOpen(chapter);
+
+    setOpenClauses((current) => {
+      const next = { ...current };
+
+      keys.forEach((key) => {
+        if (closing) delete next[key];
+        else next[key] = true;
+      });
+
+      return next;
+    });
+  };
+
+  /*
+   * ---------------------------------------------------------
+   * THE MEMBER'S DECISIONS
+   * ---------------------------------------------------------
+   * Approve or reject, once per chapter. The server is the authority — it refuses
+   * a second decision — and it answers with the whole updated record, so this page
+   * never has to guess what was saved.
+   */
+  const decisionsByChapter = useMemo(() => {
+    const map = new Map();
+
+    (summary?.decisions || []).forEach((decision) => {
+      map.set(decision.chapterNumber, decision);
+    });
+
+    return map;
+  }, [summary]);
+
+  const reviewedChapters = summary?.decided || 0;
+  const totalChapters = summary?.total || 0;
+  const approvedPercent = totalChapters ? (summary.approved / totalChapters) * 100 : 0;
+  const rejectedPercent = totalChapters ? (summary.rejected / totalChapters) * 100 : 0;
+
+  const recordDecision = useCallback(
+    async (chapterNumber, decision, reason = "") => {
+      setSavingChapter(chapterNumber);
+      setDecisionError({ chapterNumber: null, message: "" });
+
+      try {
+        const res = await api.post("/api/public/constitution/decision", {
+          phone: unlockedPhone,
+          chapterNumber,
+          decision,
+          reason,
+        });
+
+        setSummary(res.data?.summary || null);
+      } catch (err) {
+        setDecisionError({
+          chapterNumber,
+          message: apiMessage(
+            err,
+            "Could not record your decision right now. Please try again.",
+          ),
+        });
+      } finally {
+        setSavingChapter(null);
+      }
+    },
+    [unlockedPhone],
+  );
 
   /*
    * ---------------------------------------------------------
@@ -627,6 +859,62 @@ export default function PublicConstitution() {
           </div>
 
           {/* =================================================
+              THE MEMBER'S OWN REVIEW RECORD
+
+              What he has approved, rejected and still has to read. Shown with
+              the document rather than on a separate screen: a member decides a
+              chapter the moment he has finished reading it, and this is where he
+              checks that his decision went through.
+          ================================================== */}
+          {summary && (
+            <section className="constitution-review" aria-label="Your review record">
+              <div className="constitution-review-head">
+                <div>
+                  <p className="constitution-review-eyebrow">Your review record</p>
+                  <p className="constitution-review-count">
+                    {reviewedChapters} of {totalChapters} chapters decided
+                  </p>
+                </div>
+
+                <span className="constitution-review-percent">
+                  {totalChapters
+                    ? `${Math.round((reviewedChapters / totalChapters) * 100)}%`
+                    : "0%"}
+                </span>
+              </div>
+
+              <div className="constitution-review-bar" aria-hidden="true">
+                <span
+                  className="constitution-review-bar-approved"
+                  style={{ width: `${approvedPercent}%` }}
+                />
+                <span
+                  className="constitution-review-bar-rejected"
+                  style={{ width: `${rejectedPercent}%` }}
+                />
+              </div>
+
+              <ul className="constitution-review-legend">
+                <li>
+                  <b>{summary.approved}</b> approved
+                </li>
+                <li>
+                  <b>{summary.rejected}</b> rejected
+                </li>
+                <li>
+                  <b>{summary.pending}</b> still to read
+                </li>
+              </ul>
+
+              <p className="constitution-review-note">
+                Decide each chapter as you finish it — approve, or reject with your
+                reason. A decision is recorded once and cannot be changed, and the
+                office sees it on your member record.
+              </p>
+            </section>
+          )}
+
+          {/* =================================================
               SEARCH STATUS
           ================================================== */}
           {query && (
@@ -703,6 +991,23 @@ export default function PublicConstitution() {
                 </div>
 
                 <p>{chapter.description}</p>
+
+                {/* Tapping the chapter opens every clause in it — the gesture a
+                    chapter heading invites, and the only way to read it without
+                    tapping each clause one at a time on a phone. */}
+                <button
+                  type="button"
+                  className="constitution-chapter-toggle"
+                  onClick={() => toggleChapter(chapter)}
+                  aria-expanded={chapterIsOpen(chapter)}
+                >
+                  <span aria-hidden="true">
+                    {chapterIsOpen(chapter) ? "−" : "+"}
+                  </span>
+                  {chapterIsOpen(chapter)
+                    ? `Close ${chapter.clauses.length === 1 ? "the clause" : `all ${chapter.clauses.length} clauses`}`
+                    : `Open ${chapter.clauses.length === 1 ? "the clause" : `all ${chapter.clauses.length} clauses`}`}
+                </button>
               </header>
 
               <div className="constitution-clauses">
@@ -747,6 +1052,22 @@ export default function PublicConstitution() {
                   );
                 })}
               </div>
+
+              {/* His decision on this chapter, at the end of the chapter where
+                  he has just read it. */}
+              <ChapterDecision
+                chapter={chapter}
+                decision={decisionsByChapter.get(chapter.number)}
+                busy={savingChapter === chapter.number}
+                error={
+                  decisionError.chapterNumber === chapter.number
+                    ? decisionError.message
+                    : ""
+                }
+                onDecide={(decision, reason) =>
+                  recordDecision(chapter.number, decision, reason)
+                }
+              />
 
               <button
                 type="button"

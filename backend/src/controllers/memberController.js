@@ -17,33 +17,12 @@ const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { cleanEmail, isValidEmail } = require('../utils/mailer');
 const { destroyImage } = require('../utils/cloudinary');
+const { nextOfKinList, nextOfKinListError } = require('../utils/nextOfKin');
+const { decisionsForMember } = require('./constitutionController');
 
-// Next of kin arrives as a nested object from the member form. Every field is
-// optional, and sending the fields empty is how an admin clears a stale contact.
-function cleanNextOfKin(input) {
-  const source = input && typeof input === 'object' ? input : {};
-  return {
-    name: String(source.name || '').trim(),
-    relationship: String(source.relationship || '').trim(),
-    phone: String(source.phone || '').trim(),
-    email: cleanEmail(source.email),
-  };
-}
-
-// Returns an error message, or null when the contact is usable. A name with no
-// way to reach anyone is the one combination worth rejecting: in the emergency
-// this field exists for, it would be useless.
-function nextOfKinError(kin) {
-  const empty = !kin.name && !kin.phone && !kin.email;
-  if (empty) return null;
-  if (!kin.name) return 'Next of kin needs a name';
-  if (kin.phone && !/^[+\d][\d\s\-()]{6,}$/.test(kin.phone)) {
-    return 'Enter a valid next of kin phone number';
-  }
-  if (!isValidEmail(kin.email)) return 'Enter a valid next of kin email address';
-  if (!kin.phone && !kin.email) return 'Add a phone number or an email for the next of kin';
-  return null;
-}
+// Next of kin lives in utils/nextOfKin: the list, the legacy single-contact
+// shape and the per-entry validation are shared with everything else that reads
+// or writes a member's emergency contacts.
 
 // Shared by both the admin member view and the public passbook: pending/settled
 // fines for a member, and the week-by-week due schedule for every weekly fund,
@@ -97,6 +76,9 @@ async function buildFinesAndSchedules(member, contributions, settings) {
       typeId: type._id,
       typeName: type.name,
       weeklyAmount: amount,
+      // Who the money belongs to, so a member-facing screen can leave the group's
+      // funds out while the office's ledger still shows them.
+      isGroupFund: isChai,
       // Tea is automatic: every week is collected from every member by
       // deduction, so a tea week is never unpaid and is never something a member
       // owes. Shown so each member can see what has gone into the Group's fund.
@@ -252,6 +234,9 @@ async function listMembers(req, res, next) {
         });
         return {
           ...m,
+          // Normalised for the same reason the profile endpoint does it: older
+          // records hold a single contact object, newer ones a list.
+          nextOfKin: nextOfKinList(m.nextOfKin),
           totalContributed: personalTotals.get(String(m._id)) || 0,
           lastContributionDate: lastDates.has(String(m._id))
             ? new Date(lastDates.get(String(m._id)))
@@ -309,13 +294,19 @@ async function getMember(req, res, next) {
     });
 
     res.json({
-      member,
+      // nextOfKin is normalised on the way out: records created before the list
+      // existed still hold a single contact, and every reader (the form, the
+      // profile, the passbook) expects a list.
+      member: { ...member, nextOfKin: nextOfKinList(member.nextOfKin) },
       contributions,
       totalContributed,
       totalPledged,
       byType,
       fines,
       weeklySchedules,
+      // What he decided on each chapter of the constitution, chapter by chapter,
+      // exactly as his own reading page shows it.
+      constitution: await decisionsForMember(member._id),
       ledger: {
         openingBalance: ledger.openingBalance,
         paid: ledger.paid,
@@ -351,8 +342,8 @@ async function createMember(req, res, next) {
     if (!isValidEmail(trimmedEmail)) {
       return res.status(400).json({ message: 'Enter a valid email address' });
     }
-    const kin = cleanNextOfKin(nextOfKin);
-    const kinError = nextOfKinError(kin);
+    const kin = nextOfKinList(nextOfKin);
+    const kinError = nextOfKinListError(kin);
     if (kinError) return res.status(400).json({ message: kinError });
 
     const doc = {
@@ -447,8 +438,11 @@ async function updateMember(req, res, next) {
       member.emailNotifications = Boolean(emailNotifications);
     }
     if (nextOfKin !== undefined) {
-      const kin = cleanNextOfKin(nextOfKin);
-      const kinError = nextOfKinError(kin);
+      // The whole list is replaced every time it is sent: that is how an admin
+      // adds a second child or removes a contact who has died, without any
+      // per-entry endpoints to keep in step with the form.
+      const kin = nextOfKinList(nextOfKin);
+      const kinError = nextOfKinListError(kin);
       if (kinError) return res.status(400).json({ message: kinError });
       member.nextOfKin = kin;
     }
@@ -678,8 +672,15 @@ async function exportMembers(req, res, next) {
 // the member's own number we let the member see their own contact details
 // (email + next of kin) — otherwise those stay hidden, the same way the
 // full phone number is never echoed back even to the member.
-async function buildPublicProfile(member, lookupPhone) {
+//
+// `options.includeGroupFunds` keeps the group's own money in the record. The
+// member's lookup leaves it out: the Tea Fund is collected from every member
+// automatically each week and belongs to the Group, so listing it among his
+// contributions reads as money he paid in, which it never was. The office's own
+// export of a member's statement asks for it, so the two cannot drift.
+async function buildPublicProfile(member, lookupPhone, options = {}) {
   const callerIsSelf = lookupPhone && normalizePhone(lookupPhone) === normalizePhone(member.phone);
+  const showGroupFunds = Boolean(options.includeGroupFunds);
   const [docs, breakdown, settings] = await Promise.all([
     Contribution.find({ memberId: member._id, deleted: false })
       .sort({ date: 1, createdAt: 1 })
@@ -690,11 +691,18 @@ async function buildPublicProfile(member, lookupPhone) {
   ]);
   const config = resolveConfig(settings);
 
+  // What may be listed. Chai rows are still loaded — they are part of the cycle
+  // maths and of the office's copy — they are simply not part of the member's
+  // list. Filtering first is safe for the running balance: a group-fund row never
+  // adds to it.
+  const visibleDocs = showGroupFunds ? docs : docs.filter((c) => !c.typeId?.isGroupFund);
+  const visibleBreakdown = showGroupFunds ? breakdown : breakdown.filter((b) => !b.isGroupFund);
+
   // Group-fund contributions (e.g. Chai) still show up as their own ledger
   // row, but don't add to the running personal balance — that money belongs
   // to the group, not the individual.
   let running = 0;
-  const contributions = docs.map((c) => {
+  const contributions = visibleDocs.map((c) => {
     if (!c.typeId?.isGroupFund) running += c.amount;
     return {
       amount: c.amount,
@@ -708,8 +716,11 @@ async function buildPublicProfile(member, lookupPhone) {
     };
   });
 
-  const totalPledged = breakdown.reduce((sum, b) => sum + b.pledged, 0);
+  const totalPledged = visibleBreakdown.reduce((sum, b) => sum + b.pledged, 0);
   const { fines, weeklySchedules } = await buildFinesAndSchedules(member, docs, settings);
+  const visibleSchedules = showGroupFunds
+    ? weeklySchedules
+    : weeklySchedules.filter((schedule) => !schedule.isGroupFund);
 
   // The cycle position, from the one engine the treasurer's ledger, the member
   // list and the reminders all read. "Total contributed" alone reads as 0 once
@@ -762,7 +773,6 @@ async function buildPublicProfile(member, lookupPhone) {
       currentWeek: ledger.currentWeek,
       cycleStartWeek: config.cycleStartWeek,
       weeklyAmount: ledger.weeklyAmount,
-      chaiAmount: ledger.chaiAmount,
       openingBalance: ledger.openingBalance,
       paid: ledger.paid,
       required: ledger.required,
@@ -774,23 +784,29 @@ async function buildPublicProfile(member, lookupPhone) {
       weeksPaid: ledger.weeksPaid,
       weeksBehind: ledger.weeksBehind,
     },
-    byType: breakdown.map((b) => ({
+    byType: visibleBreakdown.map((b) => ({
       type: b.name,
       pledged: b.pledged,
       contributed: b.contributed,
     })),
     contributions,
     fines: publicFines,
-    weeklySchedules,
+    // Only the funds the reader is meant to see: for a member's own lookup that
+    // is his personal weekly contribution, never the Tea Fund.
+    weeklySchedules: visibleSchedules,
+    // Whether this copy names the group's own money. The statement exports read
+    // it so a member's PDF and the office's PDF explain the same total in the
+    // words each is entitled to.
+    groupFundsIncluded: showGroupFunds,
     // When the caller proved their own number at the gate, the member gets to
     // see their own contact details back. Strangers (or someone looking up a
     // friend) never see email or next of kin — one of each of those is
     // personal and one is someone else's contact.
     ...(callerIsSelf && {
       email: member.email || '',
-      nextOfKin: member.nextOfKin && Object.keys(member.nextOfKin).length
-        ? { name: member.nextOfKin.name || '', relationship: member.nextOfKin.relationship || '', phone: member.nextOfKin.phone || '', email: member.nextOfKin.email || '' }
-        : null,
+      // The list, cleaned — an empty list says "no contacts on file" just as the
+      // old null did, and a member with a spouse and four children sees all five.
+      nextOfKin: nextOfKinList(member.nextOfKin),
       emailNotifications: member.emailNotifications,
     }),
   };
@@ -836,13 +852,25 @@ async function sendStatementExcel(res, profile) {
       Value: profile.ledger ? profile.ledger.paid : profile.totalContributed || 0,
     },
     {
+      // For a member's own statement this figure also carries the group's fund
+      // deductions (the 100 tea a week), so the summary reconciles without naming
+      // a fund he never contributed to. The office's copy keeps the two apart,
+      // exactly as its ledger does.
       Field: 'Required So Far',
-      Value: profile.ledger ? profile.ledger.required : 0,
+      Value: profile.ledger
+        ? profile.groupFundsIncluded
+          ? profile.ledger.required
+          : profile.ledger.required + profile.ledger.tea
+        : 0,
     },
-    {
-      Field: 'Tea (automatic)',
-      Value: profile.ledger ? profile.ledger.tea : 0,
-    },
+    ...(profile.groupFundsIncluded
+      ? [
+          {
+            Field: 'Tea (automatic)',
+            Value: profile.ledger ? profile.ledger.tea : 0,
+          },
+        ]
+      : []),
     {
       Field: 'Total Pledged',
       Value: profile.totalPledged || 0,
@@ -1055,11 +1083,12 @@ async function publicLookupStatementExcel(req, res, next) {
 }
 
 // GET /api/members/:id/statement — admin, any member regardless of active status.
+// The office's copy keeps the group's funds in it (see buildPublicProfile).
 async function memberStatement(req, res, next) {
   try {
     const member = await Member.findById(req.params.id).lean();
     if (!member) return res.status(404).json({ message: 'Member not found' });
-    await sendStatement(res, await buildPublicProfile(member));
+    await sendStatement(res, await buildPublicProfile(member, undefined, { includeGroupFunds: true }));
   } catch (err) {
     next(err);
   }
@@ -1108,7 +1137,9 @@ async function memberStatementExcel(req, res, next) {
 
     await sendStatementExcel(
       res,
-      await buildPublicProfile(member)
+      // The office's copy: it keeps the group's funds in it, as the finance ledger
+      // does — a member's own download from the lookup leaves them out.
+      await buildPublicProfile(member, undefined, { includeGroupFunds: true })
     );
   } catch (err) {
     next(err);

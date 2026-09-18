@@ -25,6 +25,9 @@ export default function PublicRecords({ verifiedPhone }) {
   const [tab, setTab] = useState('documents');
 
   const [documents, setDocuments] = useState([]);
+  // The headings the group files its papers under, straight from the server — the
+  // list is the office's now, so a heading they added reads correctly here too.
+  const [categories, setCategories] = useState([]);
   const [busyDocId, setBusyDocId] = useState(null);
 
   const [minutes, setMinutes] = useState([]);
@@ -52,6 +55,7 @@ export default function PublicRecords({ verifiedPhone }) {
         params: { phone: normalized },
       });
       setDocuments(res.data.documents || []);
+      setCategories(res.data.categories || []);
       setUnlockedPhone(normalized);
       setTab('documents');
       setMinutes([]);
@@ -60,6 +64,7 @@ export default function PublicRecords({ verifiedPhone }) {
       setStatus('unlocked');
     } catch (err) {
       setDocuments([]);
+      setCategories([]);
       setUnlockedPhone('');
       setStatus('error');
       setError(
@@ -291,7 +296,8 @@ export default function PublicRecords({ verifiedPhone }) {
                   <li key={doc.id} className="rounded-xl border border-rule bg-page px-4 py-3">
                     <p className="truncate text-sm font-semibold">{doc.title}</p>
                     <p className="mt-0.5 text-xs text-muted">
-                      {documentCategoryLabel(doc.category)} · {shortDate(doc.uploadedAt)}
+                      {documentCategoryLabel(doc.category, categories, doc.categoryLabel)} ·{' '}
+                      {shortDate(doc.uploadedAt)}
                     </p>
                     {doc.description && (
                       <p className="mt-1 text-xs leading-5 text-muted">{doc.description}</p>

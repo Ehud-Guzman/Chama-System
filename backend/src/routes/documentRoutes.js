@@ -1,6 +1,9 @@
 const router = require('express').Router();
 const {
   listDocuments,
+  listCategories,
+  createCategory,
+  deleteCategory,
   uploadDocument,
   deleteDocument,
   getDocumentFile,
@@ -14,6 +17,11 @@ router.use(requireAuth);
 // not (treasurer and disciplinary can look, not upload or delete).
 router.get('/', requireRole('super_admin', 'admin', 'treasurer', 'secretary'), listDocuments);
 router.get(
+  '/categories',
+  requireRole('super_admin', 'admin', 'treasurer', 'secretary'),
+  listCategories
+);
+router.get(
   '/:id/file',
   requireRole('super_admin', 'admin', 'treasurer', 'secretary'),
   getDocumentFile
@@ -21,6 +29,8 @@ router.get(
 
 router.use(requireRole('super_admin', 'admin', 'secretary'));
 router.post('/', uploadSingle('file'), uploadDocument);
+router.post('/categories', createCategory);
+router.delete('/categories/:id', deleteCategory);
 router.delete('/:id', deleteDocument);
 
 module.exports = router;

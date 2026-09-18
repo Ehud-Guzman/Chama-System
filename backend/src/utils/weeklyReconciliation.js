@@ -95,6 +95,8 @@ async function computeWeeklyReconciliation() {
 
     for (const fund of funds) {
       let actual = 0;
+      let paidCount = 0;
+      let contributingCount = 0;
       const shortfallMembers = [];
 
       for (const { member, ledger } of ledgers) {
@@ -102,6 +104,8 @@ async function computeWeeklyReconciliation() {
         if (!week) continue;
         const { paid } = fund.read(week);
         actual += paid;
+        if (paid > 0) contributingCount += 1;
+        if (fund.weeklyAmount > 0 && paid >= fund.weeklyAmount) paidCount += 1;
         if (isBaseline) continue;
         const status = fund.weeklyAmount > 0 && paid >= fund.weeklyAmount ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
         if (status !== 'paid') {
@@ -127,6 +131,10 @@ async function computeWeeklyReconciliation() {
         expected,
         actual,
         diff: actual - expected,
+        // How many members paid their minimum this week, and how many paid
+        // anything at all — the two figures a treasurer reads a week by.
+        paidCount,
+        contributingCount,
         // Nothing can be collected against a cycle week from outside it, so
         // there is never an untracked tail to explain.
         untrackedAmount: 0,
@@ -142,6 +150,12 @@ async function computeWeeklyReconciliation() {
     // to a treasurer is whether anyone still owes their minimum.
     const shortfallCount = perFund.reduce((s, f) => s + f.shortfallMembers.length, 0);
 
+    // The personal fund on its own: what the members themselves put in this
+    // week. Reported separately from the totals above because those include the
+    // Tea Fund, which belongs to the Group — a headline that mixed the two would
+    // read as member effort the members never made.
+    const memberFund = perFund.find((f) => !f.isGroupFund) || null;
+
     weeks.push({
       weekNumber,
       startDate: sample.startDate,
@@ -153,6 +167,14 @@ async function computeWeeklyReconciliation() {
       diff: actualTotal - expectedTotal,
       shortfallCount,
       balanced: shortfallCount === 0,
+      memberTotal: memberFund ? memberFund.actual : 0,
+      memberExpected: memberFund ? memberFund.expected : 0,
+      memberPaidCount: memberFund ? memberFund.paidCount : 0,
+      memberContributingCount: memberFund ? memberFund.contributingCount : 0,
+      memberEligibleCount: memberFund ? memberFund.eligibleCount : 0,
+      groupFundTotal: perFund
+        .filter((f) => f.isGroupFund)
+        .reduce((sum, f) => sum + f.actual, 0),
       types: perFund,
     });
   }

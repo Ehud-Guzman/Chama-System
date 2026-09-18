@@ -199,23 +199,12 @@ export default function PassbookCard({
         <div className="border-b border-rule px-5 py-4">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             {result.email && (
-              <div>
+              <div className="col-span-2 sm:col-span-1">
                 <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
                   Email
                 </dt>
-                <dd className="truncate mt-0.5 font-medium text-ink/80">
+                <dd className="mt-0.5 truncate font-medium text-ink/80">
                   {result.email}
-                </dd>
-              </div>
-            )}
-            {result.nextOfKin?.name && (
-              <div>
-                <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                  Next of kin
-                </dt>
-                <dd className="mt-0.5 text-muted">
-                  {result.nextOfKin.name}
-                  {result.nextOfKin.relationship ? ` · ${result.nextOfKin.relationship}` : ''}
                 </dd>
               </div>
             )}
@@ -238,6 +227,36 @@ export default function PassbookCard({
               </dd>
             </div>
           </dl>
+
+          {/* The next-of-kin list he gave the office — a spouse, the children, the
+              in-laws. Shown as its own full-width block: a family does not fit in
+              one grid cell, and each contact needs its number on the same line to
+              be useful in an emergency. */}
+          {result.nextOfKin?.length > 0 && (
+            <div className="mt-3 border-t border-rule pt-3">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                Next of kin ({result.nextOfKin.length})
+              </p>
+              <ul className="mt-1.5 space-y-2">
+                {result.nextOfKin.map((person, index) => (
+                  <li key={index} className="text-sm">
+                    <span className="font-medium">{person.name}</span>
+                    {person.relationship ? (
+                      <span className="text-muted"> · {person.relationship}</span>
+                    ) : null}
+                    {person.phone && (
+                      <span className="amount block text-xs text-muted">📞 {person.phone}</span>
+                    )}
+                    {person.email && (
+                      <span className="block break-words text-xs text-muted">
+                        {person.email}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         {/* Open book: pledged vs. contributed per type, shown whether or not
@@ -362,8 +381,12 @@ export default function PassbookCard({
           {result.ledger && (
             <p className="amount mt-1 text-sm text-muted">
               {money(result.ledger.openingBalance)} brought forward + {money(result.ledger.paid)}{' '}
-              paid since week {result.ledger.cycleStartWeek} − {money(result.ledger.required)}{' '}
-              required − {money(result.ledger.tea)} tea
+              paid since week {result.ledger.cycleStartWeek} −{' '}
+              {/* One deduction figure, not two: the weekly contribution and the
+                  group's weekly fund deduction are what "required" means each
+                  week, and the member's record no longer lists the fund itself. */}
+              {money(result.ledger.required + result.ledger.tea)} required
+              (weekly contribution and fund deductions)
             </p>
           )}
           {(result.ledger ? result.ledger.arrears > 0 : false) && (
