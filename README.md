@@ -1,7 +1,7 @@
 # Wazo Moja Self-Help Group — contribution system
 
 Digital record-keeping for the group (a chama) — replaces the manual book. Admins log
-contributions; members check their own history by phone number (no login, rate-limited, exact
+contributions; members check their own history by their ID number (no login, rate-limited, exact
 match only). Built mobile-first: 98% of usage is on phones. Live at https://wazomojashg.co.ke
 
 ## Stack
@@ -41,10 +41,10 @@ set it to the deployed API URL.
 
 ## Routes
 
-- `/` — public lookup: group totals, your own record by phone number, and the members' area
+- `/` — public lookup: group totals, your own record by ID number, and the members' area
   (documents, minutes, constitution). Standalone — loads no admin code.
-- `/constitution` — the constitution, members only: the page fetches the text for a registered
-  phone number and there is no public link to it.
+- `/constitution` — the constitution, members only: the page fetches the text for an ID recorded
+  against a member, and there is no public link to it.
 - `/admin/login` — admin sign in
 - `/admin/dashboard` · `/admin/members` · `/admin/reports` · `/admin/minutes` ·
   `/admin/reminders` · `/admin/documents` · `/admin/disciplinary` — protected
@@ -229,39 +229,54 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   cycle opened is history (its tea is deducted and added to the Tea Fund), whereas the cycle's own
   opening week is the baseline and carries no tea at all.
 - **Phone normalization:** `+2547…`, `2547…`, `07…` all resolve to one stored format
-  (`07XXXXXXXX`) — enforced on member create/edit, CSV import, and public lookup.
-- **Public lookup — your own record, nobody else's:** exact phone match only, 5 requests/minute/IP
+  (`07XXXXXXXX`) — enforced on member create/edit and CSV import. The phone is how the office
+  reaches a member; it is no longer the key to his record (see the ID below).
+- **The member's ID is the key to his own record:** a member opens his passbook, the group's
+  documents, the minutes and the constitution by typing the `nationalId` recorded for him —
+  exactly as written on the register, so spaces, dashes and slashes are ignored and a passport
+  number's letters are accepted (`utils/nationalId` normalizes; `utils/publicAccess` checks).
+  **Phone numbers were the old key and are no longer accepted anywhere on the public side** — the
+  register carried placeholder numbers for members whose real ones had not been collected, and a
+  member typing his true number got "no record found". The ID is the number the office already
+  holds for everybody. It is also the one field the office has to fill in: an active member with no
+  ID (or a note like "not yet issued" in it) cannot look himself up, so `/admin/members` counts
+  those members for the office and each card of one is marked "No ID". IDs can be loaded in bulk
+  from a spreadsheet — the CSV import already reads a `nationalId` column.
+  One ID belongs to one member: create, edit and import refuse a duplicate, and if two records ever
+  end up sharing one the gate answers 409 rather than showing the wrong passbook.
+- **Public lookup — your own record, nobody else's:** exact ID match only, 5 requests/minute/IP
   (configurable via env), returning the member's masked phone, member-since date, what he holds
   today with the four figures it is made of, the rows he has logged since the cycle opened,
   pledges by type, fines (pending + settled) and the weekly schedule. Never returns internal ids
   or admin metadata. There is deliberately **no public member directory**: a member's record is
-  opened by proving his own number, never by browsing a list of names, balances and phone
+  opened by proving his own ID, never by browsing a list of names, balances and phone
   numbers. The home page carries group-wide totals only (`GET /api/public/overview` — chama name,
   membership size, raised by fund, fund balances), which hold no per-member data at all. The same
   response carries the group's identity for that page: its **logo** (Settings, uploaded to
   Cloudinary like a member photo) and its **vision and mission**, which default to Chapter 2 of the
   published constitution — clauses 2.1 and 2.2 — unless an admin rewrites either in Settings
   (`utils/groupIdentity`). Those two clauses are resolved on the server precisely because the rest
-  of the constitution stays behind the phone gate; a group's vision and mission are meant to be read
+  of the constitution stays behind the ID gate; a group's vision and mission are meant to be read
   by anyone, its rules are not.
-- **Chama documents, minutes and the constitution (phone-gated):** title deeds, certificates and
+- **Chama documents, minutes and the constitution (ID-gated):** title deeds, certificates and
   other group records are uploaded from `/admin/documents` (PDF, Word/Excel, or a photo, up to
   8 MB) and minutes are written at `/admin/minutes`. Both are stored in MongoDB itself —
   Render/Railway disks are ephemeral, so a file written to disk would not survive a deploy or a
-  backup. Members open those, and the constitution, on the public page only after entering a
-  phone number registered with the chama (`GET /api/public/documents?phone=…`,
-  `…/documents/:id/file?phone=…`, `GET /api/public/minutes?phone=…`, `…/minutes/:id?phone=…`,
-  `GET /api/public/constitution?phone=…`, 30 requests/minute/IP). An upload or a minute can be
-  marked hidden from members to keep it admin-only; removals are soft deletes, like every other
-  record. The phone number is the only credential — anyone who knows a member's number can open
-  the members' area, so treat it as group-visible material, not private documents.
+  backup. Members open those, and the constitution, on the public page only after entering the
+  ID recorded for them (`GET /api/public/documents?nationalId=…`,
+  `…/documents/:id/file?nationalId=…`, `GET /api/public/minutes?nationalId=…`,
+  `…/minutes/:id?nationalId=…`, `GET /api/public/constitution?nationalId=…`, 30 requests/minute/IP).
+  An upload or a minute can be marked hidden from members to keep it admin-only; removals are soft
+  deletes, like every other record. The ID is the only credential — anyone who knows a member's ID
+  can open the members' area, so treat it as group-visible material, not private documents. It is
+  also a short number, which is why the rate limits here are the tight ones they are.
 - **The constitution is served, not bundled:** the published edition lives in
-  `backend/src/data/constitution.js` and reaches the browser only through the phone-gated
+  `backend/src/data/constitution.js` and reaches the browser only through the ID-gated
   endpoint above, so the members-only gate is real rather than cosmetic — a reader that shipped
   the text inside the app bundle would leave it one devtools download away for anybody who never
-  signed in. The page (`/constitution`) has no public link and asks for a number itself when
+  signed in. The page (`/constitution`) has no public link and asks for an ID itself when
   opened directly; arriving from the members' area it opens straight onto the document, since the
-  number was just proved there.
+  ID was just proved there.
 - **Member profile photos:** uploaded from the member form (`POST /api/uploads/member-photo`,
   image-only, 5 MB) and stored on Cloudinary, cropped square around the face at 512px. The
   publicId is saved with the member so a replaced photo's old asset is deleted rather than
@@ -275,7 +290,7 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   the members' page, the sign-in card, the constitution's footer, and every admin page (it lives in
   `AdminLayout`, so each role's screens carry it from one place rather than from per-page copies).
   It reads *Created and managed by GlimmerInk Creations* and links to `glimmerink.co.ke` in a new
-  tab, so nobody loses a number he has just typed (`components/shared/CreditLine.jsx`).
+  tab, so nobody loses the ID he has just typed (`components/shared/CreditLine.jsx`).
 - **Email reminders:** `/admin/reminders` lists every member who is behind on the weekly
   contribution or has unpaid fines, computed from the same cycle engine the member's own page
   shows (`computeMemberLedger`), so a reminder can never quote a week number or an amount the
@@ -294,8 +309,11 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
 - **Soft delete only:** members and contributions are never hard-deleted. Every
   create/edit/delete writes an audit log entry with full before/after snapshots
   (Reports → Audit trail).
-- **CSV import:** columns `name, phone, regNumber (optional), notes (optional)`. Duplicate
-  phones are skipped and reported, never overwritten.
+- **CSV import:** columns `name, phone, regNumber (optional), nationalId (optional), notes
+  (optional)`, plus the rest of the admission form when the sheet carries it. Duplicate
+  phones are skipped and reported, never overwritten — and so is an ID another member already
+  holds, since the ID is how a member opens his own record. A sheet of IDs is the quickest way to
+  fill the register in for members who have none yet.
 - **CSV export:** members and full contribution register, UTF-8 with BOM so Excel opens them
   correctly.
 

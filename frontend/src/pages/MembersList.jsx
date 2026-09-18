@@ -20,6 +20,7 @@ export default function MembersList() {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [missingIds, setMissingIds] = useState(0);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -31,6 +32,10 @@ export default function MembersList() {
     setMembers(payload.members);
     setPages(payload.pages);
     setTotal(payload.total);
+    // How many active members the server says still have no usable ID: the one
+    // figure that tells the office what to chase, since the members' page is
+    // opened with that number now.
+    setMissingIds(payload.withoutNationalId || 0);
   }, []);
 
   const load = useCallback(
@@ -121,12 +126,26 @@ export default function MembersList() {
 
       <input
         type="search"
-        placeholder="Search name, phone or reg number"
+        placeholder="Search name, phone, ID or reg no."
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         className="h-12 w-full rounded-xl border border-rule bg-surface px-4 text-sm"
         aria-label="Search members"
       />
+
+      {/* The ID is the key to a member's own record, so a member without one
+          cannot open anything on the public page. The office is the only party
+          who can fix that, and this line is where they find out. */}
+      {missingIds > 0 && (
+        <p className="rounded-xl border border-rule bg-page px-4 py-3 text-sm leading-5 text-muted">
+          <span className="font-semibold text-ink">
+            {missingIds} member{missingIds === 1 ? '' : 's'}
+          </span>{' '}
+          {missingIds === 1 ? 'has' : 'have'} no ID recorded, so{' '}
+          {missingIds === 1 ? 'he cannot' : 'they cannot'} open a record on the members&rsquo;
+          page yet. Open the member and add the ID number.
+        </p>
+      )}
 
       <div className="flex gap-3">
         <button

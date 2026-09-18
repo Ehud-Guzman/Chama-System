@@ -15,8 +15,8 @@ const MAX_FILE_MB = 8;
 // (see backend/src/routes/documentRoutes.js) — everyone else can look.
 const MANAGER_ROLES = ['super_admin', 'admin', 'secretary'];
 // The chama's own records — title deeds, certificates, registration papers.
-// Uploaded here, and published to members' phones (gated on a registered
-// phone number) unless "Visible to members" is switched off.
+// Uploaded here, and published to members' phones (gated on the ID recorded for
+// a member) unless "Visible to members" is switched off.
 export default function Documents() {
   const toast = useToast();
   const { user } = useAuth();
@@ -190,7 +190,7 @@ export default function Documents() {
         <h1 className="mt-1 text-2xl font-bold">Chama documents</h1>
         <p className="mt-1 text-sm text-muted">
           Title deeds, certificates and other group records. Members open them on the public
-          page by entering a phone number registered with the chama.
+          page by entering the ID number registered with the chama.
         </p>
       </header>
 
@@ -271,7 +271,7 @@ export default function Documents() {
             <span>
               Visible to members
               <span className="block text-xs text-muted">
-                Shown on the public page once a member enters their registered phone number.
+                Shown on the public page once a member enters their registered ID number.
               </span>
             </span>
           </label>

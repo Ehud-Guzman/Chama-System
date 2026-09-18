@@ -135,6 +135,7 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
         !q ||
         m.name.toLowerCase().includes(q) ||
         (m.regNumber || '').toLowerCase().includes(q) ||
+        (m.nationalId || '').toLowerCase().includes(q) ||
         m.phone.includes(q)
     );
     return [...list].sort((a, b) => {
@@ -185,7 +186,7 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
       <div className="flex flex-wrap gap-2">
         <input
           type="search"
-          placeholder="Search name, phone or reg number"
+          placeholder="Search name, phone, ID or reg no."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="h-12 min-w-0 flex-1 rounded-xl border border-rule bg-surface px-4 text-sm"

@@ -1,6 +1,6 @@
 const Minute = require('../models/Minute');
 const { logAudit, snapshot } = require('../utils/auditLogger');
-const { findActiveMemberByPhone, phoneGateError } = require('../utils/publicAccess');
+const { findActiveMemberByNationalId } = require('../utils/publicAccess');
 
 // A minute's body is only sent when someone actually opens it — the list
 // carries a stripped preview instead. Minutes run to pages of rich text, and the
@@ -147,13 +147,13 @@ async function deleteMinute(req, res, next) {
   }
 }
 
-// GET /api/public/minutes?phone=&page=&limit= — PUBLIC, phone-gated. Members
+// GET /api/public/minutes?nationalId=&page=&limit= — PUBLIC, ID-gated. Members
 // read the minutes; a minute an admin marked as not-for-members never appears
 // here, and the body itself is held back until one is opened.
 async function publicListMinutes(req, res, next) {
   try {
-    const member = await findActiveMemberByPhone(req.query.phone);
-    if (!member) return phoneGateError(req, res);
+    const gate = await findActiveMemberByNationalId(req.query.nationalId);
+    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
@@ -180,13 +180,13 @@ async function publicListMinutes(req, res, next) {
   }
 }
 
-// GET /api/public/minutes/:id?phone= — PUBLIC, phone-gated. The single minute's
+// GET /api/public/minutes/:id?nationalId= — PUBLIC, ID-gated. The single minute's
 // full body. Deliberately not part of the list response: a member reading on a
 // phone shouldn't download every minute's full rich text to read one.
 async function publicGetMinute(req, res, next) {
   try {
-    const member = await findActiveMemberByPhone(req.query.phone);
-    if (!member) return phoneGateError(req, res);
+    const gate = await findActiveMemberByNationalId(req.query.nationalId);
+    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
 
     const minute = await Minute.findOne({
       _id: req.params.id,

@@ -11,11 +11,11 @@ const PAGE_SIZE = 20;
 
 // One member's full public passbook: header, what he has paid by type,
 // the ledger, and a stamped total. It is the one public view of a member there
-// is, and it is only ever reached by typing that member's own registered phone
-// number — pass a fresh `key` from the caller when the underlying member changes
-// so the reveal animation replays.
-// `statementUrl` (relative, e.g. /api/public/lookup/statement?phone=...) and
-// `statementExcelUrl` (e.g. /api/public/lookup/statement/excel?phone=...) are
+// is, and it is only ever reached by typing the ID recorded for that member —
+// pass a fresh `key` from the caller
+// when the underlying member changes so the reveal animation replays.
+// `statementUrl` (relative, e.g. /api/public/lookup/statement?nationalId=...) and
+// `statementExcelUrl` (e.g. /api/public/lookup/statement/excel?nationalId=...) are
 // both optional — omit them if the caller has no way to re-identify this member.
 // They are independent URLs, not derived from one another — always pass both
 // explicitly from the caller.

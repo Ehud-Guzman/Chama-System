@@ -4,6 +4,8 @@ const Fine = require('../models/Fine');
 const ContributionType = require('../models/ContributionType');
 const Counter = require('../models/Counter');
 const { normalizePhone } = require('../utils/phone');
+const { normalizeNationalId, storedNationalId } = require('../utils/nationalId');
+const { findActiveMemberByNationalId } = require('../utils/publicAccess');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { parseMembersCSV } = require('../utils/csvImport');
 const { typeBreakdown } = require('../utils/typeBreakdown');
@@ -45,13 +47,33 @@ function detailsFromBody(body) {
   if (dob.error) return { error: dob.error };
   return {
     dateOfBirth: dob.value,
-    nationalId: cleanText(body.nationalId, 40),
+    // Normalised on the way in, exactly as the gate normalises what a member
+    // types: " 12 345 678 " and "12345678" have to be the same person's ID, or a
+    // member with a correctly registered number would be told he has none.
+    nationalId: storedNationalId(body.nationalId),
     physicalAddress: cleanText(body.physicalAddress, 240),
     family: cleanFamily(body.family),
     commitment: cleanCommitment(body.commitment),
     approvals: cleanApprovals(body.approvals),
   };
 }
+
+// One ID, one member. The gate looks an ID up to decide whose record to show, so
+// two records holding the same number leave it with no correct answer — it refuses
+// rather than guess (see utils/publicAccess). Checking here on create, edit and
+// import is what keeps that situation out of the register in the first place.
+// A note ("not yet issued") is not an ID and is never checked: a dozen members can
+// share one and none of them can open anything with it.
+async function nationalIdClash(nationalId, exceptMemberId) {
+  const key = normalizeNationalId(nationalId);
+  if (!key) return null;
+  const filter = { nationalId: key };
+  if (exceptMemberId) filter._id = { $ne: exceptMemberId };
+  return Member.findOne(filter).select('name').lean();
+}
+
+const idClashMessage = (clash) =>
+  `That ID is already on ${clash.name}'s record — each member needs his own.`;
 
 // Shared by both the admin member view and the public passbook: pending/settled
 // fines for a member, and the week-by-week due schedule for every weekly fund,
@@ -227,10 +249,15 @@ async function listMembers(req, res, next) {
       const rx = new RegExp(escapeRegex(search), 'i');
       // Phone searches should also match normalized storage format
       const normalized = normalizePhone(search);
+      // An ID typed in full is matched exactly (it is the credential, so a hit
+      // should be the member, not a list), and a partial one still filters by
+      // regex the way a name does.
+      const idKey = normalizeNationalId(search);
       filter.$or = [
         { name: rx },
         { phone: normalized ? normalized : rx },
         { regNumber: rx },
+        { nationalId: idKey || rx },
       ];
     }
 
@@ -238,6 +265,17 @@ async function listMembers(req, res, next) {
       Member.find(filter).sort({ name: 1 }).skip((page - 1) * limit).limit(limit).lean(),
       Member.countDocuments(filter),
     ]);
+
+    // How many active members still cannot open their own record, because the
+    // register holds no usable ID for them — blank, or a note like "not yet
+    // issued". The members' page turns this into the one line that tells the
+    // office what to chase: the members' area is keyed on the ID, so a member
+    // without one has no way in at all. Counted for the whole register, not for
+    // the page on screen, or a paged list would understate it.
+    const withoutNationalId = await Member.countDocuments({
+      active: true,
+      nationalId: { $not: /^(?=.*\d)[A-Z0-9]{5,20}$/ },
+    });
 
     // Everything the cards show — what he has paid, when, and his balance — comes
     // from the rows this page needs plus the group cycle, so the two per-member
@@ -280,6 +318,7 @@ async function listMembers(req, res, next) {
       total,
       page,
       pages: Math.ceil(total / limit) || 1,
+      withoutNationalId,
     });
   } catch (err) {
     next(err);
@@ -385,6 +424,10 @@ async function createMember(req, res, next) {
 
     const details = detailsFromBody(req.body || {});
     if (details.error) return res.status(400).json({ message: details.error });
+
+    // The ID is the member's key to his own record, so it has to be his alone.
+    const clash = await nationalIdClash(details.nationalId);
+    if (clash) return res.status(409).json({ message: idClashMessage(clash) });
 
     const doc = {
       name: String(name).trim(),
@@ -498,7 +541,13 @@ async function updateMember(req, res, next) {
     const details = detailsFromBody(req.body || {});
     if (details.error) return res.status(400).json({ message: details.error });
     if (details.dateOfBirth !== undefined) member.dateOfBirth = details.dateOfBirth;
-    if (req.body.nationalId !== undefined) member.nationalId = details.nationalId;
+    if (req.body.nationalId !== undefined) {
+      // Editing one member must not hand him a number that already opens another
+      // member's record.
+      const clash = await nationalIdClash(details.nationalId, member._id);
+      if (clash) return res.status(409).json({ message: idClashMessage(clash) });
+      member.nationalId = details.nationalId;
+    }
     if (req.body.physicalAddress !== undefined) member.physicalAddress = details.physicalAddress;
     if (req.body.family !== undefined) member.family = details.family;
     if (req.body.commitment !== undefined) member.commitment = details.commitment;
@@ -640,6 +689,22 @@ async function importMembers(req, res, next) {
         errors.push({ row: rowNumber, reason: `Duplicate phone ${normalized} — already registered` });
         continue;
       }
+      // The ID is the key to a member's own record, so the sheet must not hand two
+      // members the same one. Same treatment as a duplicate phone: the row is
+      // skipped and reported, never written.
+      const rowNationalId = storedNationalId(row.nationalId);
+      const rowIdKey = normalizeNationalId(rowNationalId);
+      if (rowIdKey) {
+        const idTaken = await Member.findOne({ nationalId: rowIdKey }).select('name').lean();
+        if (idTaken) {
+          skipped++;
+          errors.push({
+            row: rowNumber,
+            reason: `ID ${rowIdKey} is already on ${idTaken.name}'s record`,
+          });
+          continue;
+        }
+      }
       // A birth date in the sheet has to be a real date — imported silently wrong it
       // would sit on the profile for ever. Blank is fine: the sheet simply does not
       // carry that column.
@@ -680,7 +745,7 @@ async function importMembers(req, res, next) {
           // declaration and the three signatures are not importable — those are the
           // people, not the spreadsheet.
           dateOfBirth: dob.value ?? null,
-          nationalId: cleanText(row.nationalId, 40),
+          nationalId: storedNationalId(row.nationalId),
           physicalAddress: cleanText(row.physicalAddress, 240),
           family: cleanFamily({
             spouseName: row.spouseName,
@@ -831,16 +896,18 @@ async function exportMembers(req, res, next) {
 }
 
 // Shared shape for the one public-facing member view there is: the passbook a
-// member opens by proving his own number. Never includes loggedBy, internal ids,
+// member opens by proving his own ID. Never includes loggedBy, internal ids,
 // or admin metadata.
-// The returned object is also reused as the body of the phone-gated PDF/Excel
+// The returned object is also reused as the body of the ID-gated PDF/Excel
 // statements, so it is deliberately kept lean: no audit trail, no "issued by"
 // fields.
 //
-// `lookupPhone` is the number the caller entered at the gate. When it matches
-// the member's own number we let the member see their own contact details
-// (email + next of kin) — otherwise those stay hidden, the same way the
-// full phone number is never echoed back even to the member.
+// `options.self` says the caller already proved he is this member at the gate.
+// Every public caller has: the lookup only ever answers for the ID it was given,
+// so a match *is* the member, and that is what lets him see his own email and
+// next of kin back — nobody else's copy of the passbook carries them. The office
+// passes no flag: its own statements are opened from the admin app, and the
+// passbook shape must not start leaking contacts out of a download.
 //
 // `options.includeTeaFund` keeps the Tea Fund in the record. The member's lookup
 // leaves it out: its 100 a week is deducted from every member automatically and
@@ -848,8 +915,8 @@ async function exportMembers(req, res, next) {
 // he paid in, which it never was. The office's own export of a member's statement
 // asks for it, so the two cannot drift. Every other type — his weekly
 // contribution, and any fund he actually paid into — is listed as it always was.
-async function buildPublicProfile(member, lookupPhone, options = {}) {
-  const callerIsSelf = lookupPhone && normalizePhone(lookupPhone) === normalizePhone(member.phone);
+async function buildPublicProfile(member, options = {}) {
+  const callerIsSelf = Boolean(options.self);
   const showTeaFund = Boolean(options.includeTeaFund);
   const [docs, breakdown, settings] = await Promise.all([
     Contribution.find({ memberId: member._id, deleted: false })
@@ -998,44 +1065,23 @@ async function sendStatementExcel(res, profile) {
   sendWorkbook(res, `statement-${slug}.xlsx`, memberStatementSheets(profile, settings.chamaName));
 }
 
-// GET /api/public/lookup/statement?phone= — PUBLIC, same access rule as publicLookup.
+// GET /api/public/lookup/statement?nationalId= — PUBLIC, same access rule as
+// publicLookup.
 async function publicLookupStatement(req, res, next) {
   try {
-    const normalized = normalizePhone(String(req.query.phone || ''));
-    if (!normalized) {
-      return res.status(400).json({ message: 'Enter a valid phone number (e.g. 0712 345 678)' });
-    }
-    const member = await Member.findOne({ phone: normalized, active: true }).lean();
-    if (!member) return res.status(404).json({ message: 'not_found' });
-    await sendStatement(res, await buildPublicProfile(member, normalized));
+    const gate = await findActiveMemberByNationalId(req.query.nationalId);
+    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
+    await sendStatement(res, await buildPublicProfile(gate.member, { self: true }));
   } catch (err) {
     next(err);
   }
 }
-// GET /api/public/lookup/statement/excel?phone= — PUBLIC
+// GET /api/public/lookup/statement/excel?nationalId= — PUBLIC
 async function publicLookupStatementExcel(req, res, next) {
   try {
-    const normalized = normalizePhone(String(req.query.phone || ''));
-
-    if (!normalized) {
-      return res.status(400).json({
-        message: 'Enter a valid phone number (e.g. 0712 345 678)',
-      });
-    }
-
-    const member = await Member.findOne({
-      phone: normalized,
-      active: true,
-    }).lean();
-
-    if (!member) {
-      return res.status(404).json({ message: 'not_found' });
-    }
-
-    await sendStatementExcel(
-      res,
-      await buildPublicProfile(member, normalized)
-    );
+    const gate = await findActiveMemberByNationalId(req.query.nationalId);
+    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
+    await sendStatementExcel(res, await buildPublicProfile(gate.member, { self: true }));
   } catch (err) {
     next(err);
   }
@@ -1047,31 +1093,25 @@ async function memberStatement(req, res, next) {
   try {
     const member = await Member.findById(req.params.id).lean();
     if (!member) return res.status(404).json({ message: 'Member not found' });
-    await sendStatement(res, await buildPublicProfile(member, undefined, { includeTeaFund: true }));
+    await sendStatement(res, await buildPublicProfile(member, { includeTeaFund: true }));
   } catch (err) {
     next(err);
   }
 }
 
-// GET /api/public/lookup?phone= — PUBLIC, rate-limited, EXACT match only.
+// GET /api/public/lookup?nationalId= — PUBLIC, rate-limited, EXACT match only.
 async function publicLookup(req, res, next) {
   try {
-    const normalized = normalizePhone(String(req.query.phone || ''));
-    if (!normalized) {
-      return res.status(400).json({ message: 'Enter a valid phone number (e.g. 0712 345 678)' });
-    }
+    // Exact match is enforced inside the gate — no regex, no partial search, one
+    // member or none.
+    const gate = await findActiveMemberByNationalId(req.query.nationalId);
+    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
 
-    // Exact match enforced at query level — no regex, no partial search, single result.
-    const member = await Member.findOne({ phone: normalized, active: true }).lean();
-    if (!member) {
-      return res.status(404).json({ message: 'not_found' });
-    }
-
-    // The number that just matched IS the credential, so this caller is the
-    // member: pass it through and they see their own email and next of kin.
-    // Nobody reaches this without their own number, and there is no directory to
-    // browse any more, so there is no other way in.
-    res.json(await buildPublicProfile(member, normalized));
+    // The ID that just matched IS the credential, so this caller is the member:
+    // he sees his own email and next of kin. Nobody reaches this without his own
+    // ID, and there is no directory to browse any more, so there is no other way
+    // in.
+    res.json(await buildPublicProfile(gate.member, { self: true }));
   } catch (err) {
     next(err);
   }
@@ -1098,7 +1138,7 @@ async function memberStatementExcel(req, res, next) {
       res,
       // The office's copy: it keeps the Tea Fund in it, as the finance ledger
       // does — a member's own download from the lookup leaves it out.
-      await buildPublicProfile(member, undefined, { includeTeaFund: true })
+      await buildPublicProfile(member, { includeTeaFund: true })
     );
   } catch (err) {
     next(err);

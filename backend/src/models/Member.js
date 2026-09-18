@@ -76,8 +76,17 @@ const MemberSchema = new Schema(
     // Personal details it asks for beyond name and phone. All optional: the
     // register already holds members whose paper form never had them filled in.
     dateOfBirth: { type: Date, default: null },
-    // Kenyan ID, passport, or "not yet issued" — free text on purpose.
-    nationalId: { type: String, default: '', trim: true },
+    // Kenyan ID, passport, or "not yet issued" — free text on purpose, and the
+    // field the members' area is keyed on: a member opens his own record, the
+    // documents and the constitution by typing this number
+    // (utils/nationalId.js normalises it, utils/publicAccess.js checks it).
+    //
+    // No unique index: the column also carries notes that are not numbers, and
+    // several members can legitimately be blank. One ID is still meant to belong
+    // to one member, so create/edit/import refuse a duplicate and the gate
+    // answers 409 rather than showing the wrong passbook when one slips through.
+    // The plain index below is what the gate's exact-match query rides on.
+    nationalId: { type: String, default: '', trim: true, index: true },
     physicalAddress: { type: String, default: '', trim: true },
     // Spouse, children, parents and in-laws, as the form's family section asks.
     family: { type: FamilySchema, default: () => ({}) },

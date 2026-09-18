@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { money } from '../../utils/format';
+import { nationalIdMissing } from '../../utils/nationalId';
 import MemberAvatar from './MemberAvatar';
 import { warmMemberRecord } from '../../services/prefetch';
 
@@ -38,7 +39,17 @@ export default function MemberCards({ members }) {
                 </p>
               </div>
               <div className="mt-0.5 flex items-baseline justify-between gap-3 text-xs text-muted">
-                <p className="amount truncate">{m.phone}</p>
+                <p className="truncate">
+                  <span className="amount">{m.phone}</span>
+                  {/* The members' page is opened with the ID, so a card that has
+                      none is a member who cannot look himself up: the office sees
+                      it here, on the list they are already scanning. */}
+                  {nationalIdMissing(m.nationalId) && (
+                    <span className="ml-2 font-semibold uppercase tracking-widest text-alert">
+                      No ID
+                    </span>
+                  )}
+                </p>
                 <p className="shrink-0">
                   {m.arrears > 0
                     ? `${money(m.arrears)} behind`

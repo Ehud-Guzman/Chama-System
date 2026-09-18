@@ -368,7 +368,7 @@ export default function Minutes() {
                   <span>
                     Visible to members
                     <span className="block text-xs text-muted">
-                      Shown on the public page to anyone who enters a registered phone number.
+                      Shown on the public page to anyone who enters a registered ID number.
                     </span>
                   </span>
                 </label>

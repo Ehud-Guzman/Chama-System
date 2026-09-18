@@ -1,7 +1,7 @@
 // The group's constitution — the published edition, clause by clause.
 //
 // It lives on the server rather than in the frontend bundle, because a member has
-// to prove a registered phone number before reading it
+// to prove an ID registered with the group before reading it
 // (GET /api/public/constitution). Shipping it in the app bundle would have made that
 // gate decorative: the whole text would have stayed one devtools download away.
 

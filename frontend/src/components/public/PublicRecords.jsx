@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../../services/api';
-import { normalizePhone, maskPhone } from '../../utils/phone';
+import { normalizeNationalId, maskNationalId, NATIONAL_ID_ERROR } from '../../utils/nationalId';
 import { shortDate, formatBytes } from '../../utils/format';
 import { documentCategoryLabel } from '../../utils/documentCategories';
 import { opensInBrowser } from '../../utils/documentFiles';
@@ -9,17 +9,17 @@ import { blobErrorMessage } from '../../utils/blobError';
 import MinutesReader from '../minutes/MinutesReader';
 
 // The members' area: the chama's documents (title deeds, certificates), the
-// meeting minutes, and the constitution, behind one phone-number gate. A
-// successful passbook lookup counts as having entered a number, so
-// `verifiedPhone` unlocks it without asking twice.
+// meeting minutes, and the constitution, behind one ID gate. A successful passbook
+// lookup counts as having entered an ID, so `verifiedId` unlocks it without asking
+// twice.
 //
-// Every tab is served by a phone-gated endpoint that re-checks the number
-// itself — the gate below is a convenience, never the protection. Anything that
-// must not be public is not in the app bundle either: the constitution is a
-// server-side document now, not a page anyone can read from the source.
-export default function PublicRecords({ verifiedPhone }) {
-  const [phone, setPhone] = useState('');
-  const [unlockedPhone, setUnlockedPhone] = useState('');
+// Every tab is served by an ID-gated endpoint that re-checks the number itself —
+// the gate below is a convenience, never the protection. Anything that must not be
+// public is not in the app bundle either: the constitution is a server-side
+// document now, not a page anyone can read from the source.
+export default function PublicRecords({ verifiedId }) {
+  const [id, setId] = useState('');
+  const [unlockedId, setUnlockedId] = useState('');
   const [status, setStatus] = useState('locked'); // locked | loading | unlocked | error
   const [error, setError] = useState('');
   const [tab, setTab] = useState('documents');
@@ -36,12 +36,12 @@ export default function PublicRecords({ verifiedPhone }) {
   const [openMinute, setOpenMinute] = useState(null);
   const [openingMinuteId, setOpeningMinuteId] = useState(null);
 
-  const unlock = useCallback(async (rawPhone) => {
-    const normalized = normalizePhone(rawPhone);
+  const unlock = useCallback(async (rawId) => {
+    const normalized = normalizeNationalId(rawId);
 
     if (!normalized) {
       setStatus('error');
-      setError('Enter a valid phone number, e.g. 0712 345 678');
+      setError(NATIONAL_ID_ERROR);
       return;
     }
 
@@ -49,14 +49,14 @@ export default function PublicRecords({ verifiedPhone }) {
     setError('');
 
     try {
-      // The documents list doubles as the gate: it only answers for a registered
-      // member's number, and an empty vault still answers 200.
+      // The documents list doubles as the gate: it only answers for the ID on a
+      // registered member's record, and an empty vault still answers 200.
       const res = await api.get('/api/public/documents', {
-        params: { phone: normalized },
+        params: { nationalId: normalized },
       });
       setDocuments(res.data.documents || []);
       setCategories(res.data.categories || []);
-      setUnlockedPhone(normalized);
+      setUnlockedId(normalized);
       setTab('documents');
       setMinutes([]);
       setMinutesLoaded(false);
@@ -65,19 +65,19 @@ export default function PublicRecords({ verifiedPhone }) {
     } catch (err) {
       setDocuments([]);
       setCategories([]);
-      setUnlockedPhone('');
+      setUnlockedId('');
       setStatus('error');
       setError(
         err.response?.status === 404
-          ? 'That number is not registered with the chama. Check the number, or ask the treasurer to add you.'
+          ? 'That ID is not recorded against any active member. Check the number, or ask the treasurer to add it.'
           : apiMessage(err, 'Could not fetch the records right now. Please try again.')
       );
     }
   }, []);
 
   useEffect(() => {
-    if (verifiedPhone) unlock(verifiedPhone);
-  }, [verifiedPhone, unlock]);
+    if (verifiedId) unlock(verifiedId);
+  }, [verifiedId, unlock]);
 
   // Minutes are fetched the first time that tab is opened, not on unlock —
   // they're long documents, and most visits are for the ledger above.
@@ -87,7 +87,7 @@ export default function PublicRecords({ verifiedPhone }) {
     let cancelled = false;
     setMinutesLoading(true);
     api
-      .get('/api/public/minutes', { params: { phone: unlockedPhone } })
+      .get('/api/public/minutes', { params: { nationalId: unlockedId } })
       .then((res) => {
         if (cancelled) return;
         setMinutes(res.data.minutes || []);
@@ -103,11 +103,11 @@ export default function PublicRecords({ verifiedPhone }) {
     return () => {
       cancelled = true;
     };
-  }, [status, tab, minutesLoaded, unlockedPhone]);
+  }, [status, tab, minutesLoaded, unlockedId]);
 
   function lock() {
-    setPhone('');
-    setUnlockedPhone('');
+    setId('');
+    setUnlockedId('');
     setDocuments([]);
     setMinutes([]);
     setMinutesLoaded(false);
@@ -119,7 +119,7 @@ export default function PublicRecords({ verifiedPhone }) {
 
   function onSubmit(e) {
     e.preventDefault();
-    unlock(phone);
+    unlock(id);
   }
 
   async function openDocument(doc, download) {
@@ -127,7 +127,7 @@ export default function PublicRecords({ verifiedPhone }) {
     setError('');
     try {
       const res = await api.get(`/api/public/documents/${doc.id}/file`, {
-        params: { phone: unlockedPhone, download: download ? 1 : undefined },
+        params: { nationalId: unlockedId, download: download ? 1 : undefined },
         responseType: 'blob',
       });
       const url = URL.createObjectURL(res.data);
@@ -157,7 +157,7 @@ export default function PublicRecords({ verifiedPhone }) {
     setError('');
     try {
       const res = await api.get(`/api/public/minutes/${id}`, {
-        params: { phone: unlockedPhone },
+        params: { nationalId: unlockedId },
       });
       setOpenMinute(res.data.minute);
     } catch (err) {
@@ -176,7 +176,7 @@ export default function PublicRecords({ verifiedPhone }) {
     <section className="rounded-2xl border border-rule bg-surface p-4 shadow-sm sm:p-6 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-center lg:gap-x-10">
       {/* The header spans the whole card once the gate is out of the way, so the
           Lock button lands on the card's right edge instead of at the end of the
-          narrower first column (where the phone field sits while still locked). */}
+          narrower first column (where the ID field sits while still locked). */}
       <div
         className={`flex items-start justify-between gap-3 lg:col-start-1 lg:row-start-1 ${
           status === 'unlocked' ? 'lg:col-span-2' : ''
@@ -186,7 +186,7 @@ export default function PublicRecords({ verifiedPhone }) {
           <h2 className="text-base font-bold sm:text-lg">Documents, minutes &amp; constitution</h2>
           <p className="mt-1 text-xs leading-5 text-muted sm:text-sm">
             Title deeds, certificates, meeting minutes and the constitution. Shown only after you
-            enter a phone number registered with the chama.
+            enter the ID number registered with the chama.
           </p>
         </div>
 
@@ -210,21 +210,22 @@ export default function PublicRecords({ verifiedPhone }) {
           className="mt-5 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:w-full"
           noValidate
         >
-          <label htmlFor="records-phone" className="mb-2 block text-sm font-semibold">
-            Phone number
+          <label htmlFor="records-id" className="mb-2 block text-sm font-semibold">
+            ID number
           </label>
 
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
-              id="records-phone"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
+              id="records-id"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
               enterKeyHint="go"
-              placeholder="0712 345 678"
-              value={phone}
+              placeholder="12345678"
+              value={id}
               onChange={(e) => {
-                setPhone(e.target.value);
+                setId(e.target.value);
                 if (status === 'error') {
                   setStatus('locked');
                   setError('');
@@ -411,7 +412,7 @@ export default function PublicRecords({ verifiedPhone }) {
           )}
 
           {/* The constitution sits with the other members' documents. The page it
-              opens fetches the text from the server for this same number, so the
+              opens fetches the text from the server for this same ID, so the
               handover carries the number rather than making the member type it
               again. */}
           {tab === 'constitution' && (
@@ -424,7 +425,7 @@ export default function PublicRecords({ verifiedPhone }) {
 
               <Link
                 to="/constitution"
-                state={{ phone: unlockedPhone }}
+                state={{ nationalId: unlockedId }}
                 className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-white"
               >
                 Read the constitution
@@ -433,7 +434,7 @@ export default function PublicRecords({ verifiedPhone }) {
           )}
 
           <p className="mt-3 text-[11px] text-muted">
-            Unlocked for {maskPhone(unlockedPhone)} — records stay visible until you lock them or
+            Unlocked for {maskNationalId(unlockedId)} — records stay visible until you lock them or
             leave the page.
           </p>
         </div>

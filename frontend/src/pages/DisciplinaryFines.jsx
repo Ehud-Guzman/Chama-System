@@ -43,7 +43,11 @@ export default function DisciplinaryFines() {
     const q = search.trim().toLowerCase();
     if (!q) return members;
     return members.filter(
-      (m) => m.name.toLowerCase().includes(q) || m.phone.includes(q) || m.regNumber?.toLowerCase().includes(q)
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.phone.includes(q) ||
+        m.regNumber?.toLowerCase().includes(q) ||
+        m.nationalId?.toLowerCase().includes(q)
     );
   }, [members, search]);
 
@@ -197,7 +201,7 @@ export default function DisciplinaryFines() {
 
       <input
         type="search"
-        placeholder="Search name, phone or reg number"
+        placeholder="Search name, phone, ID or reg no."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="h-12 w-full rounded-xl border border-rule bg-surface px-4 text-sm"

@@ -4,7 +4,7 @@
 // drift into two spellings on two pages.
 //
 // The link opens in a new tab: a member who taps it is usually mid-lookup, and
-// losing the page (and the number he just typed) to a credit line would be rude.
+// losing the page (and the ID he just typed) to a credit line would be rude.
 export default function CreditLine({ className = '' }) {
   return (
     <p className={`text-xs text-muted ${className}`.trim()}>

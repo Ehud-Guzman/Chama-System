@@ -13,6 +13,8 @@ const loginLimiter = rateLimit({
 
 // Public lookup limiter: defaults to 5 requests/minute per IP.
 // Sends 429 with RateLimit/Retry-After headers on breach.
+// The ID gate is a short number that is written on a card, so the rate limit is
+// the thing standing between a script and the whole register — it stays tight.
 const lookupLimiter = rateLimit({
   windowMs: Number(process.env.LOOKUP_RATE_LIMIT_WINDOW_MS) || 60000,
   max: Number(process.env.LOOKUP_RATE_LIMIT_MAX) || 5,
@@ -22,7 +24,7 @@ const lookupLimiter = rateLimit({
 });
 
 // Group overview loads automatically on every page visit (not per search),
-// so it needs a much more generous budget than the phone lookup.
+// so it needs a much more generous budget than the passbook lookup.
 const overviewLimiter = rateLimit({
   windowMs: 60000,
   max: 30,
@@ -31,10 +33,10 @@ const overviewLimiter = rateLimit({
   message: { message: 'Too many requests. Please wait a minute and try again.' },
 });
 
-// The document vault, the minutes and the constitution are all phone-gated but
+// The document vault, the minutes and the constitution are all ID-gated but
 // browsed — a member unlocks once and then opens several things, so this is more
-// generous than the passbook lookup while still capping scripted scraping of a
-// member's number.
+// generous than the passbook lookup while still capping scripted scraping of an
+// ID, which is a short number and so worth capping.
 const documentLimiter = rateLimit({
   windowMs: 60000,
   max: 30,

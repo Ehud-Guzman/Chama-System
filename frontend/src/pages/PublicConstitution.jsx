@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api, { apiMessage } from "../services/api";
-import { normalizePhone } from "../utils/phone";
+import { normalizeNationalId, NATIONAL_ID_ERROR } from "../utils/nationalId";
 import { shortDate } from "../utils/format";
 import { CHAMA_NAME_TOP } from "../utils/branding";
 import CreditLine from "../components/shared/CreditLine";
@@ -181,33 +181,33 @@ export default function PublicConstitution() {
 
   /*
    * ---------------------------------------------------------
-   * PHONE GATE — the constitution is a members' document
+   * ID GATE — the constitution is a members' document
    * ---------------------------------------------------------
-   * It is fetched from the server only for a phone number registered with the
+   * It is fetched from the server only for an ID registered with the
    * chama, and it is deliberately not shipped in the app bundle, so there is
    * nothing to read here before proving a number — see
    * GET /api/public/constitution.
    */
-  const linkedPhone = location.state?.phone || "";
-  const [phone, setPhone] = useState("");
-  const [status, setStatus] = useState(linkedPhone ? "loading" : "locked");
+  const linkedId = location.state?.nationalId || "";
+  const [id, setId] = useState("");
+  const [status, setStatus] = useState(linkedId ? "loading" : "locked");
   const [gateError, setGateError] = useState("");
   const [doc, setDoc] = useState(null);
-  // The phone that opened the document, kept normalized so a decision can be
+  // The ID that opened the document, kept normalized so a decision can be
   // posted without asking for the number again.
-  const [unlockedPhone, setUnlockedPhone] = useState("");
+  const [unlockedId, setUnlockedId] = useState("");
   // What this member has already decided, chapter by chapter, as the server
   // reports it — the same record the office sees on his profile.
   const [summary, setSummary] = useState(null);
   const [savingChapter, setSavingChapter] = useState(null);
   const [decisionError, setDecisionError] = useState({ chapterNumber: null, message: "" });
 
-  const unlock = useCallback(async (rawPhone) => {
-    const normalized = normalizePhone(rawPhone);
+  const unlock = useCallback(async (rawId) => {
+    const normalized = normalizeNationalId(rawId);
 
     if (!normalized) {
       setStatus("error");
-      setGateError("Enter a valid phone number, e.g. 0712 345 678");
+      setGateError(NATIONAL_ID_ERROR);
       return;
     }
 
@@ -216,20 +216,20 @@ export default function PublicConstitution() {
 
     try {
       const res = await api.get("/api/public/constitution", {
-        params: { phone: normalized },
+        params: { nationalId: normalized },
       });
       setDoc(res.data);
       setSummary(res.data?.summary || null);
-      setUnlockedPhone(normalized);
+      setUnlockedId(normalized);
       setStatus("unlocked");
     } catch (err) {
       setDoc(null);
       setSummary(null);
-      setUnlockedPhone("");
+      setUnlockedId("");
       setStatus("error");
       setGateError(
         err.response?.status === 404
-          ? "That number is not registered with the chama. Check the number, or ask the treasurer to add you."
+          ? "That ID is not recorded against any active member. Check the number, or ask the treasurer to add it."
           : apiMessage(err, "Could not open the constitution right now. Please try again.")
       );
     }
@@ -237,14 +237,14 @@ export default function PublicConstitution() {
 
   function onSubmitGate(event) {
     event.preventDefault();
-    unlock(phone);
+    unlock(id);
   }
 
-  // Arriving from the members' area: the number was proved there a moment ago, so
+  // Arriving from the members' area: the ID was proved there a moment ago, so
   // the page opens straight onto the document instead of asking for it twice.
   useEffect(() => {
-    if (linkedPhone) unlock(linkedPhone);
-  }, [linkedPhone, unlock]);
+    if (linkedId) unlock(linkedId);
+  }, [linkedId, unlock]);
 
   // The document's shape is unchanged from when it lived in the bundle: a meta
   // block and the chapters. Aliased to the names the rest of the file uses.
@@ -367,7 +367,7 @@ export default function PublicConstitution() {
 
       try {
         const res = await api.post("/api/public/constitution/decision", {
-          phone: unlockedPhone,
+          nationalId: unlockedId,
           chapterNumber,
           decision,
           reason,
@@ -386,7 +386,7 @@ export default function PublicConstitution() {
         setSavingChapter(null);
       }
     },
-    [unlockedPhone],
+    [unlockedId],
   );
 
   /*
@@ -576,25 +576,26 @@ export default function PublicConstitution() {
               The group&rsquo;s constitution
             </h1>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Enter a phone number registered with the chama to read the constitution.
+              Enter the ID number registered with the chama to read the constitution.
             </p>
 
             <form onSubmit={onSubmitGate} className="mt-5" noValidate>
-              <label htmlFor="constitution-phone" className="mb-2 block text-sm font-semibold">
-                Phone number
+              <label htmlFor="constitution-id" className="mb-2 block text-sm font-semibold">
+                ID number
               </label>
 
               <div className="flex flex-col gap-2 sm:flex-row">
                 <input
-                  id="constitution-phone"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
+                  id="constitution-id"
+                  type="text"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
                   enterKeyHint="go"
-                  placeholder="0712 345 678"
-                  value={phone}
+                  placeholder="12345678"
+                  value={id}
                   onChange={(event) => {
-                    setPhone(event.target.value);
+                    setId(event.target.value);
                     if (status === "error") {
                       setStatus("locked");
                       setGateError("");

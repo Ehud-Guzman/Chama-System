@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
-import { normalizePhone } from '../utils/phone';
+import { normalizeNationalId, NATIONAL_ID_ERROR } from '../utils/nationalId';
 import { CHAMA_NAME, CHAMA_LOGO } from '../utils/branding';
 
 import GroupOverview from '../components/public/GroupOverview';
@@ -11,10 +11,13 @@ import VisionMission from '../components/public/VisionMission';
 import CreditLine from '../components/shared/CreditLine';
 
 export default function PublicLookup() {
-  const [phone, setPhone] = useState('');
+  // The ID entered at the gate — the number the office recorded for this member.
+  const [id, setId] = useState('');
   const [status, setStatus] = useState('idle');
   const [result, setResult] = useState(null);
-  const [lookedUpPhone, setLookedUpPhone] = useState('');
+  // The ID that was accepted, normalised: it keys the passbook, the statement
+  // downloads and the members' area below.
+  const [lookedUpId, setLookedUpId] = useState('');
   const [error, setError] = useState('');
 
   // Everything the page knows about the group itself: its name, its logo, its
@@ -35,11 +38,11 @@ export default function PublicLookup() {
   async function onSubmit(e) {
     e.preventDefault();
 
-    const normalized = normalizePhone(phone);
+    const normalized = normalizeNationalId(id);
 
     if (!normalized) {
       setStatus('error');
-      setError('Enter a valid phone number, e.g. 0712 345 678');
+      setError(NATIONAL_ID_ERROR);
       return;
     }
 
@@ -50,12 +53,12 @@ export default function PublicLookup() {
     try {
       const res = await api.get('/api/public/lookup', {
         params: {
-          phone: normalized,
+          nationalId: normalized,
         },
       });
 
       setResult(res.data);
-      setLookedUpPhone(normalized);
+      setLookedUpId(normalized);
       setStatus('found');
     } catch (err) {
       if (err.response?.status === 404) {
@@ -132,7 +135,7 @@ export default function PublicLookup() {
           {/* =================================================
               HERO AND THE LOOKUP — one card
 
-              The heading and the phone form are the two halves of the one thing
+              The heading and the ID form are the two halves of the one thing
               this page asks for, so they share a surface. As two separate blocks
               they sat at opposite ends of a 1088px row with a dead gap between
               them, which is what made the top of the page read as unrelated pieces.
@@ -154,8 +157,8 @@ export default function PublicLookup() {
 
             <p className="mt-3 max-w-xl text-sm leading-6 text-muted sm:text-base">
               Group totals are open to everyone. Your own contribution record — and the
-              group&rsquo;s documents, minutes and constitution — open with the phone number
-              you registered.
+              group&rsquo;s documents, minutes and constitution — open with the ID number
+              registered with the chama.
             </p>
 
             </div>
@@ -170,26 +173,27 @@ export default function PublicLookup() {
               </h2>
 
               <p className="mt-1 text-xs leading-5 text-muted sm:text-sm lg:col-span-2">
-                Enter the phone number registered with the chama.
+                Enter the ID number registered with the chama.
               </p>
 
               <label
-                htmlFor="phone"
+                htmlFor="member-id"
                 className="mt-5 mb-2 block text-sm font-semibold lg:col-span-2"
               >
-                Phone number
+                ID number
               </label>
 
               <input
-                id="phone"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
+                id="member-id"
+                type="text"
+                autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
                 enterKeyHint="search"
-                placeholder="0712 345 678"
-                value={phone}
+                placeholder="12345678"
+                value={id}
                 onChange={(e) => {
-                  setPhone(e.target.value);
+                  setId(e.target.value);
 
                   if (status === 'error' || status === 'notFound') {
                     setStatus('idle');
@@ -198,7 +202,7 @@ export default function PublicLookup() {
                 }}
                 aria-invalid={status === 'error'}
                 aria-describedby={
-                  status === 'error' ? 'phone-error' : undefined
+                  status === 'error' ? 'member-id-error' : undefined
                 }
                 className="
                   amount h-14 w-full rounded-xl
@@ -248,7 +252,7 @@ export default function PublicLookup() {
 
               {status === 'error' && (
                 <p
-                  id="phone-error"
+                  id="member-id-error"
                   className="mt-3 text-sm font-medium text-alert lg:col-span-2"
                   role="alert"
                 >
@@ -286,9 +290,9 @@ export default function PublicLookup() {
                 </p>
 
                 <p className="mx-auto mt-1 max-w-sm text-sm leading-5 text-muted">
-                  No member record was found for that number.
-                  If your number is registered with the group,
-                  please contact the treasurer.
+                  No member record was found for that ID number.
+                  If the office has not recorded your ID yet,
+                  please ask the treasurer.
                 </p>
               </div>
             )}
@@ -309,8 +313,8 @@ export default function PublicLookup() {
               <PassbookCard
                 key={result.regNumber || result.name}
                 result={result}
-                statementUrl={`/api/public/lookup/statement?phone=${lookedUpPhone}`}
-                statementExcelUrl={`/api/public/lookup/statement/excel?phone=${lookedUpPhone}`}
+                statementUrl={`/api/public/lookup/statement?nationalId=${lookedUpId}`}
+                statementExcelUrl={`/api/public/lookup/statement/excel?nationalId=${lookedUpId}`}
               />
             </section>
           )}
@@ -318,15 +322,15 @@ export default function PublicLookup() {
           {/* =================================================
               CHAMA DOCUMENTS, MINUTES & CONSTITUTION
 
-              Locked until a registered phone number is given.
+              Locked until the ID recorded for a member is given.
               A successful lookup above already proved one, so the
               members' area opens itself rather than asking again.
           ================================================== */}
 
           <section aria-label="Chama documents, minutes and constitution">
             <PublicRecords
-              key={lookedUpPhone || 'locked'}
-              verifiedPhone={lookedUpPhone}
+              key={lookedUpId || 'locked'}
+              verifiedId={lookedUpId}
             />
           </section>
 
@@ -350,8 +354,8 @@ export default function PublicLookup() {
 
         <footer className="mt-12 border-t border-rule py-6 text-center text-xs text-muted">
           <p>
-            Your own record, opened with the number you registered — nothing here lists
-            the members.
+            Your own record, opened with the ID number registered with the group — nothing
+            here lists the members.
           </p>
 
           <div className="mt-2 flex items-center justify-center gap-3">
@@ -364,8 +368,8 @@ export default function PublicLookup() {
           </div>
 
           {/* The credit, at the very bottom where one belongs. The link opens in a
-              new tab so a member never loses the page — and the phone number he
-              just typed — by tapping it. */}
+              new tab so a member never loses the page — and the ID he just typed —
+              by tapping it. */}
           <CreditLine className="mt-4" />
         </footer>
 

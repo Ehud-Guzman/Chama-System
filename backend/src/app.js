@@ -151,10 +151,10 @@ app.get(
   publicOverview
 );
 
-// The chama's constitution — members only, by the same phone gate as the
-// document vault below. There is deliberately no public directory of members:
-// a member's record is theirs, and it is opened by proving his number, not by
-// anybody browsing a list of names.
+// The chama's constitution — members only, by the same ID gate as the document
+// vault below. There is deliberately no public directory of members: a member's
+// record is theirs, and it is opened by proving his ID, not by anybody browsing a
+// list of names.
 app.get(
   '/api/public/constitution',
   documentLimiter,
@@ -169,7 +169,7 @@ app.post(
 );
 
 // Public chama documents — the group's title deeds, certificates and other
-// records. Gated on a registered member's phone number: no number, no list.
+// records. Gated on the ID on a registered member's record: no ID, no list.
 app.get(
   '/api/public/documents',
   documentLimiter,
@@ -182,8 +182,8 @@ app.get(
   publicDocumentFile
 );
 
-// Public meeting minutes — phone-gated by the same rule as the document vault:
-// enter a registered member's number, or see nothing.
+// Public meeting minutes — ID-gated by the same rule as the document vault:
+// enter the ID on a registered member's record, or see nothing.
 app.get(
   '/api/public/minutes',
   documentLimiter,

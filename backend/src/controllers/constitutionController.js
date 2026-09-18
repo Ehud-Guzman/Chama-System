@@ -1,7 +1,6 @@
 const { constitutionMeta, constitutionChapters } = require('../data/constitution');
 const ConstitutionDecision = require('../models/ConstitutionDecision');
-const { findActiveMemberByPhone, phoneGateError } = require('../utils/publicAccess');
-const { normalizePhone } = require('../utils/phone');
+const { findActiveMemberByNationalId } = require('../utils/publicAccess');
 
 const TOTAL_CHAPTERS = constitutionChapters.length;
 const CHAPTER_BY_NUMBER = new Map(constitutionChapters.map((c) => [c.number, c]));
@@ -29,27 +28,28 @@ async function decisionsForMember(memberId) {
   };
 }
 
-// GET /api/public/constitution?phone= — MEMBERS ONLY.
+// GET /api/public/constitution?nationalId= — MEMBERS ONLY.
 //
 // The constitution is the group's own document, so it sits behind the same gate
-// as the document vault and the minutes: a phone number registered to an active
-// member, or nothing at all.
+// as the document vault and the minutes: an ID recorded against an active member,
+// or nothing at all.
 //
 // The text is served from here rather than bundled into the public JavaScript on
 // purpose. A reader that shipped the whole constitution to the browser and merely
 // hid it behind a click would leave it one devtools download away for anyone who
 // never signed in — the gate would be decorative. Anything a member is not meant
-// to see without proving their number has to come from the server.
+// to see without proving his ID has to come from the server.
 //
 // The member's own approve/reject record travels with the text, so the reading
 // page can badge each chapter without a second request.
 async function publicConstitution(req, res, next) {
   try {
-    const member = await findActiveMemberByPhone(req.query.phone);
-    if (!member) return phoneGateError(req, res);
+    const gate = await findActiveMemberByNationalId(req.query.nationalId);
+    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
+    const member = gate.member;
 
-    // Never let a shared device or a proxy cache a document unlocked by a phone
-    // number — the same rule the document vault follows.
+    // Never let a shared device or a proxy cache a document unlocked by an ID —
+    // the same rule the document vault follows.
     res.setHeader('Cache-Control', 'no-store');
     res.json({
       meta: constitutionMeta,
@@ -61,8 +61,8 @@ async function publicConstitution(req, res, next) {
   }
 }
 
-// POST /api/public/constitution/decision — MEMBERS ONLY (by the same phone gate).
-// { phone, chapterNumber, decision: 'approved' | 'rejected', reason? }
+// POST /api/public/constitution/decision — MEMBERS ONLY (by the same ID gate).
+// { nationalId, chapterNumber, decision: 'approved' | 'rejected', reason? }
 //
 // A decision is written once and never changed: the row is inserted, the pair
 // (member, chapter) is uniquely indexed, and no route updates it. That is what
@@ -70,13 +70,11 @@ async function publicConstitution(req, res, next) {
 // the same record the office sees on the member's profile.
 async function publicConstitutionDecision(req, res, next) {
   try {
-    const normalized = normalizePhone(String(req.body?.phone || req.query.phone || ''));
-    if (!normalized) {
-      return res.status(400).json({ message: 'Enter a valid phone number (e.g. 0712 345 678)' });
-    }
-
-    const member = await findActiveMemberByPhone(normalized);
-    if (!member) return res.status(404).json({ message: 'not_found' });
+    const gate = await findActiveMemberByNationalId(
+      req.body?.nationalId || req.query.nationalId
+    );
+    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
+    const member = gate.member;
 
     const chapterNumber = Number(req.body?.chapterNumber);
     const chapter = CHAPTER_BY_NUMBER.get(chapterNumber);

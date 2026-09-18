@@ -1,7 +1,7 @@
 const ChamaDocument = require('../models/ChamaDocument');
 const DocumentCategory = require('../models/DocumentCategory');
 const { logAudit, snapshot } = require('../utils/auditLogger');
-const { findActiveMemberByPhone, phoneGateError } = require('../utils/publicAccess');
+const { findActiveMemberByNationalId } = require('../utils/publicAccess');
 const {
   FALLBACK_CATEGORY,
   slugifyCategory,
@@ -293,12 +293,12 @@ async function getDocumentFile(req, res, next) {
   }
 }
 
-// GET /api/public/documents?phone= — PUBLIC, phone-gated. Lists only documents
-// the group published to members, and only for a registered active number.
+// GET /api/public/documents?nationalId= — PUBLIC, ID-gated. Lists only documents
+// the group published to members, and only for an ID on an active member.
 async function publicListDocuments(req, res, next) {
   try {
-    const member = await findActiveMemberByPhone(req.query.phone);
-    if (!member) return phoneGateError(req, res);
+    const gate = await findActiveMemberByNationalId(req.query.nationalId);
+    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
 
     const [docs, categories] = await Promise.all([
       ChamaDocument.find({ deleted: false, visibleToMembers: { $ne: false } })
@@ -320,13 +320,13 @@ async function publicListDocuments(req, res, next) {
   }
 }
 
-// GET /api/public/documents/:id/file?phone= — PUBLIC, phone-gated. `?download=1`
+// GET /api/public/documents/:id/file?nationalId= — PUBLIC, ID-gated. `?download=1`
 // forces a download; otherwise the file opens inline (a PDF or photo of a title
 // deed is meant to be looked at, not saved to someone's Downloads folder).
 async function publicDocumentFile(req, res, next) {
   try {
-    const member = await findActiveMemberByPhone(req.query.phone);
-    if (!member) return phoneGateError(req, res);
+    const gate = await findActiveMemberByNationalId(req.query.nationalId);
+    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
 
     const doc = await ChamaDocument.findOne({
       _id: req.params.id,

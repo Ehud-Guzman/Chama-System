@@ -29,8 +29,8 @@ export default function App() {
         <Suspense fallback={<Loader />}>
           <Routes>
             <Route path="/" element={<PublicLookup />} />
-            {/* Members only: the page fetches the text for a registered phone number,
-                and there is no public link to it anywhere. */}
+            {/* Members only: the page fetches the text for an ID recorded against
+                a member, and there is no public link to it anywhere. */}
             <Route path="/constitution" element={<PublicConstitution />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route element={<ProtectedRoute />}>

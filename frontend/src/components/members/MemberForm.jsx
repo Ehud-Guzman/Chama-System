@@ -389,7 +389,8 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
 
         {/* Date of birth, ID and address. Optional: a member is often entered from a
             name and a phone number first, and these filled in as he provides them.
-            The profile shows what is still missing. */}
+            The profile shows what is still missing. The ID is the one field with a
+            job beyond the record: it is what he types to open his own page. */}
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="m-dob" className="mb-1 block text-sm font-medium">
@@ -416,6 +417,10 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
               onChange={set('nationalId')}
               className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm"
             />
+            <p className="mt-1 text-xs text-muted">
+              What he types to open his own record, the documents and the constitution. Spaces and
+              slashes are fine. Without it he cannot look himself up at all.
+            </p>
           </div>
         </div>
 
