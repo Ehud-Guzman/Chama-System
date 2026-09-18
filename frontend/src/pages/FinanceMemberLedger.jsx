@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
+import { useModal } from '../hooks/useModal';
+import Modal from '../components/shared/Modal';
+import ErrorState from '../components/shared/ErrorState';
 import { money, shortDate, todayISO, isoDateOf, METHOD_LABELS } from '../utils/format';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import Loader from '../components/shared/Loader';
@@ -24,7 +27,7 @@ const KINDS = [
 function Stat({ label, value, accent, alert }) {
   return (
     <div className="rounded-xl border border-rule bg-surface p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{label}</p>
       <p
         className={`amount mt-1 text-lg font-bold ${
           alert ? 'text-alert' : accent ? 'text-primary' : ''
@@ -208,14 +211,27 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
 
   // The panel and the page are the same markup. As a panel it floats over the
   // list — nothing unmounts behind it, so closing it is instant and the list is
-  // exactly where it was, scroll and all.
+  // exactly where it was, scroll and all. As an overlay it uses the shared dialog
+  // behaviour: Escape closes it, Tab stays inside it, the list behind stops
+  // scrolling, and focus comes back to the name that was tapped.
+  const panelRef = useModal(Boolean(onClose), onClose);
+
   const frame = (content) =>
     onClose ? (
-      <div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="dialog" aria-modal="true">
-        <div className="h-full w-full max-w-3xl overflow-y-auto bg-canvas p-4 shadow-xl md:p-6">
+      <Modal
+        className="fixed inset-0 z-50 flex justify-end bg-black/40"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Member ledger"
+        onBackdropClick={onClose}
+      >
+        <div
+          ref={panelRef}
+          className="h-full w-full max-w-3xl overflow-y-auto bg-canvas p-4 shadow-xl md:p-6"
+        >
           {content}
         </div>
-      </div>
+      </Modal>
     ) : (
       content
     );
@@ -223,12 +239,14 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
   if (loading) return frame(<Loader />);
   if (!data) {
     return frame(
-      <p className="rounded-xl border border-dashed border-rule px-5 py-10 text-center text-sm text-muted">
-        That member could not be loaded.{' '}
-        <Link to="/admin/finance" className="text-primary">
-          Back to the ledger
-        </Link>
-      </p>
+      <ErrorState
+        title="Could not load this member"
+        message="The connection dropped or timed out. Nothing has been lost — try again."
+        onRetry={() => {
+          setLoading(true);
+          load();
+        }}
+      />
     );
   }
 
@@ -241,11 +259,18 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           {onClose ? (
-            <button type="button" onClick={onClose} className="text-xs font-medium text-primary">
+            <button
+              type="button"
+              onClick={onClose}
+              className="-ml-2 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary"
+            >
               ← Back to the list
             </button>
           ) : (
-            <Link to="/admin/finance" className="text-xs font-medium text-primary">
+            <Link
+              to="/admin/finance"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-primary"
+            >
               ← All members
             </Link>
           )}
@@ -257,12 +282,28 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
             Week {week.currentWeek} · {shortDate(week.startDate)} → {shortDate(week.endDate)}
           </p>
         </div>
-        <Link
-          to={`/admin/members/${member._id}`}
-          className="min-h-11 rounded-lg border border-rule bg-surface px-4 text-sm font-medium leading-[2.75rem]"
-        >
-          Member record
-        </Link>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            to={`/admin/members/${member._id}`}
+            className="min-h-11 rounded-lg border border-rule bg-surface px-4 text-sm font-medium leading-[2.75rem]"
+          >
+            Member record
+          </Link>
+
+          {/* A panel this tall needs an obvious way out at the top as well as the
+              back link, and it has to be a real tap target rather than a text link. */}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close the member ledger"
+              className="flex h-11 w-11 items-center justify-center rounded-lg border border-rule bg-surface text-xl leading-none text-muted"
+            >
+              ×
+            </button>
+          )}
+        </div>
       </header>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -319,7 +360,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                     }`}
                   >
                     <span className="amount block text-sm font-bold">W{w.weekNumber}</span>
-                    <span className="mt-0.5 block text-[10px] uppercase tracking-wide">
+                    <span className="mt-0.5 block text-[11px] uppercase tracking-wide">
                       {w.isBaseline
                         ? 'opening'
                         : w.isCurrent
@@ -499,7 +540,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
               <button
                 type="button"
                 onClick={() => setShowWeeks((v) => !v)}
-                className="text-xs font-medium text-primary"
+                className="-mr-2 -my-1 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary"
               >
                 {showWeeks ? 'Hide weeks' : 'Week by week'}
               </button>
@@ -559,13 +600,13 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                       <td className="amount px-3 py-2">
                         {w.weekNumber}
                         {w.isCurrent && (
-                          <span className="ml-1 text-[10px] uppercase tracking-wide text-primary">now</span>
+                          <span className="ml-1 text-[11px] uppercase tracking-wide text-primary">now</span>
                         )}
                       </td>
                       <td className="amount px-3 py-2">{money(w.personalPaid)}</td>
                       <td className="px-3 py-2">
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest ${
                             w.status === 'paid'
                               ? 'bg-primary/10 text-primary'
                               : w.status === 'partial'
@@ -609,7 +650,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                             <td className="amount px-3 py-2">{collected ? money(w.paid || 0) : '—'}</td>
                             <td className="px-3 py-2">
                               {collected ? (
-                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
+                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest text-primary">
                                   Collected
                                 </span>
                               ) : (

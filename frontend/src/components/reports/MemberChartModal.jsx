@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api, { apiMessage } from '../../services/api';
 import { useModal } from '../../hooks/useModal';
+import Modal from '../shared/Modal';
 import { money, shortDate } from '../../utils/format';
 import ContributionChart from './ContributionChart';
 
@@ -10,7 +11,7 @@ import ContributionChart from './ContributionChart';
 function Tile({ label, value, hint, accent }) {
   return (
     <div className="min-w-0 rounded-xl border border-rule px-3 py-2.5">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{label}</p>
       <p className={`amount mt-0.5 truncate text-lg font-bold ${accent ? 'text-primary' : ''}`}>
         {value}
       </p>
@@ -63,12 +64,12 @@ export default function MemberChartModal({ member, onClose }) {
   const weekly = report?.weekly;
 
   return (
-    <div
+    <Modal
       className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 px-3 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:px-4 sm:pb-4"
       role="dialog"
       aria-modal="true"
       aria-label={`${member.name} — contributions`}
-      onClick={(event) => event.target === event.currentTarget && onClose()}
+      onBackdropClick={onClose}
     >
       <div
         ref={containerRef}
@@ -188,7 +189,7 @@ export default function MemberChartModal({ member, onClose }) {
                         <span className="min-w-0 truncate text-sm">
                           {type.name}
                           {type.isGroupFund && (
-                            <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                            <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
                               group fund
                             </span>
                           )}
@@ -211,6 +212,6 @@ export default function MemberChartModal({ member, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

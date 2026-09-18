@@ -30,7 +30,7 @@ export default function FinesPanel({ fines, onVoid }) {
                   <button
                     type="button"
                     onClick={() => onVoid(f)}
-                    className="min-h-9 rounded-lg border border-rule px-2 text-xs font-medium"
+                    className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium"
                   >
                     Void
                   </button>

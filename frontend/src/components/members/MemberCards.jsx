@@ -29,7 +29,7 @@ export default function MemberCards({ members }) {
                 <p className="min-w-0 truncate font-semibold">
                   {m.name}
                   {!m.active && (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-alert">
+                    <span className="ml-2 text-[11px] font-semibold uppercase tracking-widest text-alert">
                       Inactive
                     </span>
                   )}

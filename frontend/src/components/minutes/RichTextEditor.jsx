@@ -3,19 +3,16 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
+import './minutes.css';
+import { toEditorHtml } from './richText';
 
-// Plain text saved before this editor existed doesn't carry line breaks in
-// HTML, so turn bare newlines into paragraphs the first time it's opened.
-export function toEditorHtml(content) {
-  if (!content) return '';
-  if (/<[a-z][\s\S]*>/i.test(content)) return content;
-  return content
-    .split(/\n{2,}/)
-    .map((para) => `<p>${para.replace(/\n/g, '<br>')}</p>`)
-    .join('');
-}
+// Re-exported so existing imports of toEditorHtml from this module keep working.
+export { toEditorHtml };
 
-const TOOLBAR_BTN = 'min-h-10 min-w-10 rounded-lg px-2.5 text-xs font-bold text-ink hover:bg-primary/10 aria-pressed:bg-primary aria-pressed:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed';
+// 44px square: this is a touch toolbar first and a mouse toolbar second, and the
+// twelve buttons used to be 40px, which is under both platform minimums.
+const TOOLBAR_BTN = 'min-h-11 min-w-11 rounded-lg px-2.5 text-sm font-bold text-ink hover:bg-primary/10 aria-pressed:bg-primary aria-pressed:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed';
+
 const TOOLBAR_DIVIDER = 'h-6 w-px bg-rule';
 
 function ToolbarButton({ onClick, active, disabled, label, icon, children }) {

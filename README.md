@@ -401,3 +401,50 @@ bundle as a foreign-looking URL).
 | Variable | Purpose |
 | --- | --- |
 | `VITE_API_URL` | The API's address. Baked in at build time; unset falls back to `http://localhost:5000`. See `frontend/.env.example` |
+
+## Frontend: the mobile rules this app is held to
+
+98% of this app's usage is a phone on Kenyan mobile data: a 375px Android on 3G, a
+5-inch iPhone on a good day of 4G. The following are not preferences — they are the
+things that make the difference between the passbook opening and not opening.
+
+**Weight.** The document, JavaScript, CSS and the one font that loads must stay under
+about **150 KB gzip** between them. `npm run build && npm run report:bundle` prints the
+current figure. Two rules keep it there: anything over ~50 KB is loaded with
+`await import()` at the moment it is used (`xlsx`, `docx`, `mammoth`, the Tiptap-based
+minute reader), and any new page goes into `App.jsx` as a `lazy()` route. The minute
+reader in particular must stay lazy — it is the rich-text editor's schema, and the
+members' page must never carry ProseMirror for somebody who came to see a balance.
+
+**Touch.** Every control a finger is meant to hit is at least 44px (`min-h-11`, `h-11`,
+`min-h-12` for primary actions). Text links that do something — "Issue fine", "Week by
+week", the ledger panel's dismiss — get `inline-flex min-h-11 items-center` rather than
+`text-xs`, because a 16px line of text is a 16px target.
+
+**Layers.** One scale, deliberately narrow:
+`20` the sticky mobile header · `30` the bottom navigation · `40` the desktop sidebar ·
+`50` dialogs and sheets · `60` the "More" menu · `70` toasts.
+Anything that covers the page goes through `components/shared/Modal.jsx`, which portals
+to `<body>` — a dialog rendered inside a page inherits that page's stacking context, and
+a fixed bar rendered after it wins any z-index tie.
+
+**Type.** Nothing below 11px. `text-[10px]` and `text-[9px]` were used for eyebrow
+labels and are gone; the bottom navigation's own labels sit at 11px because five
+columns of a 320px screen cannot hold "Dashboard" at 12px.
+
+**Forms.** Every field has a real `<label>` (or `aria-label` where a visible label would
+duplicate a heading). The 16px font floor for coarse pointers in `src/index.css` is what
+stops iOS zooming the page in on focus and never zooming back out — do not remove it.
+Dialogs are bottom sheets on a phone (`items-end`, `max-h-[85dvh]`, `overflow-y-auto`)
+with their action row pinned, and long forms (`MemberForm`) keep that row `sticky`.
+
+**Failure.** `services/api.js` carries a 20s timeout; `apiMessage()` names a timeout or
+a lost connection instead of saying "something went wrong". A screen whose fetch failed
+shows `ErrorState` with a **Try again** button rather than an empty list. Error toasts
+persist until dismissed and can carry a retry action — `toast(message, 'error', { action: { label, onClick } })`.
+
+**Icons.** `npm run icons` regenerates `public/icon-*.png` from the geometry in
+`public/icon.svg` (iOS will not take an SVG apple-touch-icon and Android wants a
+maskable one); `prebuild` runs it automatically, and `npm run verify:icons` parses the
+output back to check the PNGs are well formed.
+

@@ -5,6 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "icons": "node scripts/generate-icons.mjs",
+    "verify:icons": "node scripts/verify-icons.mjs",
+    "report:bundle": "node scripts/report-bundle.mjs",
+    "prebuild": "node scripts/generate-icons.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

@@ -10,13 +10,15 @@ export default function AdminLayout({ children }) {
   return (
     <div className="min-h-dvh md:pl-56">
       <Sidebar />
-      {/* Mobile top bar: brand + sign out (sidebar hidden) */}
-      <header className="flex items-center justify-between border-b border-rule bg-surface px-4 py-3 md:hidden">
-        <p className="text-sm font-bold">{CHAMA_NAME}</p>
+      {/* Mobile top bar: brand + sign out (sidebar hidden). Sticky so signing out —
+          or just knowing which screen you are on — does not mean scrolling back up
+          a long member record. The top inset keeps the brand clear of the notch. */}
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-rule bg-surface px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:hidden">
+        <p className="min-w-0 truncate text-sm font-bold">{CHAMA_NAME}</p>
         <button
           type="button"
           onClick={logout}
-          className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted hover:bg-elevation"
+          className="min-h-11 shrink-0 rounded-lg px-3 text-sm font-medium text-muted hover:bg-elevation"
         >
           Sign out
         </button>

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import api, { apiMessage } from '../../services/api';
 import { useModal } from '../../hooks/useModal';
+import Modal from '../shared/Modal';
 import { todayISO } from '../../utils/format';
 import MemberAvatar from './MemberAvatar';
 
@@ -234,12 +235,12 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
   const admissionOpen = Boolean(initial?.commitment?.agreed) || Boolean(initial?.approvals?.length);
 
   return (
-    <div
+    <Modal
       className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:pb-4"
       role="dialog"
       aria-modal="true"
       aria-label={initial ? 'Edit member' : 'Add member'}
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
+      onBackdropClick={onCancel}
     >
       <form
         ref={containerRef}
@@ -470,7 +471,7 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
                 className="rounded-xl border border-rule bg-page p-3"
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Contact {index + 1}
                     {kin.relationship ? ` · ${kin.relationship}` : ''}
                   </p>
@@ -478,7 +479,7 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
                   <button
                     type="button"
                     onClick={() => removeKin(index)}
-                    className="min-h-9 rounded-lg px-2 text-xs font-medium text-alert"
+                    className="min-h-11 rounded-lg px-2 text-sm font-medium text-alert"
                   >
                     Remove
                   </button>
@@ -777,7 +778,7 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
               <ul className="mt-2 space-y-3">
                 {form.approvals.map((approval, index) => (
                   <li key={approval.role} className="rounded-xl border border-rule bg-page p-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                       {approval.label}
                     </p>
 
@@ -832,7 +833,10 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
           </span>
         </label>
 
-        <div className="flex gap-3 pt-1">
+        {/* The actions are pinned to the foot of the sheet: the admission form is
+            long enough that on a phone Save sat a full screen below Save-changes,
+            and it must stay reachable while the keyboard is up. */}
+        <div className="sticky bottom-0 -mx-5 -mb-5 mt-2 flex gap-3 border-t border-rule bg-surface px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           <button
             type="button"
             onClick={onCancel}
@@ -849,6 +853,6 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }

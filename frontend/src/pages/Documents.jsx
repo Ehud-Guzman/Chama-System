@@ -3,6 +3,7 @@ import api, { apiMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/shared/Toast';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import ErrorState from '../components/shared/ErrorState';
 import Loader from '../components/shared/Loader';
 import { shortDate, formatBytes } from '../utils/format';
 import { DOCUMENT_CATEGORIES, documentCategoryLabel } from '../utils/documentCategories';
@@ -32,6 +33,10 @@ export default function Documents() {
   const [file, setFile] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [busy, setBusy] = useState(false);
+  // The upload is up to 8 MB. On a 3G link that is minutes, so the percentage is
+  // the difference between "working" and "stuck" — axios reports it per chunk.
+  const [uploadPct, setUploadPct] = useState(null);
+  const [loadError, setLoadError] = useState('');
   const [deleting, setDeleting] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [newCategory, setNewCategory] = useState('');
@@ -40,12 +45,13 @@ export default function Documents() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const res = await api.get('/api/documents');
       setDocuments(res.data.documents || []);
       if (res.data.categories?.length) setCategories(res.data.categories);
     } catch (err) {
-      toast(apiMessage(err, 'Could not load documents'), 'error');
+      setLoadError(apiMessage(err, 'Could not load documents'));
     } finally {
       setLoading(false);
     }
@@ -120,6 +126,7 @@ export default function Documents() {
     }
 
     setBusy(true);
+    setUploadPct(0);
     try {
       const payload = new FormData();
       payload.append('file', file);
@@ -128,14 +135,25 @@ export default function Documents() {
       payload.append('description', form.description.trim());
       payload.append('visibleToMembers', form.visibleToMembers ? 'true' : 'false');
 
-      await api.post('/api/documents', payload);
+      await api.post('/api/documents', payload, {
+        onUploadProgress: (event) => {
+          if (!event.total) return;
+          setUploadPct(Math.round((event.loaded / event.total) * 100));
+        },
+      });
       toast('Document uploaded');
       resetForm();
       load();
     } catch (err) {
-      toast(apiMessage(err, 'Could not upload the document'), 'error');
+      // A failed upload keeps the file name and the form as they were, and the
+      // message carries the way to try again — a member of staff who has just
+      // waited three minutes for a photo should not have to re-pick it.
+      toast(apiMessage(err, 'Could not upload the document'), 'error', {
+        action: { label: 'Retry', onClick: upload },
+      });
     } finally {
       setBusy(false);
+      setUploadPct(null);
     }
   }
 
@@ -182,6 +200,9 @@ export default function Documents() {
   }
 
   if (loading) return <Loader />;
+  if (loadError) {
+    return <ErrorState title="Could not load the vault" message={loadError} onRetry={load} />;
+  }
 
   return (
     <div className="space-y-4">
@@ -285,6 +306,29 @@ export default function Documents() {
             {busy ? 'Uploading…' : 'Upload document'}
           </button>
 
+          {busy && (
+            <div className="mt-2">
+              <div
+                className="h-2 w-full overflow-hidden rounded-full bg-canvas"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={uploadPct ?? undefined}
+                aria-label="Upload progress"
+              >
+                <span
+                  className="block h-full bg-primary transition-[width] duration-200"
+                  style={{ width: `${uploadPct ?? 0}%` }}
+                />
+              </div>
+              <p className="amount mt-1 text-xs text-muted" aria-live="polite">
+                {uploadPct === null || uploadPct === 0
+                  ? 'Starting the upload…'
+                  : `${uploadPct}% sent — keep this screen open.`}
+              </p>
+            </div>
+          )}
+
           <p className="mt-2 text-xs text-muted">
             PDF, Word, Excel or a photo — up to {MAX_FILE_MB} MB.
           </p>
@@ -308,14 +352,14 @@ export default function Documents() {
                   <span className="min-w-0 truncate text-sm">{c.label}</span>
 
                   {c.builtIn ? (
-                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <span className="shrink-0 text-[11px] font-semibold uppercase tracking-widest text-muted">
                       Fallback
                     </span>
                   ) : (
                     <button
                       type="button"
                       onClick={() => setRemovingCategory(c)}
-                      className="min-h-9 shrink-0 rounded-lg px-2 text-xs font-medium text-alert"
+                      className="min-h-11 shrink-0 rounded-lg px-3 text-sm font-medium text-alert"
                     >
                       Remove
                     </button>

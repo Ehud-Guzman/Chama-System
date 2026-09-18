@@ -49,7 +49,7 @@ export default function MemberPerformanceList({ members, onOpenChart }) {
 
             <dl className="mt-3 grid grid-cols-3 gap-2 border-t border-rule pt-3 text-xs">
               <div className="min-w-0">
-                <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Weeks
                 </dt>
                 <dd className="amount mt-0.5">
@@ -59,7 +59,7 @@ export default function MemberPerformanceList({ members, onOpenChart }) {
               </div>
 
               <div className="min-w-0">
-                <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Consistency
                 </dt>
                 <dd className={`amount mt-0.5 font-semibold ${consistencyClass(m.consistency)}`}>
@@ -68,7 +68,7 @@ export default function MemberPerformanceList({ members, onOpenChart }) {
               </div>
 
               <div className="min-w-0">
-                <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Fines owed
                 </dt>
                 <dd
@@ -111,7 +111,7 @@ export default function MemberPerformanceList({ members, onOpenChart }) {
       <div className="hidden overflow-hidden rounded-xl border border-rule bg-surface md:block">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b border-rule text-left text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <tr className="border-b border-rule text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
               <th className="px-3 py-2">Member</th>
               <th className="px-3 py-2 text-right">Total (all-time)</th>
               <th className="px-3 py-2 text-right">Weeks paid</th>

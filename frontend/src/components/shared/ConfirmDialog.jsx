@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { useModal } from '../../hooks/useModal';
+import Modal from './Modal';
 
 export default function ConfirmDialog({
   open,
@@ -17,12 +18,12 @@ export default function ConfirmDialog({
   if (!open) return null;
 
   return (
-    <div
+    <Modal
       className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:pb-4"
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
+      onBackdropClick={onCancel}
     >
       <div
         ref={containerRef}
@@ -54,6 +55,6 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

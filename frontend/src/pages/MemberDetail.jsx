@@ -7,6 +7,7 @@ import MemberForm from '../components/members/MemberForm';
 import LedgerRows from '../components/contributions/LedgerRows';
 import EditContributionModal from '../components/contributions/EditContributionModal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import ErrorState from '../components/shared/ErrorState';
 import ResignDialog from '../components/members/ResignDialog';
 import IssueFineForm from '../components/members/IssueFineForm';
 import MessageMemberPanel from '../components/members/MessageMemberPanel';
@@ -23,7 +24,7 @@ function Detail({ label, value }) {
   if (!value) return null;
   return (
     <div>
-      <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</dt>
+      <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">{label}</dt>
       <dd className="text-sm">{value}</dd>
     </div>
   );
@@ -35,6 +36,8 @@ export default function MemberDetail() {
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [notFound, setNotFound] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editingContribution, setEditingContribution] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
@@ -48,6 +51,7 @@ export default function MemberDetail() {
   const photoInputRef = useRef(null);
 
   const load = useCallback(async () => {
+    setLoadError('');
     // Warmed while the pointer was on this member's card, so the page usually
     // opens with his name and figures already in place; the request below still
     // runs and replaces it with the server's answer.
@@ -60,7 +64,11 @@ export default function MemberDetail() {
       const res = await api.get(`/api/members/${id}`);
       setData(res.data);
     } catch (err) {
-      toast(apiMessage(err, 'Could not load member'), 'error');
+      // A dropped connection is not a missing member. Saying "not found" for a
+      // timed-out request sends the office looking for a record that is there.
+      const notFound = err.response?.status === 404;
+      if (notFound) setNotFound(true);
+      else setLoadError(apiMessage(err, 'Could not load this member'));
     } finally {
       setLoading(false);
     }
@@ -274,9 +282,24 @@ async function exportStatementExcel() {
 
   if (loading) return <Loader />;
   if (!data) {
+    if (loadError) {
+      return (
+        <ErrorState
+          title="Could not load this member"
+          message={loadError}
+          onRetry={() => {
+            setLoading(true);
+            load();
+          }}
+        />
+      );
+    }
     return (
       <p className="py-10 text-center text-sm text-muted">
-        Member not found. <Link to="/admin/members" className="text-primary underline">Back to members</Link>
+        {notFound ? 'Member not found.' : 'That member could not be loaded.'}{' '}
+        <Link to="/admin/members" className="text-primary underline">
+          Back to members
+        </Link>
       </p>
     );
   }
@@ -327,7 +350,7 @@ async function exportStatementExcel() {
               <h1 className="text-xl font-bold">
                 {member.name}
                 {!member.active && (
-                  <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-widest text-alert">
+                  <span className="ml-2 align-middle text-[11px] font-semibold uppercase tracking-widest text-alert">
                     Inactive
                   </span>
                 )}
@@ -343,7 +366,7 @@ async function exportStatementExcel() {
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Held by member
             </p>
             <p className="amount text-xl font-bold text-accent">
@@ -364,7 +387,7 @@ async function exportStatementExcel() {
         </div>
         <dl className="mt-3 grid gap-3 border-t border-rule pt-3 sm:grid-cols-2">
           <div>
-            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Member since
             </dt>
             <dd className="text-xs text-muted">
@@ -373,7 +396,7 @@ async function exportStatementExcel() {
           </div>
 
           <div>
-            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Email reminders
             </dt>
             <dd className="text-xs text-muted">
@@ -387,7 +410,7 @@ async function exportStatementExcel() {
         </dl>
 
         <div className="mt-3 border-t border-rule pt-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
             Next of kin {hasKin ? `(${kin.length})` : ''}
           </p>
           {hasKin ? (
@@ -419,7 +442,7 @@ async function exportStatementExcel() {
             long as what is known: a member entered from a name and a number shows the
             prompt to fill him in, not a column of blanks. */}
         <div className="mt-3 border-t border-rule pt-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
             Personal details
           </p>
           {hasPersonal ? (
@@ -436,7 +459,7 @@ async function exportStatementExcel() {
         </div>
 
         <div className="mt-3 border-t border-rule pt-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">Family</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">Family</p>
           {hasFamily ? (
             <dl className="mt-1 grid gap-2 sm:grid-cols-2">
               <Detail label="Spouse" value={family.spouseName} />
@@ -454,7 +477,7 @@ async function exportStatementExcel() {
         </div>
 
         <div className="mt-3 border-t border-rule pt-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
             Admission
           </p>
           <dl className="mt-1 grid gap-2 sm:grid-cols-2">
@@ -557,41 +580,44 @@ async function exportStatementExcel() {
           )}
         </div>
 
-        <div className="mt-3 flex gap-3">
-  <button
-    type="button"
-    onClick={() => setEditing(true)}
-    className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
-  >
-    Edit
-  </button>
+        {/* Two per row on a phone. Four buttons across a 300px card left each one
+            about 76px wide with no padding, so "Resign member" wrapped onto two
+            lines and the label touched the border. */}
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium"
+          >
+            Edit
+          </button>
 
-  <button
-    type="button"
-    onClick={exportStatement}
-    className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
-  >
-    PDF
-  </button>
+          <button
+            type="button"
+            onClick={exportStatement}
+            className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium"
+          >
+            Statement PDF
+          </button>
 
-  <button
-    type="button"
-    onClick={exportStatementExcel}
-    className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium"
-  >
-    Excel
-  </button>
+          <button
+            type="button"
+            onClick={exportStatementExcel}
+            className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium"
+          >
+            Statement Excel
+          </button>
 
-  {member.active && (
-    <button
-      type="button"
-      onClick={() => setConfirmingResign(true)}
-      className="min-h-11 flex-1 rounded-lg border border-rule text-sm font-medium text-alert"
-    >
-      Resign member
-    </button>
-  )}
-</div>
+          {member.active && (
+            <button
+              type="button"
+              onClick={() => setConfirmingResign(true)}
+              className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium text-alert"
+            >
+              Resign member
+            </button>
+          )}
+        </div>
       </section>
 
 
@@ -618,7 +644,7 @@ async function exportStatementExcel() {
                     <span className="min-w-0 truncate text-sm">
                       {entry.name}
                       {entry.isGroupFund && (
-                        <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                        <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
                           group fund
                         </span>
                       )}
@@ -639,7 +665,7 @@ async function exportStatementExcel() {
                 <button
                   type="button"
                   onClick={() => setIssuingFine(true)}
-                  className="text-xs font-medium text-primary"
+                  className="-mr-2 -my-1 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary"
                 >
                   Issue fine
                 </button>
@@ -746,7 +772,7 @@ async function exportStatementExcel() {
                   </div>
 
                   <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
                       d.decision === 'approved'
                         ? 'bg-accent/15 text-accent'
                         : 'bg-alert/10 text-alert'

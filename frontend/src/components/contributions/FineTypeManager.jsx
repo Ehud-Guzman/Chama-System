@@ -90,14 +90,14 @@ export default function FineTypeManager({ onChange }) {
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <p className="break-words text-sm font-medium">{t.name}</p>
                     <span
-                      className={`text-[10px] font-semibold uppercase tracking-widest ${
+                      className={`text-[11px] font-semibold uppercase tracking-widest ${
                         t.category === 'disciplinary' ? 'text-primary' : 'text-accent'
                       }`}
                     >
                       {t.category === 'disciplinary' ? 'Disciplinary' : 'Financial'}
                     </span>
                     {!t.active && (
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      <span className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                         Inactive
                       </span>
                     )}
@@ -129,10 +129,9 @@ export default function FineTypeManager({ onChange }) {
                     <input
                       type="text"
                       inputMode="numeric"
-                      autoFocus
                       value={amountValue}
                       onChange={(e) => setAmountValue(e.target.value)}
-                      className="amount h-10 w-28 rounded-lg border border-rule px-3 text-sm"
+                      className="amount h-11 w-32 rounded-lg border border-rule px-3 text-sm"
                       aria-label={`Default amount for ${t.name}`}
                     />
                     <button
@@ -157,7 +156,7 @@ export default function FineTypeManager({ onChange }) {
                       setEditingAmountId(t._id);
                       setAmountValue(String(t.defaultAmount || ''));
                     }}
-                    className="amount inline-flex min-h-11 items-center text-xs font-medium text-primary"
+                    className="amount -mx-2 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary"
                   >
                     {t.defaultAmount > 0 ? `${money(t.defaultAmount)} default — edit` : 'No default amount — set one'}
                   </button>

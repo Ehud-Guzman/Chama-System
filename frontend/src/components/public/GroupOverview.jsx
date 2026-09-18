@@ -58,7 +58,7 @@ export default function GroupOverview({ overview }) {
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           {overview.byType.length > 0 && (
             <div className="rounded-xl border border-rule bg-surface p-4 md:p-5">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted">
                 By contribution type (carried in + collected)
               </p>
               <ul className="space-y-2">
@@ -85,7 +85,7 @@ export default function GroupOverview({ overview }) {
 
           {overview.fundBalances?.length > 0 && (
             <div className="rounded-xl border border-rule bg-surface p-4 md:p-5">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted">
                 Fund balances (what each fund holds)
               </p>
               <ul className="space-y-2">

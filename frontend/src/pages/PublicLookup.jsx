@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
 import { normalizeNationalId, NATIONAL_ID_ERROR } from '../utils/nationalId';
 import { CHAMA_NAME, CHAMA_LOGO } from '../utils/branding';
+import { LOGO_PX, sizedImage } from '../utils/imageUrl';
 
 import GroupOverview from '../components/public/GroupOverview';
 import PassbookCard from '../components/public/PassbookCard';
@@ -25,6 +26,15 @@ export default function PublicLookup() {
   // heaviest aggregate the public API computes and the brand row, the totals and
   // the vision/mission card each need a piece of the same response.
   const [overview, setOverview] = useState(null);
+
+  // The header mark is drawn at 36–40px. The office uploads a 512px one, and the
+  // CDN can serve it at the size it is actually used — a URL rewrite, no re-upload.
+  // `limit` never enlarges, so a small wordmark still looks like itself.
+  const optimizedLogo = sizedImage(overview?.logoUrl, {
+    w: LOGO_PX.header,
+    h: LOGO_PX.header,
+    fit: 'limit',
+  });
 
   useEffect(() => {
     api
@@ -92,7 +102,7 @@ export default function PublicLookup() {
               and a screen reader would otherwise say both. */}
           <div className="flex min-w-0 items-center gap-2.5">
             <img
-              src={overview?.logoUrl || CHAMA_LOGO}
+              src={optimizedLogo || CHAMA_LOGO}
               alt=""
               className="h-9 w-9 shrink-0 rounded-lg object-contain sm:h-10 sm:w-10"
             />
@@ -109,15 +119,15 @@ export default function PublicLookup() {
             <Link
               to="/admin/login"
               className="
-                inline-flex min-h-9 items-center justify-center
+                inline-flex min-h-11 items-center justify-center
                 rounded-lg border border-rule bg-surface
-                px-2.5
-                text-xs font-semibold text-muted
+                px-3
+                text-sm font-semibold text-muted
                 transition
                 hover:text-primary
                 focus:outline-none focus:ring-2
                 focus:ring-primary/30
-                sm:px-3
+                sm:px-4
               "
             >
               Admin

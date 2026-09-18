@@ -29,7 +29,7 @@ const SORTS = [
 function Stat({ label, value, accent, alert }) {
   return (
     <div className="rounded-xl border border-rule bg-surface p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{label}</p>
       <p
         className={`amount mt-1 text-lg font-bold md:text-2xl ${
           alert ? 'text-alert' : accent ? 'text-primary' : ''
@@ -48,7 +48,7 @@ function StatusPill({ member, baselineWeek }) {
         ? ` · ${member.weeksBehind} week${member.weeksBehind === 1 ? '' : 's'}`
         : '';
     return (
-      <span className="rounded-full bg-alert/10 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-alert">
+      <span className="rounded-full bg-alert/10 px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-alert">
         {money(member.arrears)} behind{weeks}
       </span>
     );
@@ -57,13 +57,13 @@ function StatusPill({ member, baselineWeek }) {
   // balance he brought forward — so "settled" would be the wrong word for it.
   if (baselineWeek) {
     return (
-      <span className="rounded-full bg-canvas px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-muted">
+      <span className="rounded-full bg-canvas px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-muted">
         Opening week · nothing due
       </span>
     );
   }
   return (
-    <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-primary">
+    <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-primary">
       Settled
     </span>
   );
@@ -220,7 +220,7 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
                 // tap completes; the whole screen stays put either way.
                 onPointerDown={() => prefetchMember(api, m._id)}
                 onClick={() => setOpenMember(m._id)}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas active:bg-canvas"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold">{m.name}</span>

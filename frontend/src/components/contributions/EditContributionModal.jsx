@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../services/api';
 import { useModal } from '../../hooks/useModal';
+import Modal from '../shared/Modal';
 import { money, todayISO, METHOD_LABELS } from '../../utils/format';
 
 const METHODS = Object.keys(METHOD_LABELS);
@@ -36,12 +37,12 @@ export default function EditContributionModal({ contribution, busy, onSubmit, on
   }, [currentTypeId, contribution.typeId]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
+    <Modal
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:pb-4"
       role="dialog"
       aria-modal="true"
       aria-label="Edit contribution"
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
+      onBackdropClick={onCancel}
     >
       <form
         ref={containerRef}
@@ -156,6 +157,6 @@ export default function EditContributionModal({ contribution, busy, onSubmit, on
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }

@@ -109,19 +109,21 @@ export default function MembersList() {
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted">Members</p>
-          <h1 className="mt-1 text-2xl font-bold">
-            {total} member{total === 1 ? '' : 's'}
-          </h1>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted">Members</p>
+            <h1 className="mt-1 text-2xl font-bold">
+              {total} member{total === 1 ? '' : 's'}
+            </h1>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="min-h-12 rounded-xl bg-primary px-4 text-sm font-semibold text-white"
+          >
+            Add member
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowForm(true)}
-          className="min-h-12 rounded-xl bg-primary px-4 text-sm font-semibold text-white"
-        >
-          Add member
-        </button>
       </header>
 
       <input

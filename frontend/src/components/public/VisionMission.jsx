@@ -34,7 +34,7 @@ export default function VisionMission({ vision, mission }) {
             key={s.key}
             className={index > 0 ? 'border-t border-rule pt-4 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0' : ''}
           >
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-primary">
               {s.label}
             </p>
             <p className="mt-2 text-sm leading-6 sm:text-base">{s.text}</p>

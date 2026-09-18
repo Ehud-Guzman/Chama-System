@@ -10,6 +10,12 @@
   --color-alert: #b91c1c;
   --color-rule: #e2e6e1;
   --color-muted: #5c6b62;
+  /* `page` and `elevation` are used across the app as the fill of a field or a
+     rail sitting on a white card, and as the tint a row takes under the pointer.
+     They were referenced 30+ times before they existed here, which is why those
+     fills rendered transparent and every hover was dead. */
+  --color-page: #f2f4f1;
+  --color-elevation: #e9ede8;
 
   --font-sans: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -19,6 +25,20 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  /* viewport-fit=cover lets the app reach the edges of a notched phone. The bottom
+     inset is handled where it matters (the nav, the sheets); these two keep text out
+     from under the notch and the rounded corners when the phone is turned sideways. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* A tapped row should answer immediately: on a 3G link the round trip is long
+   enough that a button with no pressed state reads as a button that missed. */
+@media (hover: none) {
+  button:not([disabled]):active,
+  a:active {
+    opacity: 0.75;
+  }
 }
 
 /* Visible keyboard focus, everywhere */
@@ -89,43 +109,7 @@ body {
   }
 }
 
-/* The rich text editor for meeting minutes, styled to read like a
-   Word document rather than a plain textarea. */
-.minute-editor h1,
-.minute-editor h2 {
-  margin: 1em 0 0.4em;
-  font-weight: 700;
-}
-.minute-editor h1 {
-  font-size: 1.25rem;
-}
-.minute-editor h2 {
-  font-size: 1.1rem;
-}
-.minute-editor p {
-  margin: 0.6em 0;
-}
-.minute-editor ul,
-.minute-editor ol {
-  margin: 0.6em 0;
-  padding-left: 1.5em;
-}
-.minute-editor ul {
-  list-style: disc;
-}
-.minute-editor ol {
-  list-style: decimal;
-}
-.minute-editor blockquote {
-  margin: 0.6em 0;
-  padding-left: 1em;
-  border-left: 3px solid var(--color-rule);
-  color: var(--color-muted);
-}
-.minute-editor p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  float: left;
-  height: 0;
-  color: var(--color-muted);
-  pointer-events: none;
-}
+/* The minute-editor styles used to live here, which meant every visitor to the
+   members' page downloaded the rich-text editor's stylesheet to look at a ledger.
+   They now travel with the editor and the reader, in
+   components/minutes/minutes.css. */

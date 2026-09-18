@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import api, { apiMessage } from '../../services/api';
 import { useModal } from '../../hooks/useModal';
+import Modal from '../shared/Modal';
 
 // Reads the CSV/XLSX file in the browser and posts it as CSV text — no
 // multipart upload needed.
@@ -56,12 +57,12 @@ export default function CSVImportModal({ onClose, onImported }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
+    <Modal
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:pb-4"
       role="dialog"
       aria-modal="true"
       aria-label="Import members from CSV"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onBackdropClick={onClose}
     >
       <div ref={containerRef} className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-xl bg-surface p-5 shadow-xl">
         <h2 className="text-base font-semibold">Import members</h2>
@@ -74,7 +75,7 @@ export default function CSVImportModal({ onClose, onImported }) {
         <button
           type="button"
           onClick={downloadTemplate}
-          className="mt-2 text-xs font-semibold text-primary underline"
+          className="-ml-2 mt-1 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-semibold text-primary underline"
         >
           Download Excel template
         </button>
@@ -135,6 +136,6 @@ export default function CSVImportModal({ onClose, onImported }) {
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -9,7 +9,7 @@ export default function Sidebar() {
   const items = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user?.role));
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-rule bg-surface md:flex">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-rule bg-surface pl-[env(safe-area-inset-left)] md:flex">
       <div className="border-b border-rule px-5 py-5">
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">
           {CHAMA_NAME_TOP}

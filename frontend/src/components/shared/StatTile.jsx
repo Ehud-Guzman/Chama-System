@@ -5,7 +5,7 @@
 export default function StatTile({ label, value, hint, accent }) {
   return (
     <div className="rounded-xl border border-rule bg-surface p-4 md:p-5">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{label}</p>
       <p className={`amount mt-1 text-2xl font-bold md:text-3xl ${accent ? 'text-primary' : ''}`}>
         {value}
       </p>

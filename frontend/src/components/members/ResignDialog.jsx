@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useModal } from '../../hooks/useModal';
+import Modal from '../shared/Modal';
 
 // Same visual shell as ConfirmDialog, but collects a resignation reason —
 // resignation is an explicit, reasoned admin action, not a plain deactivate.
@@ -15,12 +16,12 @@ export default function ResignDialog({ open, memberName, busy, onConfirm, onCanc
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
+    <Modal
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:pb-4"
       role="dialog"
       aria-modal="true"
       aria-label="Resign member"
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
+      onBackdropClick={onCancel}
     >
       <div ref={containerRef} className="w-full max-w-sm rounded-xl bg-surface p-5 shadow-xl">
         <h2 className="text-base font-semibold">Resign {memberName}?</h2>
@@ -57,6 +58,6 @@ export default function ResignDialog({ open, memberName, busy, onConfirm, onCanc
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

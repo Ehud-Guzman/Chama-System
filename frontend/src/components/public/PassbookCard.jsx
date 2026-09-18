@@ -101,9 +101,10 @@ export default function PassbookCard({
                   type="button"
                   onClick={exportStatement}
                   disabled={exporting}
-                  className="rounded-lg border border-rule px-3 py-2 text-xs font-medium text-primary disabled:opacity-60"
+                  aria-label={`Download ${result.name}'s statement as a PDF`}
+                  className="inline-flex min-h-11 items-center rounded-lg border border-rule px-3 text-sm font-medium text-primary disabled:opacity-60"
                 >
-                  {exporting ? 'Exporting…' : 'PDF'}
+                  {exporting ? 'Exporting…' : 'Statement PDF'}
                 </button>
               )}
 
@@ -112,9 +113,10 @@ export default function PassbookCard({
                   type="button"
                   onClick={exportStatementExcel}
                   disabled={exporting}
-                  className="rounded-lg border border-rule px-3 py-2 text-xs font-medium text-primary disabled:opacity-60"
+                  aria-label={`Download ${result.name}'s statement as a spreadsheet`}
+                  className="inline-flex min-h-11 items-center rounded-lg border border-rule px-3 text-sm font-medium text-primary disabled:opacity-60"
                 >
-                  {exporting ? 'Exporting…' : 'Excel'}
+                  {exporting ? 'Exporting…' : 'Statement Excel'}
                 </button>
               )}
             </div>
@@ -129,7 +131,7 @@ export default function PassbookCard({
               on, and the one the treasurer verified when the books opened. */}
           {result.ledger && (
             <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                 Brought forward (week {result.ledger.cycleStartWeek})
               </dt>
               <dd className="amount mt-0.5 text-sm font-medium">
@@ -139,21 +141,21 @@ export default function PassbookCard({
           )}
 
           <div>
-            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Phone
             </dt>
             <dd className="amount mt-0.5 text-sm font-medium">{result.phoneMasked || '—'}</dd>
           </div>
 
           <div>
-            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Member since
             </dt>
             <dd className="mt-0.5 text-sm font-medium">{shortDate(result.joinDate)}</dd>
           </div>
 
           <div>
-            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Contributions
             </dt>
             <dd className="amount mt-0.5 text-sm font-medium">
@@ -162,14 +164,14 @@ export default function PassbookCard({
           </div>
 
           <div>
-            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Paid in his own name
             </dt>
             <dd className="amount mt-0.5 text-sm font-medium">{money(result.totalContributed)}</dd>
           </div>
 
           <div>
-            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Outstanding fines
             </dt>
             <dd
@@ -182,7 +184,7 @@ export default function PassbookCard({
           </div>
 
           <div>
-            <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Fines settled
             </dt>
             <dd className="amount mt-0.5 text-sm font-medium">
@@ -200,7 +202,7 @@ export default function PassbookCard({
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             {result.email && (
               <div className="col-span-2 sm:col-span-1">
-                <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Email
                 </dt>
                 <dd className="mt-0.5 truncate font-medium text-ink/80">
@@ -209,7 +211,7 @@ export default function PassbookCard({
               </div>
             )}
             <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                 Notifications
               </dt>
               <dd className="mt-0.5">
@@ -234,7 +236,7 @@ export default function PassbookCard({
               be useful in an emergency. */}
           {result.nextOfKin?.length > 0 && (
             <div className="mt-3 border-t border-rule pt-3">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                 Next of kin ({result.nextOfKin.length})
               </p>
               <ul className="mt-1.5 space-y-2">
@@ -264,7 +266,7 @@ export default function PassbookCard({
             group tracks, not only the ones he has touched. */}
         {result.byType?.length > 0 && (
           <div className="border-b border-rule px-5 py-4">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted">
               Paid by contribution type
             </p>
             <ul className="space-y-2">
@@ -285,7 +287,7 @@ export default function PassbookCard({
             {/* Column eyebrows. The right-hand column is cash logged against
                 this member — cumulative, not a balance: what he actually holds
                 is the stamped total below. */}
-            <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 px-5 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 px-5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
               <span>Date · Type</span>
               <span className="text-right">Amount</span>
               <span className="w-24 text-right">Paid to date</span>
@@ -300,14 +302,14 @@ export default function PassbookCard({
                   }`}
                   style={animate ? { animationDelay: `${i * 40}ms` } : undefined}
                 >
-                  <span>
+                  <span className="min-w-0">
                     <span className="block text-sm font-medium">{shortDate(c.date)}</span>
-                    <span className="block text-xs text-muted">
+                    <span className="block break-words text-xs text-muted">
                       {c.type ? `${c.type} · ` : ''}
                       {METHOD_LABELS[c.method] || c.method}
                     </span>
                     {c.fineDeducted > 0 && (
-                      <span className="block text-xs text-alert">
+                      <span className="block break-words text-xs text-alert">
                         − {money(c.fineDeducted)} to fines (paid {money(c.grossAmount)})
                       </span>
                     )}
@@ -370,7 +372,7 @@ export default function PassbookCard({
             animate ? { animationDelay: `${Math.min(pageRows.length, 20) * 40 + 120}ms` } : undefined
           }
         >
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
             {result.ledger ? `Held by member · week ${result.ledger.currentWeek}` : 'Held by member'}
           </p>
           <p className="amount mt-1 text-3xl font-bold text-primary">

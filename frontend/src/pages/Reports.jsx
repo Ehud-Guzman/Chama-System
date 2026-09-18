@@ -8,6 +8,7 @@ import {
   METHOD_LABELS,
 } from "../utils/format";
 import Loader from "../components/shared/Loader";
+import ErrorState from "../components/shared/ErrorState";
 import MemberPerformanceList from "../components/reports/MemberPerformanceList";
 import MemberChartModal from "../components/reports/MemberChartModal";
 import ContributionChart from "../components/reports/ContributionChart";
@@ -58,6 +59,7 @@ export default function Reports() {
   // sheet can name him before its own figures arrive.
   const [chartMember, setChartMember] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const loadAudit = useCallback(async (page = 1) => {
     try {
@@ -68,11 +70,13 @@ export default function Reports() {
     }
   }, []);
 
-  useEffect(() => {
+  const loadSummary = useCallback(() => {
+    setLoading(true);
+    setLoadError('');
     // The summary and the year's trend are read together: the chart is the first
     // thing on the summary screen, and a summary that arrived without it would
     // leave a hole where the trend belongs.
-    Promise.all([
+    return Promise.all([
       api.get("/api/reports/summary"),
       api.get("/api/reports/trend", { params: { weeks: 12 } }),
       loadAudit(1),
@@ -81,9 +85,17 @@ export default function Reports() {
         setSummary(summaryRes.data);
         setTrend(trendRes.data.weeks || []);
       })
-      .catch(() => {})
+      .catch((err) => {
+        // A dropped connection on a phone is the common case here, not an empty
+        // report: say so, and offer the one action that helps.
+        setLoadError(apiMessage(err, "Could not load the reports"));
+      })
       .finally(() => setLoading(false));
   }, [loadAudit]);
+
+  useEffect(() => {
+    loadSummary();
+  }, [loadSummary]);
 
   useEffect(() => {
     if (tab === "performance" && !performance) {
@@ -119,6 +131,15 @@ export default function Reports() {
   }, [tab, performance, months, weeks, fines]);
 
   if (loading) return <Loader />;
+  if (loadError) {
+    return (
+      <ErrorState
+        title="Could not load the reports"
+        message={loadError}
+        onRetry={loadSummary}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -277,7 +298,7 @@ export default function Reports() {
           <div className="mt-5 md:grid md:grid-cols-2 md:items-start md:gap-6">
           {summary && (
             <section className="rounded-xl border border-rule bg-surface p-5">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                 Total contributed (all time)
               </p>
               <p className="amount mt-1 text-3xl font-bold text-primary">
@@ -315,7 +336,7 @@ export default function Reports() {
                 </p>
               )}
 
-              <p className="mt-4 border-t border-rule pt-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+              <p className="mt-4 border-t border-rule pt-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
                 By method (since the books opened)
               </p>
               <ul>
@@ -339,7 +360,7 @@ export default function Reports() {
 
               {summary.byType?.length > 0 && (
                 <>
-                  <p className="mt-4 border-t border-rule pt-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <p className="mt-4 border-t border-rule pt-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
                     By type (since the books opened)
                   </p>
                   <ul>
@@ -455,7 +476,7 @@ export default function Reports() {
             </h2>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Still owed
                 </p>
                 <p
@@ -471,7 +492,7 @@ export default function Reports() {
               </div>
 
               <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Issued
                 </p>
                 <p className="amount mt-0.5 truncate text-lg font-bold">
@@ -481,7 +502,7 @@ export default function Reports() {
               </div>
 
               <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Paid off
                 </p>
                 <p className="amount mt-0.5 truncate text-lg font-bold text-accent">
@@ -493,7 +514,7 @@ export default function Reports() {
               </div>
 
               <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Cash from fines
                 </p>
                 <p className="amount mt-0.5 truncate text-lg font-bold">
@@ -509,7 +530,7 @@ export default function Reports() {
                   <li key={t.name} className="flex items-baseline justify-between gap-3 px-4 py-2.5">
                     <span className="min-w-0 truncate text-sm">
                       {t.name}
-                      <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                      <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
                         {t.category}
                       </span>
                     </span>
@@ -567,7 +588,7 @@ export default function Reports() {
             <>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Still owed
                   </p>
                   <p
@@ -583,7 +604,7 @@ export default function Reports() {
                 </div>
 
                 <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Issued in total
                   </p>
                   <p className="amount mt-0.5 truncate text-lg font-bold">
@@ -593,7 +614,7 @@ export default function Reports() {
                 </div>
 
                 <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Paid off
                   </p>
                   <p className="amount mt-0.5 truncate text-lg font-bold text-accent">
@@ -605,7 +626,7 @@ export default function Reports() {
                 </div>
 
                 <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Share cleared
                   </p>
                   <p className="amount mt-0.5 text-lg font-bold">
@@ -628,7 +649,7 @@ export default function Reports() {
                       <div className="flex items-baseline justify-between gap-3">
                         <span className="min-w-0 truncate text-sm font-medium">
                           {t.name}
-                          <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                          <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
                             {t.category}
                           </span>
                         </span>
@@ -668,7 +689,7 @@ export default function Reports() {
                             <span className="block truncate text-sm">
                               {row.name}
                               {!row.active && (
-                                <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                                <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
                                   resigned
                                 </span>
                               )}
@@ -735,7 +756,7 @@ export default function Reports() {
           {performanceTotals && performance.length > 0 && (
             <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Paid between them
                 </p>
                 <p className="amount mt-0.5 truncate text-lg font-bold text-primary">
@@ -747,7 +768,7 @@ export default function Reports() {
               </div>
 
               <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Average consistency
                 </p>
                 <p className="amount mt-0.5 text-lg font-bold">
@@ -761,7 +782,7 @@ export default function Reports() {
               </div>
 
               <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Keeping up
                 </p>
                 <p className="amount mt-0.5 text-lg font-bold text-accent">
@@ -774,7 +795,7 @@ export default function Reports() {
               </div>
 
               <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                   Fines owed
                 </p>
                 <p
@@ -814,7 +835,7 @@ export default function Reports() {
               {monthTotals && (
                 <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                       Member contributions
                     </p>
                     <p className="amount mt-0.5 truncate text-lg font-bold text-primary">
@@ -824,7 +845,7 @@ export default function Reports() {
                   </div>
 
                   <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                       Group funds
                     </p>
                     <p className="amount mt-0.5 truncate text-lg font-bold">
@@ -834,7 +855,7 @@ export default function Reports() {
                   </div>
 
                   <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                       Everything
                     </p>
                     <p className="amount mt-0.5 truncate text-lg font-bold">
@@ -846,7 +867,7 @@ export default function Reports() {
                   </div>
 
                   <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                       Members paying
                     </p>
                     <p className="amount mt-0.5 text-lg font-bold">
@@ -955,12 +976,12 @@ export default function Reports() {
                           Week {w.weekNumber}
                         </span>
                         {w.isCurrent && (
-                          <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
+                          <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary">
                             Now
                           </span>
                         )}
                         {w.isBaseline && (
-                          <span className="rounded bg-canvas px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted">
+                          <span className="rounded bg-canvas px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
                             Baseline
                           </span>
                         )}
@@ -1009,7 +1030,7 @@ export default function Reports() {
                                 <p className="text-sm font-semibold">
                                   {t.typeName}
                                   {t.isGroupFund && (
-                                    <span className="ml-1 text-[10px] font-normal uppercase tracking-wide text-muted">
+                                    <span className="ml-1 text-[11px] font-normal uppercase tracking-wide text-muted">
                                       group fund
                                     </span>
                                   )}

@@ -66,7 +66,7 @@ export default function AddAdminForm() {
   }
 
   return (
-    <section className="relative z-40 rounded-xl border border-rule bg-surface p-5">
+    <section className="rounded-xl border border-rule bg-surface p-5">
       <h2 className="text-base font-semibold">Admin &amp; other accounts</h2>
 
       <ul className="mt-3 divide-y divide-rule">
@@ -77,27 +77,27 @@ export default function AddAdminForm() {
                 <p className="truncate text-sm font-medium">
                   {a.name}
                   {a.role === 'super_admin' && (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-accent">
+                    <span className="ml-2 text-[11px] font-semibold uppercase tracking-widest text-accent">
                       Super
                     </span>
                   )}
                   {a.role === 'secretary' && (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-primary">
+                    <span className="ml-2 text-[11px] font-semibold uppercase tracking-widest text-primary">
                       Secretary
                     </span>
                   )}
                   {a.role === 'disciplinary' && (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-alert">
+                    <span className="ml-2 text-[11px] font-semibold uppercase tracking-widest text-alert">
                       Disciplinary
                     </span>
                   )}
                   {a.role === 'treasurer' && (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-accent">
+                    <span className="ml-2 text-[11px] font-semibold uppercase tracking-widest text-accent">
                       Treasurer
                     </span>
                   )}
                   {!a.active && (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <span className="ml-2 text-[11px] font-semibold uppercase tracking-widest text-muted">
                       Inactive
                     </span>
                   )}
@@ -132,7 +132,6 @@ export default function AddAdminForm() {
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   type="password"
-                  autoFocus
                   minLength={8}
                   placeholder="New password (letters & numbers, min 8 chars)"
                   value={resetValue}
@@ -166,7 +165,7 @@ export default function AddAdminForm() {
       <button
         type="button"
         onClick={() => setShowAddModal(true)}
-        className="mt-4 w-full rounded-lg bg-primary py-3 text-sm font-semibold text-white transition hover:bg-opacity-90"
+        className="mt-4 min-h-12 w-full rounded-lg bg-primary py-3 text-sm font-semibold text-white transition hover:bg-opacity-90"
       >
         + Add account
       </button>

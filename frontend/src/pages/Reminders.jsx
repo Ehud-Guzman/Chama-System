@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
+import ErrorState from '../components/shared/ErrorState';
 import Loader from '../components/shared/Loader';
 import MemberAvatar from '../components/members/MemberAvatar';
 import { money } from '../utils/format';
@@ -12,6 +13,7 @@ export default function Reminders() {
   const toast = useToast();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [selected, setSelected] = useState(() => new Set());
   const [search, setSearch] = useState('');
   const [includeLate, setIncludeLate] = useState(true);
@@ -22,6 +24,7 @@ export default function Reminders() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const res = await api.get('/api/notifications/reminders');
       setData(res.data);
@@ -29,7 +32,7 @@ export default function Reminders() {
       // email about figures nobody has looked at.
       setSelected(new Set());
     } catch (err) {
-      toast(apiMessage(err, 'Could not load outstanding balances'), 'error');
+      setLoadError(apiMessage(err, 'Could not load outstanding balances'));
     } finally {
       setLoading(false);
     }
@@ -89,6 +92,15 @@ export default function Reminders() {
   }
 
   if (loading) return <Loader />;
+  if (loadError) {
+    return (
+      <ErrorState
+        title="Could not load who owes what"
+        message={loadError}
+        onRetry={load}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -116,23 +128,23 @@ export default function Reminders() {
       {data && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div className="rounded-xl border border-rule bg-surface px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">Owing</p>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">Owing</p>
             <p className="amount mt-1 text-xl font-bold">{data.owingCount}</p>
           </div>
           <div className="rounded-xl border border-rule bg-surface px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Emailable
             </p>
             <p className="amount mt-1 text-xl font-bold">{data.reachableCount}</p>
           </div>
           <div className="rounded-xl border border-rule bg-surface px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               No email
             </p>
             <p className="amount mt-1 text-xl font-bold">{data.missingEmailCount}</p>
           </div>
           <div className="rounded-xl border border-rule bg-surface px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Selected
             </p>
             <p className="amount mt-1 text-xl font-bold">{selected.size}</p>
@@ -263,53 +275,57 @@ export default function Reminders() {
         ) : (
           <ul className="divide-y divide-rule">
             {visible.map((m) => (
-              <li key={m.id} className="flex items-start gap-3 p-4">
-                <input
-                  type="checkbox"
-                  checked={selected.has(m.id)}
-                  onChange={() => toggle(m.id)}
-                  disabled={!emailable(m)}
-                  aria-label={`Select ${m.name}`}
-                  className="mt-3 h-4 w-4"
-                />
+              <li key={m.id}>
+                {/* The whole row is the checkbox's label. A 16px box with nothing else
+                    tappable is a target nobody hits first time on a phone, and this is
+                    the list the treasurer works down. */}
+                <label className="flex items-start gap-3 p-4">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(m.id)}
+                    onChange={() => toggle(m.id)}
+                    disabled={!emailable(m)}
+                    className="mt-3 h-5 w-5 shrink-0"
+                  />
 
-                <MemberAvatar name={m.name} photoUrl={m.photoUrl} />
+                  <MemberAvatar name={m.name} photoUrl={m.photoUrl} />
 
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">
-                    {m.name}
-                    {m.regNumber ? (
-                      <span className="amount ml-2 text-xs font-normal text-muted">
-                        {m.regNumber}
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-muted">
-                    {!m.email
-                      ? 'No email address on file'
-                      : m.emailNotifications
-                        ? m.email
-                        : `${m.email} · reminders switched off`}
-                  </p>
-                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
-                    {m.lateTotal > 0 && (
-                      <span className="text-muted">
-                        {m.lateWeeksCount} late week{m.lateWeeksCount === 1 ? '' : 's'} ·{' '}
-                        <span className="amount font-medium text-ink">{money(m.lateTotal)}</span>
-                      </span>
-                    )}
-                    {m.finesTotal > 0 && (
-                      <span className="text-muted">
-                        {m.finesCount} fine{m.finesCount === 1 ? '' : 's'} ·{' '}
-                        <span className="amount font-medium text-ink">{money(m.finesTotal)}</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">
+                      {m.name}
+                      {m.regNumber ? (
+                        <span className="amount ml-2 text-xs font-normal text-muted">
+                          {m.regNumber}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-muted">
+                      {!m.email
+                        ? 'No email address on file'
+                        : m.emailNotifications
+                          ? m.email
+                          : `${m.email} · reminders switched off`}
+                    </span>
+                    <span className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
+                      {m.lateTotal > 0 && (
+                        <span className="text-muted">
+                          {m.lateWeeksCount} late week{m.lateWeeksCount === 1 ? '' : 's'} ·{' '}
+                          <span className="amount font-medium text-ink">{money(m.lateTotal)}</span>
+                        </span>
+                      )}
+                      {m.finesTotal > 0 && (
+                        <span className="text-muted">
+                          {m.finesCount} fine{m.finesCount === 1 ? '' : 's'} ·{' '}
+                          <span className="amount font-medium text-ink">{money(m.finesTotal)}</span>
+                        </span>
+                      )}
+                    </span>
+                  </span>
 
-                <p className="amount mt-3 shrink-0 text-sm font-semibold text-alert">
-                  {money(m.total)}
-                </p>
+                  <span className="amount mt-3 shrink-0 text-sm font-semibold text-alert">
+                    {money(m.total)}
+                  </span>
+                </label>
               </li>
             ))}
           </ul>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../../services/api';
 import { normalizeNationalId, maskNationalId, NATIONAL_ID_ERROR } from '../../utils/nationalId';
@@ -6,7 +6,12 @@ import { shortDate, formatBytes } from '../../utils/format';
 import { documentCategoryLabel } from '../../utils/documentCategories';
 import { opensInBrowser } from '../../utils/documentFiles';
 import { blobErrorMessage } from '../../utils/blobError';
-import MinutesReader from '../minutes/MinutesReader';
+
+// The minute reader is the rich-text editor's parser and schema. Loading it with
+// the page put Tiptap and ProseMirror (~180 KB gzip) in the members' page bundle
+// for everyone who ever opens a link — most of whom come to see a balance. It now
+// arrives only when a member actually opens a minute.
+const MinutesReader = lazy(() => import('../minutes/MinutesReader'));
 
 // The members' area: the chama's documents (title deeds, certificates), the
 // meeting minutes, and the constitution, behind one ID gate. A successful passbook
@@ -190,11 +195,13 @@ export default function PublicRecords({ verifiedId }) {
           </p>
         </div>
 
+        {/* The lock control is a real button on a phone, not a text link: this is
+            the only way a member on a shared handset closes his own record. */}
         {status === 'unlocked' && (
           <button
             type="button"
             onClick={lock}
-            className="shrink-0 rounded-lg border border-rule px-3 py-2 text-xs font-medium text-muted"
+            className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-rule px-3 text-sm font-medium text-muted"
           >
             Lock
           </button>
@@ -268,6 +275,8 @@ export default function PublicRecords({ verifiedId }) {
             <button
               type="button"
               role="tab"
+              id="records-tab-documents"
+              aria-controls="records-panel-documents"
               aria-selected={tab === 'documents'}
               onClick={() => setTab('documents')}
               className={tabClass('documents')}
@@ -277,6 +286,8 @@ export default function PublicRecords({ verifiedId }) {
             <button
               type="button"
               role="tab"
+              id="records-tab-minutes"
+              aria-controls="records-panel-minutes"
               aria-selected={tab === 'minutes'}
               onClick={() => {
                 setOpenMinute(null);
@@ -289,6 +300,8 @@ export default function PublicRecords({ verifiedId }) {
             <button
               type="button"
               role="tab"
+              id="records-tab-constitution"
+              aria-controls="records-panel-constitution"
               aria-selected={tab === 'constitution'}
               onClick={() => {
                 setOpenMinute(null);
@@ -300,13 +313,19 @@ export default function PublicRecords({ verifiedId }) {
             </button>
           </div>
 
-          {tab === 'documents' &&
-            (documents.length === 0 ? (
-              <p className="mt-4 rounded-xl border border-dashed border-rule px-4 py-6 text-center text-sm text-muted">
-                No documents have been published yet.
-              </p>
-            ) : (
-              <ul className="mt-4 space-y-2">
+          {tab === 'documents' && (
+            <div
+              role="tabpanel"
+              id="records-panel-documents"
+              aria-labelledby="records-tab-documents"
+              className="mt-4"
+            >
+              {documents.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-rule px-4 py-6 text-center text-sm text-muted">
+                  No documents have been published yet.
+                </p>
+              ) : (
+                <ul className="space-y-2">
                 {documents.map((doc) => (
                   <li
                     key={doc.id}
@@ -349,11 +368,18 @@ export default function PublicRecords({ verifiedId }) {
                     </div>
                   </li>
                 ))}
-              </ul>
-            ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           {tab === 'minutes' && openMinute && (
-            <div className="mt-4 overflow-hidden rounded-xl border border-rule">
+            <div
+              role="tabpanel"
+              id="records-panel-minutes"
+              aria-labelledby="records-tab-minutes"
+              className="mt-4 overflow-hidden rounded-xl border border-rule"
+            >
               <div className="flex items-start justify-between gap-3 bg-page p-4">
                 <div className="min-w-0">
                   <h3 className="text-sm font-bold">{openMinute.title}</h3>
@@ -362,19 +388,30 @@ export default function PublicRecords({ verifiedId }) {
                 <button
                   type="button"
                   onClick={() => setOpenMinute(null)}
-                  className="min-h-9 shrink-0 rounded-lg border border-rule px-3 text-xs font-medium"
+                  className="inline-flex min-h-11 shrink-0 items-center rounded-lg border border-rule px-3 text-sm font-medium"
                 >
                   ← Back
                 </button>
               </div>
               <div className="bg-surface px-4 py-3">
-                <MinutesReader key={openMinute.id} content={openMinute.content} />
+                {/* The editor is a ~650 KB library. It arrives with the minute it
+                    renders, not with the page: a member checking his balance should
+                    not download ProseMirror to do it. */}
+                <Suspense
+                  fallback={<p className="py-4 text-center text-sm text-muted">Loading minute…</p>}
+                >
+                  <MinutesReader key={openMinute.id} content={openMinute.content} />
+                </Suspense>
               </div>
             </div>
           )}
 
           {tab === 'minutes' && !openMinute && (
-            <>
+            <div
+              role="tabpanel"
+              id="records-panel-minutes"
+              aria-labelledby="records-tab-minutes"
+            >
               {minutesLoading ? (
                 <p className="mt-4 text-center text-sm text-muted">Loading minutes…</p>
               ) : minutes.length === 0 ? (
@@ -408,7 +445,7 @@ export default function PublicRecords({ verifiedId }) {
                   ))}
                 </ul>
               )}
-            </>
+            </div>
           )}
 
           {/* The constitution sits with the other members' documents. The page it
@@ -416,7 +453,12 @@ export default function PublicRecords({ verifiedId }) {
               handover carries the number rather than making the member type it
               again. */}
           {tab === 'constitution' && (
-            <div className="mt-4 rounded-xl border border-rule bg-page px-4 py-5">
+            <div
+              role="tabpanel"
+              id="records-panel-constitution"
+              aria-labelledby="records-tab-constitution"
+              className="mt-4 rounded-xl border border-rule bg-page px-4 py-5"
+            >
               <p className="text-sm font-semibold">The group&rsquo;s constitution</p>
               <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">
                 Every clause, searchable and printable — the governance and

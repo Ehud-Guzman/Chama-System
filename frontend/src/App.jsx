@@ -1,13 +1,17 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import PublicLookup from './pages/PublicLookup.jsx';
-import PublicConstitution from './pages/PublicConstitution.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './components/shared/Toast.jsx';
+import OfflineBanner from './components/shared/OfflineBanner.jsx';
 import Loader from './components/shared/Loader.jsx';
 import RoleGuard from './components/layout/RoleGuard.jsx';
 
-// Admin code is lazy-loaded — the public lookup bundle stays lean
+// Everything except the members' lookup page is lazy-loaded, including the
+// constitution: it is reached from the members' area by a handful of visitors, and
+// it brings its own 29 KB stylesheet with it — nobody who opens the link to check a
+// balance should pay for either.
+const PublicConstitution = lazy(() => import('./pages/PublicConstitution.jsx'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin.jsx'));
 const ProtectedRoute = lazy(() => import('./components/layout/ProtectedRoute.jsx'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
@@ -26,6 +30,7 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
+        <OfflineBanner />
         <Suspense fallback={<Loader />}>
           <Routes>
             <Route path="/" element={<PublicLookup />} />

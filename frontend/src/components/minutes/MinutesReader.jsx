@@ -2,7 +2,8 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
-import { toEditorHtml } from './RichTextEditor';
+import './minutes.css';
+import { toEditorHtml } from './richText';
 
 // Read-only view of a saved minute. It deliberately renders through the same
 // Tiptap schema the editor writes with: anything outside that schema (a

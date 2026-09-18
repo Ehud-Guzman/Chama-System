@@ -44,7 +44,7 @@ export default function LedgerRows({ contributions, showMember = false, onEdit, 
                   type="button"
                   onClick={() => onEdit(c)}
                   aria-label={`Edit contribution of ${money(c.amount)} on ${shortDate(c.date)}`}
-                  className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:bg-canvas"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:bg-canvas active:bg-canvas"
                 >
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
@@ -56,7 +56,7 @@ export default function LedgerRows({ contributions, showMember = false, onEdit, 
                   type="button"
                   onClick={() => onDelete(c)}
                   aria-label={`Delete contribution of ${money(c.amount)} on ${shortDate(c.date)}`}
-                  className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-alert"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-alert active:bg-canvas"
                 >
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M3 6h18" />

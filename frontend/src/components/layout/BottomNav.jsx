@@ -17,7 +17,7 @@ import { warmRoute } from '../../services/prefetch';
 const TAB_LIMIT = 4;
 
 const CELL =
-  'flex min-h-16 flex-col items-center justify-center gap-1 text-[10px] font-medium transition';
+  'flex min-h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium transition';
 
 export default function BottomNav() {
   const { user } = useAuth();
@@ -44,7 +44,11 @@ export default function BottomNav() {
     <>
       <nav
         aria-label="Main navigation"
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-rule bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
+        // z-30, deliberately: the bar must sit *under* every dialog, menu and toast.
+        // It used to share z-50 with them, and because it is the last element in this
+        // shell it won the tie and painted over the bottom sheets it was meant to
+        // stay behind (their Cancel/Confirm row is in the bottom 60px of the screen).
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-rule bg-surface pb-[max(0.5rem,env(safe-area-inset-bottom))] md:hidden"
       >
         {/* Column count follows the rendered cells so the row stays balanced as
             roles add or remove destinations */}
@@ -116,7 +120,7 @@ export default function BottomNav() {
             ref={sheetRef}
             className="w-full max-w-md rounded-t-2xl bg-surface pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-xl"
           >
-            <p className="border-b border-rule px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <p className="border-b border-rule px-5 py-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
               More
             </p>
 

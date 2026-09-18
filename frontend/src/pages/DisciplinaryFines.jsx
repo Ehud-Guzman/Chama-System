@@ -222,7 +222,7 @@ export default function DisciplinaryFines() {
             {filtered.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-muted">No members match that search.</p>
             ) : (
-              <ul className="max-h-80 overflow-y-auto lg:max-h-[34rem]">
+              <ul className="max-h-80 overflow-y-auto overscroll-contain lg:max-h-[34rem]">
                 {filtered.map((m) => (
                   <li key={m._id} className="border-b border-rule last:border-b-0">
                     <button
@@ -374,43 +374,47 @@ export default function DisciplinaryFines() {
             </p>
           ) : (
             <>
-              <dl className="grid grid-cols-3 divide-x divide-rule border-b border-rule">
-                <div className="min-w-0 px-4 py-3">
-                  <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              {/* Two per row on a phone. Three columns left the money about 80px
+                  wide and these figures carried a `truncate`, so "Still owed" showed
+                  an ellipsis where the amount should be. The hairlines come from the
+                  gap showing the rule colour, which keeps them correct at any count. */}
+              <dl className="grid grid-cols-2 gap-px border-b border-rule bg-rule md:grid-cols-3">
+                <div className="min-w-0 bg-surface px-4 py-3">
+                  <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     On record
                   </dt>
                   <dd className="amount mt-0.5 text-sm font-bold">
                     {record.summary.count}
                   </dd>
-                  <dd className="amount text-[11px] text-muted">
+                  <dd className="amount text-xs text-muted">
                     {money(record.summary.issued)} issued
                   </dd>
                 </div>
 
-                <div className="min-w-0 px-4 py-3">
-                  <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <div className="min-w-0 bg-surface px-4 py-3">
+                  <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Outstanding
                   </dt>
                   <dd
-                    className={`amount mt-0.5 text-sm font-bold ${
+                    className={`amount mt-0.5 break-words text-sm font-bold ${
                       record.summary.outstanding > 0 ? 'text-alert' : ''
                     }`}
                   >
                     {money(record.summary.outstanding)}
                   </dd>
-                  <dd className="amount text-[11px] text-muted">
+                  <dd className="amount text-xs text-muted">
                     {record.summary.pendingCount} not cleared
                   </dd>
                 </div>
 
-                <div className="min-w-0 px-4 py-3">
-                  <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <div className="min-w-0 bg-surface px-4 py-3">
+                  <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Cleared
                   </dt>
-                  <dd className="amount mt-0.5 text-sm font-bold text-accent">
+                  <dd className="amount mt-0.5 break-words text-sm font-bold text-accent">
                     {money(record.summary.cleared)}
                   </dd>
-                  <dd className="amount text-[11px] text-muted">
+                  <dd className="amount text-xs text-muted">
                     {record.summary.clearedCount} paid off
                   </dd>
                 </div>
@@ -423,7 +427,7 @@ export default function DisciplinaryFines() {
                       <p className="min-w-0 truncate text-sm font-medium">
                         {fine.type}
                         {fine.category === 'disciplinary' && (
-                          <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                          <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
                             conduct
                           </span>
                         )}
@@ -507,41 +511,41 @@ export default function DisciplinaryFines() {
             </p>
           ) : (
             <>
-              <dl className="grid grid-cols-3 divide-x divide-rule border-b border-rule">
-                <div className="min-w-0 px-4 py-3">
-                  <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              <dl className="grid grid-cols-2 gap-px border-b border-rule bg-rule md:grid-cols-3">
+                <div className="min-w-0 bg-surface px-4 py-3">
+                  <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Issued in total
                   </dt>
-                  <dd className="amount mt-0.5 truncate text-sm font-bold">
+                  <dd className="amount mt-0.5 break-words text-sm font-bold">
                     {money(group.totals.issued)}
                   </dd>
-                  <dd className="amount text-[11px] text-muted">{group.totals.count} fines</dd>
+                  <dd className="amount text-xs text-muted">{group.totals.count} fines</dd>
                 </div>
 
-                <div className="min-w-0 px-4 py-3">
-                  <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <div className="min-w-0 bg-surface px-4 py-3">
+                  <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Paid off
                   </dt>
-                  <dd className="amount mt-0.5 truncate text-sm font-bold text-accent">
+                  <dd className="amount mt-0.5 break-words text-sm font-bold text-accent">
                     {money(group.totals.cleared)}
                   </dd>
-                  <dd className="amount text-[11px] text-muted">
+                  <dd className="amount text-xs text-muted">
                     {group.totals.clearedCount} cleared
                   </dd>
                 </div>
 
-                <div className="min-w-0 px-4 py-3">
-                  <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <div className="min-w-0 bg-surface px-4 py-3">
+                  <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Still owed
                   </dt>
                   <dd
-                    className={`amount mt-0.5 truncate text-sm font-bold ${
+                    className={`amount mt-0.5 break-words text-sm font-bold ${
                       group.totals.outstanding > 0 ? 'text-alert' : ''
                     }`}
                   >
                     {money(group.totals.outstanding)}
                   </dd>
-                  <dd className="amount text-[11px] text-muted">
+                  <dd className="amount text-xs text-muted">
                     {group.totals.pendingCount} not cleared
                   </dd>
                 </div>
@@ -549,7 +553,7 @@ export default function DisciplinaryFines() {
 
               {group.byType.length > 0 && (
                 <div className="border-b border-rule px-4 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     By fine type
                   </p>
                   <ul className="mt-2 space-y-2">
@@ -560,7 +564,7 @@ export default function DisciplinaryFines() {
                       >
                         <span className="min-w-0 truncate">
                           {type.name}
-                          <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                          <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
                             {type.category}
                           </span>
                         </span>
@@ -583,7 +587,7 @@ export default function DisciplinaryFines() {
                   the full list is in the export. */}
               {group.byMember.some((m) => m.outstanding > 0) && (
                 <div className="border-b border-rule px-4 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Who owes what
                   </p>
                   <ul className="mt-2 space-y-2">
@@ -599,7 +603,7 @@ export default function DisciplinaryFines() {
                             <span className="block truncate">
                               {m.name}
                               {m.active === false && (
-                                <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                                <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
                                   resigned
                                 </span>
                               )}
@@ -627,7 +631,7 @@ export default function DisciplinaryFines() {
 
               {group.byMonth.length > 0 && (
                 <div className="px-4 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Month by month
                   </p>
                   <ul className="mt-2 space-y-2">
