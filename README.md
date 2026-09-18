@@ -620,6 +620,17 @@ the page. A screen that is not one of the five bottom-nav destinations opens wit
 `navigate(-1)`: back that goes wherever you came from is unpredictable after a form
 submit or a link somebody sent.
 
+**Figures that cannot be changed by accident.** Finance → Opening balances holds the
+member balances, the fund floats and the week cycle — the base every balance in the
+system is counted from. Every one of those boxes is read-only until somebody presses
+**Unlock to edit** and confirms, the save locks the page again, and **Lock again**
+drops anything that was not saved. It is a deliberate two-step because a scroll wheel
+over a focused number, or a thumb on the wrong row, is otherwise a silent change to a
+member's money. Two things on that page are *not* locked, on purpose: adding a fund
+(that is creating something, not changing a figure) and the "whole week collected for
+everybody" panel, which has its own preview, confirmation and undo.
+
+
 
 **Icons.** `npm run icons` regenerates `public/icon-*.png` from the geometry in
 `public/icon.svg` (iOS will not take an SVG apple-touch-icon and Android wants a

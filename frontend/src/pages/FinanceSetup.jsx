@@ -60,6 +60,13 @@ export default function FinanceSetup() {
   // A save that would cut the members' total hard comes back as a 409 carrying
   // both totals — this holds that answer while the treasurer decides.
   const [massSave, setMassSave] = useState(null);
+  // The figures on this page are the base every balance in the system is counted
+  // from: the members' carried-in totals, the funds' floats, and the week cycle
+  // itself. They sit one scroll wheel or one wrong row away from being changed, so
+  // they are read-only until somebody says out loud that they mean to edit them.
+  const [unlocked, setUnlocked] = useState(false);
+  const [unlockPrompt, setUnlockPrompt] = useState(false);
+  const locked = !unlocked;
 
   const apply = useCallback((payload) => {
     setData(payload);
@@ -120,6 +127,18 @@ export default function FinanceSetup() {
     toast('Suggestions loaded — check them, then save');
   }
 
+  // Locking again drops anything typed but not saved: the boxes go back to what the
+  // server holds, so a half-finished correction cannot sit there and be written up
+  // by whoever unlocks next.
+  async function lockAgain() {
+    setUnlocked(false);
+    try {
+      await reload();
+    } catch (err) {
+      toast(apiMessage(err, 'Could not refresh the figures'), 'error');
+    }
+  }
+
   async function save(e, { confirm: massConfirm } = {}) {
     e?.preventDefault?.();
 
@@ -169,6 +188,10 @@ export default function FinanceSetup() {
             }`
       );
       await reload();
+      // The save locks the page again. A correction is a deliberate act, and an
+      // unlocked sheet left open behind a counter is one stray keystroke away from
+      // a wrong member's money.
+      setUnlocked(false);
     } catch (err) {
       const status = err.response?.status;
       // A save that would wipe the members' total is held back once, with both
@@ -289,12 +312,48 @@ export default function FinanceSetup() {
         </div>
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || locked}
+          title={locked ? 'Unlock to edit first' : undefined}
           className="min-h-12 rounded-xl bg-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
         >
           {busy ? 'Saving…' : 'Save all'}
         </button>
       </header>
+
+      {/* Editing is locked until somebody says otherwise. These boxes are the base
+          every balance in the system is counted from: a scroll wheel over a focused
+          number, or a thumb on the wrong row, would move a member's money without
+          anybody deciding to — and the page is one "Save all" away from writing it.
+          Unlocking is deliberate, saving re-locks it, and locking again drops
+          anything that was not saved. */}
+      <section
+        className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 ${
+          locked ? 'border-rule bg-surface' : 'border-alert/40 bg-alert/5'
+        }`}
+      >
+        <div className="min-w-0">
+          <p
+            className={`flex items-center gap-2 text-sm font-semibold ${
+              locked ? 'text-ink' : 'text-alert'
+            }`}
+          >
+            <LockIcon open={!locked} />
+            {locked ? 'Locked' : 'Editing is unlocked'}
+          </p>
+          <p className="mt-0.5 max-w-3xl text-xs leading-5 text-muted">
+            {locked
+              ? 'The member balances, the fund floats and the week figures cannot be typed in by accident. Unlock to correct one.'
+              : 'Change the figures below, then Save all. The page locks itself again when the save goes through, and every change stays in the audit trail.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={locked ? () => setUnlockPrompt(true) : lockAgain}
+          className="min-h-11 shrink-0 rounded-lg border border-rule bg-surface px-4 text-sm font-medium transition hover:border-primary/40 hover:bg-primary/5"
+        >
+          {locked ? 'Unlock to edit' : 'Lock again'}
+        </button>
+      </section>
 
       <section className="grid gap-3 rounded-xl border border-rule bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Field
@@ -302,6 +361,7 @@ export default function FinanceSetup() {
           label="Week number now"
           value={settings.cycleStartWeek}
           onChange={(v) => setSettings({ ...settings, cycleStartWeek: v })}
+          disabled={locked}
         />
         <Field
           id="weeklyAmount"
@@ -309,6 +369,7 @@ export default function FinanceSetup() {
           value={settings.weeklyAmount}
           onChange={(v) => setSettings({ ...settings, weeklyAmount: v })}
           money
+          disabled={locked}
         />
         <Field
           id="chaiAmount"
@@ -316,6 +377,7 @@ export default function FinanceSetup() {
           value={settings.chaiAmount}
           onChange={(v) => setSettings({ ...settings, chaiAmount: v })}
           money
+          disabled={locked}
         />
         <div>
           <label htmlFor="weekAnchorDate" className="mb-1 block text-xs font-medium">
@@ -326,7 +388,8 @@ export default function FinanceSetup() {
             type="date"
             value={settings.weekAnchorDate}
             onChange={(e) => setSettings({ ...settings, weekAnchorDate: e.target.value })}
-            className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+            disabled={locked}
+            className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
           />
         </div>
         <p className="text-xs leading-5 text-muted sm:col-span-2 lg:col-span-4">
@@ -344,12 +407,17 @@ export default function FinanceSetup() {
               What each member held on the paper ledger when this started. It is the base every
               later week is added to. Type figures as digits — 1400 and 1,400 both work — and a box
               you leave alone keeps the value it already has.
+              {/* On a phone these boxes are a scroll away from the lock bar, so the reason
+                  they cannot be typed into travels with them. */}
+              {locked && <span className="ml-1 font-medium text-ink">Locked — unlock above to edit.</span>}
             </p>
           </div>
           <button
             type="button"
             onClick={useSuggestions}
-            className="min-h-11 rounded-lg border border-rule px-4 text-sm font-medium"
+            disabled={locked}
+            title={locked ? 'Unlock to edit first' : undefined}
+            className="min-h-11 rounded-lg border border-rule px-4 text-sm font-medium disabled:opacity-60"
           >
             Use all suggestions
           </button>
@@ -389,8 +457,9 @@ export default function FinanceSetup() {
                         inputMode="numeric"
                         value={balances[m._id] ?? ''}
                         onChange={(e) => setBalances({ ...balances, [m._id]: e.target.value })}
+                        disabled={locked}
                         aria-label={`Opening balance for ${m.name}`}
-                        className={`amount h-11 w-36 rounded-lg border px-3 text-sm ${
+                        className={`amount h-11 w-36 rounded-lg border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
                           differs ? 'border-primary bg-primary/5' : 'border-rule bg-canvas'
                         }`}
                       />
@@ -428,6 +497,7 @@ export default function FinanceSetup() {
             started counting. A fund&rsquo;s balance on every screen is this figure plus what comes
             in minus what goes out — so a fund nobody carries in reads as empty. Digits only
             (1400 or 1,400 both work); a box you leave alone keeps the value it already has.
+            {locked && <span className="ml-1 font-medium text-ink">Locked — unlock above to edit.</span>}
           </p>
         </div>
 
@@ -481,8 +551,9 @@ export default function FinanceSetup() {
                         inputMode="numeric"
                         value={funds[f.typeId] ?? ''}
                         onChange={(e) => setFunds({ ...funds, [f.typeId]: e.target.value })}
+                        disabled={locked}
                         aria-label={`Carried-in total for ${f.name}`}
-                        className={`amount h-11 w-36 rounded-lg border px-3 text-sm ${
+                        className={`amount h-11 w-36 rounded-lg border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
                           differs ? 'border-primary bg-primary/5' : 'border-rule bg-canvas'
                         }`}
                       />
@@ -679,6 +750,22 @@ export default function FinanceSetup() {
         onCancel={() => setConfirming(null)}
       />
 
+      {/* Unlocking is the deliberate act the rest of this page hangs on, so it gets
+          the same dialog treatment as the other things that move money. Nothing is
+          written by unlocking — it only makes the boxes typeable — but a treasurer
+          should know what they are about to be able to change. */}
+      <ConfirmDialog
+        open={unlockPrompt}
+        title="Unlock these figures for editing?"
+        body="Opening balances and fund floats are the base every balance is counted from: change one and that member's money changes on every screen. The week figures move everybody's. Nothing is written until you press Save all, a save that cuts the members' total by a quarter or more stops and asks again, and every change stays in the audit trail."
+        confirmLabel="Unlock"
+        onConfirm={() => {
+          setUnlockPrompt(false);
+          setUnlocked(true);
+        }}
+        onCancel={() => setUnlockPrompt(false)}
+      />
+
       {/* The one button that can take 32 verified balances out at once, so a save
           that would cut the total by a quarter or more stops here first. The API
           refused the request (409) and nothing has been written. */}
@@ -709,7 +796,7 @@ export default function FinanceSetup() {
 }
 
 // Small shared input so the four cycle figures stay one shape.
-function Field({ id, label, value, onChange, money: isMoney }) {
+function Field({ id, label, value, onChange, money: isMoney, disabled = false }) {
   return (
     <div>
       <label htmlFor={id} className="mb-1 block text-xs font-medium">
@@ -721,10 +808,31 @@ function Field({ id, label, value, onChange, money: isMoney }) {
         inputMode="numeric"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm ${
+        disabled={disabled}
+        className={`h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
           isMoney ? 'amount' : ''
         }`}
       />
     </div>
+  );
+}
+
+// Padlock, closed or open: the one thing on this page a treasurer has to be able to
+// read at a glance before touching anything.
+function LockIcon({ open = false }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="h-4 w-4 shrink-0"
+    >
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      {open ? <path d="M8 11V7a4 4 0 0 1 7.5-2" /> : <path d="M8 11V7a4 4 0 0 1 8 0v4" />}
+    </svg>
   );
 }
