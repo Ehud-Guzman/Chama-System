@@ -1,50 +1,22 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { warmRoute } from '../services/prefetch';
 
-import AddAdminForm from '../components/shared/AddAdminForm';
 import ChangePasswordForm from '../components/shared/ChangePasswordForm';
-import ChamaSettingsForm from '../components/shared/ChamaSettingsForm';
-import BackupPanel from '../components/shared/BackupPanel';
-import FineTypeManager from '../components/contributions/FineTypeManager';
 import MemberLedgerList from '../components/ledger/MemberLedgerList';
+import WorkspaceNav from '../components/layout/WorkspaceNav';
 
-function QuickAction({ to, label, description, primary }) {
-  return (
-    <Link
-      to={to}
-      // Warm the screen on intent — hover on a laptop, pointer-down on a phone —
-      // so tapping a workflow tile swaps the page instead of waiting on it.
-      onMouseEnter={() => warmRoute(to)}
-      onPointerDown={() => warmRoute(to)}
-      className={`group flex min-h-24 items-start justify-between gap-4 rounded-xl border p-4 transition active:scale-[0.99] ${
-        primary
-          ? 'border-primary bg-primary text-white shadow-sm hover:bg-primary-dark'
-          : 'border-rule bg-surface hover:border-primary/40 hover:bg-elevation'
-      }`}
-    >
-      <span className="min-w-0">
-        <span className="block text-sm font-bold">{label}</span>
-        <span className={`mt-1 block text-xs leading-5 ${primary ? 'text-white/80' : 'text-muted'}`}>
-          {description}
-        </span>
-      </span>
-      <span
-        aria-hidden="true"
-        className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border text-lg ${
-          primary ? 'border-white/25 text-white' : 'border-rule text-primary group-hover:bg-primary/10'
-        }`}
-      >
-        +
-      </span>
-    </Link>
-  );
-}
+// How many names the dashboard opens with. The full list is /admin/finance — the
+// same component without a cap — so a dashboard that shows everybody is not adding
+// information, only distance between the person and everything else on the page.
+const PREVIEW = 8;
 
-// The dashboard is the logging screen and then the admin tools — deliberately in
-// that order. Whoever signs in sees the same week figures and the same list of
-// names the treasurer sees, because it is the same component; there is no second
-// way to log money anywhere in the app.
+// The dashboard is the logging screen, and it is also the page you land on after
+// signing in, so it carries the map of everything else in one grouped panel rather
+// than four screens of forms below the member list.
+//
+// The header is MemberLedgerList's own header, worded as a greeting: the week's
+// figures, this week's dates, and then the list — no second title card stacked above
+// it saying the same thing. The admin tooling lives at /admin/settings.
 export default function AdminDashboard() {
   const { user } = useAuth();
   const isTreasurer = user?.role === 'treasurer';
@@ -53,89 +25,51 @@ export default function AdminDashboard() {
   const firstName = user?.name?.split(' ')[0] || 'Admin';
 
   return (
-    <div className="min-w-0 space-y-6">
-      <header className="rounded-xl border border-rule bg-surface px-5 py-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted sm:text-xs">
-          Dashboard
-        </p>
-        <h1 className="mt-1 break-words text-2xl font-bold leading-tight sm:text-3xl">
-          Hello, {firstName}
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          {isTreasurer
-            ? 'Pick a member below to log contributions, tea, extra or an expense.'
-            : 'Pick a member below to log money, or use the tools further down to keep the records straight.'}
-        </p>
-      </header>
-
-      {/* The one logging surface, identical to /admin/finance. The one-time
-          opening-balance entry sits at the top here too, so it is one tap away
-          rather than below the whole member list. */}
-      <MemberLedgerList
-        showHeader
-        action={
-          <Link
-            to="/admin/finance/setup"
-            className="min-h-11 rounded-lg border border-rule bg-surface px-4 text-sm font-medium leading-[2.75rem]"
-          >
-            Opening balances
-          </Link>
-        }
-      />
-
-      <section aria-label="Other workflows" className="space-y-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted">Workflows</p>
-          <h2 className="mt-1 text-lg font-bold">Other screens</h2>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <QuickAction
-            to="/admin/members"
-            label="Members"
-            description="Add, update, view statements, and resign members."
-            primary
+    <div className="min-w-0 space-y-4">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_19rem] xl:items-start xl:gap-6">
+        <div className="min-w-0">
+          <MemberLedgerList
+            showHeader
+            eyebrow="Dashboard"
+            heading={`Hello, ${firstName}`}
+            hint={
+              isTreasurer
+                ? 'Tap a member to log contributions, tea or an expense.'
+                : 'Tap a member to log money. Everything else is grouped under Go to.'
+            }
+            limit={PREVIEW}
+            moreHref="/admin/finance"
+            defaultSort="arrears"
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  to="/admin/finance/setup"
+                  className="min-h-11 rounded-lg border border-rule bg-surface px-4 text-sm font-medium leading-[2.75rem]"
+                >
+                  Opening balances
+                </Link>
+                {/* The tools are one tap from the top of the page: an admin should
+                    never have to scroll past the members to reach them. */}
+                {isAdmin && (
+                  <Link
+                    to="/admin/settings"
+                    className="min-h-11 rounded-lg border border-rule bg-surface px-4 text-sm font-medium leading-[2.75rem]"
+                  >
+                    Settings
+                  </Link>
+                )}
+              </div>
+            }
           />
-          <QuickAction
-            to="/admin/reports"
-            label="Reports"
-            description="Review summaries, performance, audit, and exports."
-          />
-          {!isTreasurer && (
-            <QuickAction
-              to="/admin/minutes"
-              label="Minutes"
-              description="Write, import, export, and manage meeting records."
-            />
-          )}
         </div>
-      </section>
 
-      {isAdmin && (
-        <section aria-label="Administration" className="space-y-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted">Management</p>
-            <h2 className="mt-1 text-lg font-bold">System controls</h2>
-          </div>
+        {/* The second navigation. Below the list on a phone, a sticky rail beside it
+            once there is room for one. */}
+        <WorkspaceNav className="xl:sticky xl:top-6" />
+      </div>
 
-          <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] xl:items-start">
-            <div className="min-w-0 space-y-4 self-start">
-              <ChamaSettingsForm />
-              {/* The treasury funds themselves are fixed (weekly contribution,
-                  tea, extra) and the week figures live at Finance → Setup, so
-                  the only type list left to curate is the infraction list the
-                  disciplinary officer picks from. */}
-              <FineTypeManager />
-            </div>
-
-            <div className="min-w-0 space-y-4 self-start">
-              <ChangePasswordForm />
-              {user?.role === 'super_admin' && <BackupPanel />}
-              <AddAdminForm />
-            </div>
-          </div>
-        </section>
-      )}
-
+      {/* Everybody can change their own password; it needs no grouping, so it stays
+          here for the roles that have no settings page. */}
       {!isAdmin && <ChangePasswordForm />}
     </div>
   );

@@ -15,6 +15,7 @@ const PublicConstitution = lazy(() => import('./pages/PublicConstitution.jsx'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin.jsx'));
 const ProtectedRoute = lazy(() => import('./components/layout/ProtectedRoute.jsx'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
+const AdminSettings = lazy(() => import('./pages/AdminSettings.jsx'));
 const MembersList = lazy(() => import('./pages/MembersList.jsx'));
 const MemberDetail = lazy(() => import('./pages/MemberDetail.jsx'));
 const FinanceLedger = lazy(() => import('./pages/FinanceLedger.jsx'));
@@ -44,6 +45,17 @@ export default function App() {
                 element={
                   <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
                     <AdminDashboard />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/settings"
+                element={
+                  /* The tooling behind this page is admin-only at the API too
+                     (api/settings, api/fine-types, api/auth/admins, api/backup), so
+                     the guard and the server agree about who may be here. */
+                  <RoleGuard roles={['super_admin', 'admin']}>
+                    <AdminSettings />
                   </RoleGuard>
                 }
               />

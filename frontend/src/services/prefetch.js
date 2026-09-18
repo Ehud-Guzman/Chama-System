@@ -21,6 +21,7 @@ import { fetchLedger } from './ledgerCache';
 
 const CHUNKS = {
   '/admin/dashboard': () => import('../pages/AdminDashboard.jsx'),
+  '/admin/settings': () => import('../pages/AdminSettings.jsx'),
   '/admin/members': () => import('../pages/MembersList.jsx'),
   '/admin/finance': () => import('../pages/FinanceLedger.jsx'),
   '/admin/finance/setup': () => import('../pages/FinanceSetup.jsx'),

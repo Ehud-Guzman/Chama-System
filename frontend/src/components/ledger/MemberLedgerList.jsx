@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../../services/api';
 import { useToast } from '../shared/Toast';
 import { money, shortDate } from '../../utils/format';
@@ -69,7 +70,27 @@ function StatusPill({ member, baselineWeek }) {
   );
 }
 
-export default function MemberLedgerList({ onLoaded, showHeader = false, action = null }) {
+export default function MemberLedgerList({
+  onLoaded,
+  showHeader = false,
+  action = null,
+  // The header is the page's header, so the page words it: the finance screen says
+  // "Finance / Week 93", the dashboard says "Dashboard / Hello, Anne" — one screen,
+  // one title, instead of a greeting card stacked on top of a second header.
+  eyebrow = 'Finance',
+  heading = null,
+  hint = null,
+  // A cap for pages that are not the ledger itself. The dashboard opens on the
+  // logging list, but it is not the place to read through 32 names to reach the
+  // tools underneath; /admin/finance still lists everybody, and `moreHref` hands
+  // over to it. A search always looks through the whole list, cap or no cap.
+  limit = 0,
+  moreHref = null,
+  // Which order the list opens in. The finance ledger opens alphabetically — it is
+  // where a name is looked up — while the dashboard opens on who is behind, so its
+  // eight rows are the eight that matter rather than the first eight in the alphabet.
+  defaultSort = 'name',
+}) {
   const toast = useToast();
   // Straight from the cache when the page was visited a moment ago, so switching
   // between the dashboard and the ledger paints immediately instead of flashing a
@@ -77,7 +98,7 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
   const [data, setData] = useState(() => getCachedLedger());
   const [loading, setLoading] = useState(() => !getCachedLedger());
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('name');
+  const [sort, setSort] = useState(defaultSort);
   // The member whose panel is open, if any — the panel is part of this screen, so
   // tapping a name never leaves the page.
   const [openMember, setOpenMember] = useState(null);
@@ -145,6 +166,11 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
     });
   }, [data, search, sort]);
 
+  // Capped only when nobody is searching: a search that could not find a name
+  // because it fell outside the first eight would be worse than no search at all.
+  const capped = limit > 0 && !search.trim();
+  const shown = capped ? members.slice(0, limit) : members;
+
   if (loading) return <Loader />;
 
   const week = data?.week;
@@ -158,13 +184,16 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
       {showHeader && week && (
         <>
           <header className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted">Finance</p>
-              <h1 className="mt-1 text-2xl font-bold">Week {week.currentWeek}</h1>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted">{eyebrow}</p>
+              <h1 className="mt-1 text-2xl font-bold">
+                {heading || `Week ${week.currentWeek}`}
+              </h1>
               <p className="mt-1 text-sm text-muted">
                 {shortDate(week.startDate)} → {shortDate(week.endDate)} · {money(week.weeklyAmount)} a
                 week per member · {money(week.chaiAmount)} tea
               </p>
+              {hint && <p className="mt-1 max-w-md text-xs leading-5 text-muted">{hint}</p>}
             </div>
             {action}
           </header>
@@ -183,7 +212,9 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
         </>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      {/* Where the dashboard's "Log a payment" lands, and where the eye should start:
+          the search box, not the top of the page. scroll-mt clears the sticky header. */}
+      <div id="log-money" className="flex scroll-mt-20 flex-wrap gap-2">
         <input
           type="search"
           placeholder="Search name, phone, ID or reg no."
@@ -212,7 +243,7 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
         </p>
       ) : (
         <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
-          {members.map((m) => (
+          {shown.map((m) => (
             <li key={m._id} className="border-b border-rule last:border-b-0">
               <button
                 type="button"
@@ -258,6 +289,15 @@ export default function MemberLedgerList({ onLoaded, showHeader = false, action 
             </li>
           ))}
         </ul>
+      )}
+
+      {capped && moreHref && (
+        <Link
+          to={moreHref}
+          className="flex min-h-12 w-full items-center justify-center gap-1 rounded-xl border border-dashed border-rule bg-surface text-sm font-semibold text-primary"
+        >
+          Show all {members.length} members →
+        </Link>
       )}
 
       {/* The member's ledger, over the list rather than instead of it. Closing it

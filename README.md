@@ -443,6 +443,14 @@ a lost connection instead of saying "something went wrong". A screen whose fetch
 shows `ErrorState` with a **Try again** button rather than an empty list. Error toasts
 persist until dismissed and can carry a retry action — `toast(message, 'error', { action: { label, onClick } })`.
 
+**Where things live.** The dashboard is the logging screen: the week's figures, the
+member list, and a grouped second navigation (`components/layout/WorkspaceNav.jsx`).
+The member list is capped there at eight names — the full list is `/admin/finance` —
+because a dashboard is not the place to read through 32 names to reach what is under
+them. The admin tooling lives at `/admin/settings`, grouped, with its own rail. When
+you add an admin screen, give it a group in `WorkspaceNav` (and a section in
+`AdminSettings`), not a card at the foot of the dashboard.
+
 **Icons.** `npm run icons` regenerates `public/icon-*.png` from the geometry in
 `public/icon.svg` (iOS will not take an SVG apple-touch-icon and Android wants a
 maskable one); `prebuild` runs it automatically, and `npm run verify:icons` parses the

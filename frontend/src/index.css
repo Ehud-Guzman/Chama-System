@@ -41,6 +41,15 @@ body {
   }
 }
 
+/* Jump links ("Log a payment", "Fine types") glide instead of teleporting — the
+   movement is what tells you that you stayed on the page. Opted out of by anyone
+   who has asked their phone for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 /* Visible keyboard focus, everywhere */
 :focus-visible {
   outline: 2px solid var(--color-primary);
