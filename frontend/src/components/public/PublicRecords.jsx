@@ -173,8 +173,15 @@ export default function PublicRecords({ verifiedPhone }) {
     }`;
 
   return (
-    <section className="rounded-2xl border border-rule bg-surface p-4 shadow-sm sm:p-6">
-      <div className="flex items-start justify-between gap-3">
+    <section className="rounded-2xl border border-rule bg-surface p-4 shadow-sm sm:p-6 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-center lg:gap-x-10">
+      {/* The header spans the whole card once the gate is out of the way, so the
+          Lock button lands on the card's right edge instead of at the end of the
+          narrower first column (where the phone field sits while still locked). */}
+      <div
+        className={`flex items-start justify-between gap-3 lg:col-start-1 lg:row-start-1 ${
+          status === 'unlocked' ? 'lg:col-span-2' : ''
+        }`}
+      >
         <div className="min-w-0">
           <h2 className="text-base font-bold sm:text-lg">Documents, minutes &amp; constitution</h2>
           <p className="mt-1 text-xs leading-5 text-muted sm:text-sm">
@@ -194,8 +201,15 @@ export default function PublicRecords({ verifiedPhone }) {
         )}
       </div>
 
+      {/* The one field the gate needs, on its own column beside the explanation
+          once there is room — the same shape the page's hero uses, rather than a
+          short form left stranded in a desktop-wide card. */}
       {status !== 'unlocked' && (
-        <form onSubmit={onSubmit} className="mt-5" noValidate>
+        <form
+          onSubmit={onSubmit}
+          className="mt-5 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:w-full"
+          noValidate
+        >
           <label htmlFor="records-phone" className="mb-2 block text-sm font-semibold">
             Phone number
           </label>
@@ -238,7 +252,7 @@ export default function PublicRecords({ verifiedPhone }) {
       )}
 
       {status === 'unlocked' && (
-        <div className="mt-4">
+        <div className="mt-4 lg:col-span-2 lg:mt-5">
           {error && (
             <p className="mb-3 text-sm font-medium text-alert" role="alert">
               {error}
@@ -293,20 +307,27 @@ export default function PublicRecords({ verifiedPhone }) {
             ) : (
               <ul className="mt-4 space-y-2">
                 {documents.map((doc) => (
-                  <li key={doc.id} className="rounded-xl border border-rule bg-page px-4 py-3">
-                    <p className="truncate text-sm font-semibold">{doc.title}</p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {documentCategoryLabel(doc.category, categories, doc.categoryLabel)} ·{' '}
-                      {shortDate(doc.uploadedAt)}
-                    </p>
-                    {doc.description && (
-                      <p className="mt-1 text-xs leading-5 text-muted">{doc.description}</p>
-                    )}
-                    <p className="amount mt-1 truncate text-[11px] text-muted">
-                      {doc.fileName} · {formatBytes(doc.size)}
-                    </p>
+                  <li
+                    key={doc.id}
+                    className="rounded-xl border border-rule bg-page px-4 py-3 lg:flex lg:items-start lg:justify-between lg:gap-6"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{doc.title}</p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {documentCategoryLabel(doc.category, categories, doc.categoryLabel)} ·{' '}
+                        {shortDate(doc.uploadedAt)}
+                      </p>
+                      {doc.description && (
+                        <p className="mt-1 text-xs leading-5 text-muted">{doc.description}</p>
+                      )}
+                      <p className="amount mt-1 truncate text-[11px] text-muted">
+                        {doc.fileName} · {formatBytes(doc.size)}
+                      </p>
+                    </div>
 
-                    <div className="mt-3 flex gap-2">
+                    {/* Beside the details once there is room, instead of stretching
+                        two buttons across a desktop-wide card. */}
+                    <div className="mt-3 flex gap-2 lg:mt-0 lg:w-56 lg:shrink-0">
                       <button
                         type="button"
                         onClick={() => openDocument(doc, false)}
@@ -362,18 +383,23 @@ export default function PublicRecords({ verifiedPhone }) {
               ) : (
                 <ul className="mt-4 space-y-2">
                   {minutes.map((m) => (
-                    <li key={m.id} className="rounded-xl border border-rule bg-page px-4 py-3">
-                      <p className="text-sm font-semibold">{m.title}</p>
-                      <p className="mt-0.5 text-xs text-muted">{shortDate(m.date)}</p>
-                      {m.preview && (
-                        <p className="mt-1 text-xs leading-5 text-muted">{m.preview}…</p>
-                      )}
+                    <li
+                      key={m.id}
+                      className="rounded-xl border border-rule bg-page px-4 py-3 lg:flex lg:items-center lg:justify-between lg:gap-6"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold">{m.title}</p>
+                        <p className="mt-0.5 text-xs text-muted">{shortDate(m.date)}</p>
+                        {m.preview && (
+                          <p className="mt-1 text-xs leading-5 text-muted">{m.preview}…</p>
+                        )}
+                      </div>
 
                       <button
                         type="button"
                         onClick={() => openMinuteDetail(m.id)}
                         disabled={openingMinuteId === m.id}
-                        className="mt-3 min-h-11 w-full rounded-lg border border-rule text-sm font-medium text-primary disabled:opacity-60"
+                        className="mt-3 min-h-11 w-full rounded-lg border border-rule text-sm font-medium text-primary disabled:opacity-60 lg:mt-0 lg:w-40 lg:shrink-0"
                       >
                         {openingMinuteId === m.id ? 'Opening…' : 'Read minute'}
                       </button>

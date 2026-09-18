@@ -7,8 +7,10 @@ import StatTile from '../shared/StatTile';
 // no per-member data in it at all: no name, no balance, no phone number. A
 // member's own record is opened by proving his own number on the lookup above,
 // never by browsing a list of people.
-// Renders as a row of tiles rather than one narrow card so it actually uses
-// the width on a desktop screen.
+//
+// The tiles go four across once there is room for them; the two per-name
+// breakdowns below sit side by side from lg, because as full-width cards every
+// amount sat a screen away from the label it belongs to.
 export default function GroupOverview({ onChamaName }) {
   const [overview, setOverview] = useState(null);
 
@@ -59,10 +61,9 @@ export default function GroupOverview({ onChamaName }) {
   )}
 </p>
 
-      {/* The two per-name breakdowns sit side by side from lg. As full-width
-          cards every amount sat a screen away from the label it belongs to, so
-          the width was there but the pairing was unreadable. Each list is a
-          single column inside its own card instead. */}
+      {/* Side by side from lg. Stacked full width, every amount sat a screen away
+          from the label it belongs to — the width was there but the pairing was
+          unreadable. Each list stays a single column inside its own card. */}
       {(overview.byType.length > 0 || overview.fundBalances?.length > 0) && (
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           {overview.byType.length > 0 && (

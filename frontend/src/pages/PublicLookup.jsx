@@ -63,55 +63,63 @@ export default function PublicLookup() {
   return (
     <div className="min-h-dvh overflow-x-hidden bg-page px-3 py-5 sm:px-5 sm:py-8 lg:px-8 lg:py-10">
 
-      <main className="mx-auto w-full max-w-6xl">
+      <div className="mx-auto w-full max-w-6xl xl:max-w-7xl">
 
         {/* =====================================================
             TOP NAV / BRAND
         ====================================================== */}
-        <header className="w-full">
+        <header className="flex items-center justify-between gap-3">
 
-          <div className="flex items-center justify-between gap-3">
-
-            <div className="min-w-0">
-              <p className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-muted sm:text-xs">
-                {chamaName || CHAMA_NAME}
-              </p>
-            </div>
-
-            <nav
-              aria-label="Public navigation"
-              className="flex shrink-0 items-center gap-1.5 sm:gap-2"
-            >
-              <Link
-                to="/admin/login"
-                className="
-                  inline-flex min-h-9 items-center justify-center
-                  rounded-lg border border-rule bg-surface
-                  px-2.5
-                  text-xs font-semibold text-muted
-                  transition
-                  hover:text-primary
-                  focus:outline-none focus:ring-2
-                  focus:ring-primary/30
-                  sm:px-3
-                "
-              >
-                Admin
-              </Link>
-            </nav>
-
+          <div className="min-w-0">
+            <p className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-muted sm:text-xs">
+              {chamaName || CHAMA_NAME}
+            </p>
           </div>
 
-          {/* Hero and the lookup card share a row from lg: on a laptop the page
-              used to open as a narrow 576px ribbon with half the screen empty
-              beside it. On a phone they stack in the order they are read. */}
-          <div className="mt-8 grid gap-6 sm:mt-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:items-start lg:gap-10">
+          <nav
+            aria-label="Public navigation"
+            className="flex shrink-0 items-center gap-1.5 sm:gap-2"
+          >
+            <Link
+              to="/admin/login"
+              className="
+                inline-flex min-h-9 items-center justify-center
+                rounded-lg border border-rule bg-surface
+                px-2.5
+                text-xs font-semibold text-muted
+                transition
+                hover:text-primary
+                focus:outline-none focus:ring-2
+                focus:ring-primary/30
+                sm:px-3
+              "
+            >
+              Admin
+            </Link>
+          </nav>
+
+        </header>
+
+        {/* One column of cards, all the same width: the hero with the lookup in it,
+            then the members' area, then the group's totals. Every card shares the
+            page's left and right edges — which is what the top of the page was
+            missing while the heading and the lookup were two separate blocks. */}
+        <main className="mt-8 space-y-5 sm:mt-10">
 
           {/* =================================================
-              HERO
+              HERO AND THE LOOKUP — one card
+
+              The heading and the phone form are the two halves of the one thing
+              this page asks for, so they share a surface. As two separate blocks
+              they sat at opposite ends of a 1088px row with a dead gap between
+              them, which is what made the top of the page read as unrelated pieces.
           ================================================== */}
 
-          <section>
+          <section className="rounded-2xl border border-rule bg-surface p-5 shadow-sm sm:p-7 lg:p-8">
+
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_25rem] lg:items-center lg:gap-10">
+
+            <div>
 
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
               Member portal
@@ -121,44 +129,30 @@ export default function PublicLookup() {
               Check your contributions
             </h1>
 
-            <p className="mt-3 max-w-lg text-sm leading-6 text-muted sm:text-base">
+            <p className="mt-3 max-w-xl text-sm leading-6 text-muted sm:text-base">
               Group totals are open to everyone. Your own contribution record — and the
               group&rsquo;s documents, minutes and constitution — open with the phone number
               you registered.
             </p>
 
-          </section>
-
-          {/* =================================================
-              LOOKUP CARD
-          ================================================== */}
-
-          <section
-            className="
-              rounded-2xl border border-rule
-              bg-surface p-4 shadow-sm
-              sm:p-6
-            "
-          >
-
-            <div>
-              <h2 className="text-base font-bold sm:text-lg">
-                Find your record
-              </h2>
-
-              <p className="mt-1 text-xs leading-5 text-muted sm:text-sm">
-                Enter the phone number registered with the chama.
-              </p>
             </div>
 
             <form
               onSubmit={onSubmit}
-              className="mt-5"
+              className="lg:rounded-xl lg:border lg:border-rule lg:bg-page lg:p-5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-x-3"
               noValidate
             >
+              <h2 className="text-base font-bold sm:text-lg lg:col-span-2">
+                Find your record
+              </h2>
+
+              <p className="mt-1 text-xs leading-5 text-muted sm:text-sm lg:col-span-2">
+                Enter the phone number registered with the chama.
+              </p>
+
               <label
                 htmlFor="phone"
-                className="mb-2 block text-sm font-semibold"
+                className="mt-5 mb-2 block text-sm font-semibold lg:col-span-2"
               >
                 Phone number
               </label>
@@ -209,6 +203,7 @@ export default function PublicLookup() {
                   active:scale-[0.99]
                   disabled:cursor-not-allowed
                   disabled:opacity-60
+                  lg:mt-0 lg:w-auto lg:px-4
                 "
               >
                 {status === 'loading' ? (
@@ -231,7 +226,7 @@ export default function PublicLookup() {
               {status === 'error' && (
                 <p
                   id="phone-error"
-                  className="mt-3 text-sm font-medium text-alert"
+                  className="mt-3 text-sm font-medium text-alert lg:col-span-2"
                   role="alert"
                 >
                   {error}
@@ -246,8 +241,9 @@ export default function PublicLookup() {
             {status === 'notFound' && (
               <div
                 className="
-                  mt-5 rounded-xl border border-rule
+                  rounded-xl border border-rule
                   bg-page px-4 py-6 text-center
+                  lg:col-span-2
                 "
                 role="status"
               >
@@ -274,9 +270,9 @@ export default function PublicLookup() {
               </div>
             )}
 
-          </section>
+            </div>
 
-          </div>
+          </section>
 
           {/* =================================================
               MEMBER RESULT
@@ -285,22 +281,18 @@ export default function PublicLookup() {
               were being squeezed into the same 576px column as the hero.
           ================================================== */}
 
-   {status === 'found' && result && (
-  <section
-    className="mt-5"
-    aria-label="Your contribution record"
-  >
-    <PassbookCard
-      key={result.regNumber || result.name}
-      result={result}
-      statementUrl={`/api/public/lookup/statement?phone=${lookedUpPhone}`}
-      statementExcelUrl={`/api/public/lookup/statement/excel?phone=${lookedUpPhone}`}
-    />
-  </section>
-)}
+          {status === 'found' && result && (
+            <section aria-label="Your contribution record">
+              <PassbookCard
+                key={result.regNumber || result.name}
+                result={result}
+                statementUrl={`/api/public/lookup/statement?phone=${lookedUpPhone}`}
+                statementExcelUrl={`/api/public/lookup/statement/excel?phone=${lookedUpPhone}`}
+              />
+            </section>
+          )}
 
-
-        {/* =================================================
+          {/* =================================================
               CHAMA DOCUMENTS, MINUTES & CONSTITUTION
 
               Locked until a registered phone number is given.
@@ -308,25 +300,21 @@ export default function PublicLookup() {
               members' area opens itself rather than asking again.
           ================================================== */}
 
-          <section className="mt-5" aria-label="Chama documents, minutes and constitution">
+          <section aria-label="Chama documents, minutes and constitution">
             <PublicRecords
               key={lookedUpPhone || 'locked'}
               verifiedPhone={lookedUpPhone}
             />
           </section>
 
-        </header>
-
         {/* =====================================================
             GROUP OVERVIEW
         ====================================================== */}
 
-        <section
-          className="mt-8 sm:mt-10"
-          aria-label="Group overview"
-        >
-          <GroupOverview onChamaName={onChamaName} />
-        </section>
+          <section aria-label="Group overview">
+            <GroupOverview onChamaName={onChamaName} />
+          </section>
+        </main>
 
         {/* =====================================================
             FOOTER
@@ -348,7 +336,7 @@ export default function PublicLookup() {
           </div>
         </footer>
 
-      </main>
+      </div>
     </div>
   );
 }
