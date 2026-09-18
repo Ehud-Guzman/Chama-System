@@ -10,6 +10,7 @@
     "reset:week92": "node src/scripts/resetForWeek92.js",
     "balances:restore": "node src/scripts/restoreOpeningBalances.js",
     "ledger:collect-week": "node src/scripts/postWeekCollection.js",
+    "ledger:clear-contributions": "node src/scripts/clearContributions.js",
     "ledger:template": "node src/scripts/createLedgerTemplate.js",
     "ledger:import": "node src/scripts/importLedgerFromSpreadsheet.js",
     "ledger:import-incremental": "node src/scripts/importLedgerIncremental.js"

@@ -21,3 +21,5 @@ backend/src/scripts/findWrongAmounts.js
 backend/data/reset-backup-*.json
 # The same holds for the copy `npm run balances:restore` takes before it writes.
 backend/data/opening-balances-*.json
+# ...and for the row-level copy the clearing scripts take.
+backend/data/contributions-cleared-*.json
