@@ -235,10 +235,10 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   documents, the minutes and the constitution by typing the `nationalId` recorded for him —
   exactly as written on the register, so spaces, dashes and slashes are ignored and a passport
   number's letters are accepted (`utils/nationalId` normalizes; `utils/publicAccess` checks).
-  **Phone numbers were the old key and are no longer accepted anywhere on the public side** — the
-  register carried placeholder numbers for members whose real ones had not been collected, and a
-  member typing his true number got "no record found". The ID is the number the office already
-  holds for everybody. It is also the one field the office has to fill in: an active member with no
+  **Phone numbers were the old key and are no longer accepted anywhere on the public side.** The
+  group keys its records on the ID instead: it is the number the register already holds for every
+  member, it does not change, and it is not something a member has to read off a bill to be
+  recognised. It is also the one field the office has to fill in: an active member with no
   ID (or a note like "not yet issued" in it) cannot look himself up, so `/admin/members` counts
   those members for the office and each card of one is marked "No ID". IDs can be loaded in bulk
   from a spreadsheet — the CSV import already reads a `nationalId` column.
