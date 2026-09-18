@@ -11,61 +11,54 @@ match only). Built mobile-first: 98% of usage is on phones. Live at https://wazo
 - **Database:** MongoDB (Atlas free tier works)
 - **Auth:** JWT, admins only. Members are never authenticated.
 
-## Member data in this repository — read this before publishing anything
+## Member data in this repository — what already happened, and what is left
 
-**This repository has been public, and it has contained the group's real member data.**
+**This repository has been public, and it contained the group's real member data.**
 
-Two spreadsheets were committed under `backend/` — `test.xlsx` (one member's full
-statement) and `data/ledger_weeks_62_84_template.xlsx` (829 rows, 32 members) — and
-two import scripts that are still reachable in history
-(`importHarambeeContributions.js` with 355 phone numbers, `findWrongAmounts.js`)
-carried the same material. A phone number is not a name here: it is the *credential*
-for the members' area, and it opens that member's documents, minutes and constitution.
+What was exposed: two spreadsheets and an earlier revision of one of them —
+`backend/test.xlsx` (one member's full statement), `backend/data/ledger_weeks_61_86_template.xlsx`
+and `backend/data/ledger_weeks_62_84_template.xlsx` — plus twenty one-off scripts from the
+migration, of which `importHarambeeContributions.js` alone carried 355 phone numbers, and
+`findWrongAmounts.js`, `Fixwrongamounts.js`, `importWeek60Ledger.js`, `importWeek61Ledger.js`,
+`importWeek75Ledger.js`, `Liststraymembercontributions.js`,
+`Listrealopeningbalancescontributions.js` and others carried names, amounts or phones. A
+phone number is not a name here: it is the *credential* for the members' area.
 
-The spreadsheets have been removed from the index and the ignore rules now cover
-`backend/data/` and every spreadsheet under `backend/`, with `npm run check:data`
-(and CI) refusing a build in which one is tracked again. That stops the bleeding; it
-does not undo the exposure. **Removing a file from HEAD does not remove it from
-history** — anyone can still `git log` the old commits.
+**Done (2026-09-18).** The files were removed from the tree, the ignore rules now cover
+`backend/data/` and every spreadsheet under `backend/` (`npm run check:data` fails a build
+in which one is tracked again), and the **history was rewritten** with `git filter-repo`:
+194 commits replayed, all 23 paths purged, the rewritten `main` force-pushed, and verified —
+no leaked path is reachable from any remote ref, the old blob objects are gone from the
+object store, and GitHub refuses to serve the pre-purge commits at all
+(`git fetch origin 9925d94` → `couldn't find remote ref`).
 
-What has to happen, in this order:
+A full copy of the **old** history — which still contains all of it — was taken first and
+lives outside the repository:
 
-1. **Make the repository private.** The data is already exposed, but a private
-   repository stops new copies of it. (GitHub → Settings → Danger zone.) Note that
-   anything already cloned, forked or cached stays readable — which is why step 3
-   matters.
-2. **Tell the committee what was exposed** — names, phone numbers, amounts and
-   balances — and let them decide whether the members should be told. That is their
-   call, not a technical one; it is also the honest default.
-3. **Purge the blobs from history**, once everyone who has a clone knows to re-clone:
+```
+%USERPROFILE%\chama-history-backup-<date>.bundle       (git bundle)
+```
 
-   ```bash
-   pip install git-filter-repo
-   git filter-repo --invert-paths \
-     --path backend/test.xlsx \
-     --path backend/data/ledger_weeks_62_84_template.xlsx \
-     --path backend/src/scripts/importHarambeeContributions.js \
-     --path backend/src/scripts/findWrongAmounts.js
-   git remote add origin <the repository url>     # filter-repo removes the remote
-   git push --force --all && git push --force --tags
-   ```
+Keep it somewhere the committee controls, never inside the repository, and treat it exactly
+as the register: it is the only remaining copy of those old scripts.
 
-   This rewrites every commit id. Anyone with a clone must delete it and clone again;
-   anyone with uncommitted work must push it somewhere else first. After the force
-   push, ask GitHub Support to expire the cached copies (they keep unreachable
-   objects for a while), and rotate the group's passwords — the API's
-   `JWT_SECRET` and every admin password — since the material that leaked is the
-   material those protect.
-4. **Keep the constitution out of it too.** `backend/src/data/constitution.js` is the
-   members-only document, and it lived in the repository for the same reason the
-   spreadsheets did. It now has a home in the database: run
-   `npm run seed:constitution -- --confirm-write`, check the members' page, then
-   `git rm backend/src/data/constitution.js`. The API reads the database row first
-   (`utils/constitutionData.js`) and falls back to the file, so nothing breaks if the
-   step is done in a quiet moment rather than right now.
+**Still to do — and it matters more than the purge did:**
 
-If a copy of the spreadsheets is needed for the audit, keep it outside the repository
-(or in `backend/data/`, which is ignored) — never in the tree that gets pushed.
+1. **Make the repository private.** GitHub → Settings → Danger zone → Change visibility.
+   Anyone who cloned, forked or scraped the repository before the rewrite still has the
+   data, and a private repository stops new copies being made.
+2. **Tell the committee what was exposed** — names, phone numbers, amounts, balances, and
+   the scripts that carried them — and let them decide whether members should be told. It
+   is their call, not a technical one; it is also the honest default.
+3. **Rotate what the leak protects**: every admin password, and `JWT_SECRET` on the server
+   (which logs everybody out). The material that leaked is the material those protect.
+4. Optionally ask GitHub Support to expire cached copies of the unreachable objects, for
+   completeness.
+5. **Keep the constitution out of it too** — done: the text is seeded into the database
+   (`npm run seed:constitution`) and `backend/src/data/constitution.js` is out of the tree.
+
+If a copy of the spreadsheets is needed for the audit, keep it outside the repository (or in
+`backend/data/`, which is ignored) — never in the tree that gets pushed.
 
 ## Local setup
 
@@ -88,18 +81,29 @@ node src/scripts/seedSuperAdmin.js "Your Name" you@example.com "a-strong-passwor
 
 ```bash
 npm test                    # the week engine, money, uploads, minutes, the API's own behaviour
+npm run test:integration    # the rehearsal: the money paths against a real MongoDB (below)
 npm run check:data          # refuses to pass if any spreadsheet or dump is tracked
 npm run check:national-ids  # read-only: two members sharing a national ID
+npm run verify:figures      # read-only: does the live database agree with the new rules
 npm audit --omit=dev        # dependency advisories
 ```
 
-`npm test` needs no database and no `.env`: it covers the pure logic (week numbering,
-money arithmetic, the national-ID and phone normalisers, the CSV importer, upload
-byte-sniffing, minute sanitisation) and the API's outward behaviour — the health
-check telling the truth about a database it is not connected to, every admin route
-refusing an anonymous caller, the login budget, the security headers, the CORS
-allow-list. CI runs the same three commands plus the frontend build on every push
-(`.github/workflows/ci.yml`).
+`npm test` needs no database and no `.env`. `npm run test:integration` is the rehearsal:
+it starts the API against a scratch MongoDB, signs in, logs a payment, checks a duplicate
+submit is not counted twice, issues and settles a fine, watches the quarter-drop guard
+refuse a save, then takes a backup through the real endpoint and restores it into a second
+database — asserting the dates and ids came back as dates and ids. CI runs it against a
+`mongo:7` service container.
+
+```bash
+docker run -d --name chama-rehearsal -p 27017:27017 mongo:7   # once
+npm run test:integration
+docker start chama-rehearsal                                  # next time
+```
+
+Point it somewhere else with `TEST_MONGO_URI=mongodb://host:27017/chama-scratch`; it
+creates and drops its own databases and refuses a URL that does not look like a scratch one.
+
 
 The first test to reach for when a balance looks wrong is `test/weekCycle.test.js`:
 it pins the Friday→Thursday boundary, the history back to week 1, and the rule that
@@ -110,6 +114,8 @@ money dated before the cycle opens is credited to the opening week.
 | Script | What it does |
 | --- | --- |
 | `npm run verify:figures` | **Read-only.** Reports anything already stored that disagrees with the rules the API now enforces on write (money needing rounding, out-of-range or non-numeric amounts, text over a new cap, duplicate national IDs, more than one Settings row) and prints the books' totals to compare against after a deploy. No writes, and indexes are not built |
+| `npm run restore:backup -- <file.json>` | Puts a downloaded backup back into a database. Dry run without `--confirm-write`; upserts by `_id` unless `--replace`; refuses the live database unless `--replace-live` as well. Restore into a scratch database (`--target=…`) before you ever need it |
+| `npm run test:integration` | The rehearsal: the money paths and a backup round trip against a scratch MongoDB (see Checks and tests) |
 | `npm run seed:constitution -- --confirm-write` | Copies the constitution into the database (then the file can leave git). `--from=/path` seeds from a copy kept outside the repository |
 | `npm run check:national-ids` | Reports duplicate/blank/free-text IDs. Exit code 1 on duplicates — a unique index cannot build while two members share a number, and the gate refuses both |
 | `npm run audit:prune -- --days=730 --confirm-write` | Trims the audit trail to a retention window. Dry run without `--confirm-write`; the prune itself is recorded in what remains |
@@ -540,9 +546,14 @@ trimmed to whatever retention the committee decides; the prune records itself.
 **Backups.** `GET /api/backup` is super-admin only, streamed a collection at a time
 (the whole database with its document scans will not fit in memory twice on a small
 instance), and written to the audit trail. `?slim=1` leaves the document bytes out —
-that copy is for reading or emailing, not for restoring. The full file is the database
-as it stands, password hashes included, because that is what makes it restorable: treat
-it the way the register itself is treated.
+that copy is for reading or emailing, not for restoring. The file is format version 2:
+dates are written as `{$date: ISO}` and document bytes as `{$binary: base64}`, which is
+what makes a restore faithful. **Any backup downloaded before 2026-09-18 is version 1
+and cannot be trusted**: a bug turned every date in it into `{}`, so take a fresh one.
+`npm run restore:backup` reads version 2 back, reporting what it will write before it
+writes it, and refusing the live database unless it is told twice. The full file is the
+database as it stands, password hashes included, because that is what makes it
+restorable: treat it the way the register itself is treated.
 
 **Observability.** One JSON line per request on stdout (`rid`, method, path, status,
 duration, account, address) and `X-Request-Id` on every response. A 5xx logs the

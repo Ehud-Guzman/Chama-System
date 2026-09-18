@@ -6,24 +6,37 @@ function filenameDate(date) {
   return date.toISOString().slice(0, 19).replace(/[:T]/g, '-');
 }
 
-// Binary fields (document scans live in the database — see models/ChamaDocument)
-// would otherwise serialise as { type: 'Buffer', data: [0..255] }: one JSON
-// number per byte, which turns a 5 MB certificate into a 20 MB+ backup. Base64
-// keeps the backup complete (restorable) at ~1.37x the raw size.
+// Making a document safe to put in a JSON file, and readable when it comes back.
 //
-// `slim` leaves those bytes out entirely: a copy that is meant to be read (or
-// emailed to the committee) rather than restored, at a fraction of the size.
-function encodeBuffers(value, slim) {
+// Two types need help and everything else does not:
+//
+//   Buffer  — JSON has no bytes. `{type:'Buffer', data:[…]}` is one number per byte,
+//             which turns a 5 MB certificate into a 20 MB+ backup, so it is base64
+//             (`$binary`). `slim` drops the bytes entirely: that copy is for reading or
+//             emailing, not for restoring.
+//   Date    — this is the one that was wrong. A Date has no own enumerable properties,
+//             so a function that walks a document with `Object.entries` turns every
+//             date into `{}` — and a backup full of empty dates restores a database
+//             whose week anchor, contribution dates and audit trail are all corrupt.
+//             It is written as `{$date: ISO}`.
+//
+// Everything else (ObjectId, Decimal128, Long) has its own `toJSON` and is left to it:
+// an id serialises as its hex string, and the restore casts it back through the model.
+// That is why this function returns the value rather than walking it.
+function encodeForBackup(value, slim) {
+  if (value instanceof Date) return { $date: value.toISOString() };
   if (Buffer.isBuffer(value)) return slim ? null : { $binary: value.toString('base64') };
-  if (Array.isArray(value)) return value.map((item) => encodeBuffers(item, slim));
+  if (Array.isArray(value)) return value.map((item) => encodeForBackup(item, slim));
   if (value && typeof value === 'object') {
+    // A BSON type that knows how to serialise itself: leave it alone.
+    if (typeof value.toJSON === 'function') return value;
     const out = {};
     for (const [key, val] of Object.entries(value)) {
       if (slim && key === 'data') {
         out.data = null; // document bytes
         continue;
       }
-      out[key] = encodeBuffers(val, slim);
+      out[key] = encodeForBackup(val, slim);
     }
     return out;
   }
@@ -66,7 +79,7 @@ async function downloadBackup(req, res, next) {
     // The envelope first, then one collection at a time.
     res.write('{\n');
     res.write('  "format": "chama-system-backup",\n');
-    res.write('  "version": 1,\n');
+    res.write('  "version": 2,\n');
     res.write(`  "exportedAt": "${exportedAt.toISOString()}",\n`);
     res.write(`  "slim": ${slim},\n`);
     res.write(
@@ -88,7 +101,7 @@ async function downloadBackup(req, res, next) {
     for (let index = 0; index < primaries.length; index += 1) {
       const name = primaries[index];
       const documents = await db.collection(name).find({}).toArray();
-      const body = JSON.stringify(documents.map((doc) => encodeBuffers(doc, slim)));
+      const body = JSON.stringify(documents.map((doc) => encodeForBackup(doc, slim)));
       res.write(`    ${JSON.stringify(name)}: ${body}${index === primaries.length - 1 ? '' : ','}\n`);
     }
 
@@ -113,4 +126,9 @@ async function downloadBackup(req, res, next) {
   }
 }
 
-module.exports = { downloadBackup };
+module.exports = {
+  downloadBackup,
+  // Exported for the test suite: the encoding is the part of a backup that has to be
+  // exactly right, and it was silently wrong once (dates became `{}`).
+  encodeForBackup,
+};

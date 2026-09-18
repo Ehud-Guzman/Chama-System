@@ -3,10 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "main": "src/app.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
     "test": "node --test",
+    "test:integration": "node scripts/runIntegration.mjs",
+    "restore:backup": "node src/scripts/restoreBackup.js",
     "check:data": "node scripts/checkNoDataFiles.mjs",
     "verify:figures": "node scripts/verifyMoneyFigures.js",
     "check:national-ids": "node src/scripts/verifyNationalIds.js",
