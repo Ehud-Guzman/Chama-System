@@ -4,6 +4,7 @@ import api, { apiMessage } from "../services/api";
 import { normalizePhone } from "../utils/phone";
 import { shortDate } from "../utils/format";
 import { CHAMA_NAME_TOP } from "../utils/branding";
+import CreditLine from "../components/shared/CreditLine";
 import "../components/public/constitution.css";
 
 function ClauseBody({ blocks }) {
@@ -1085,6 +1086,9 @@ export default function PublicConstitution() {
           ================================================== */}
           <footer className="constitution-footer">
             {constitutionMeta.footer}
+            {/* The edition line says which document this is; the credit under it says
+                who built the page it is read on. */}
+            <CreditLine className="mt-2" />
           </footer>
         </main>
       </div>

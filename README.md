@@ -271,6 +271,11 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   same proxied Cloudinary path, admin-only because the logo is a Settings field, not a member
   field). It is stored in its own folder and never face-cropped, and the page falls back to the mark
   the app ships (`public/icon.svg`) while Settings holds no URL.
+- **The credit line:** one line sits at the foot of every screen a member or an officer can reach —
+  the members' page, the sign-in card, the constitution's footer, and every admin page (it lives in
+  `AdminLayout`, so each role's screens carry it from one place rather than from per-page copies).
+  It reads *Created and managed by GlimmerInk Creations* and links to `glimmerink.co.ke` in a new
+  tab, so nobody loses a number he has just typed (`components/shared/CreditLine.jsx`).
 - **Email reminders:** `/admin/reminders` lists every member who is behind on the weekly
   contribution or has unpaid fines, computed from the same cycle engine the member's own page
   shows (`computeMemberLedger`), so a reminder can never quote a week number or an amount the

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiMessage } from '../services/api';
 import { roleHome } from '../utils/roleHome';
 import { CHAMA_NAME } from '../utils/branding';
+import CreditLine from '../components/shared/CreditLine';
 
 export default function AdminLogin() {
   const { login } = useAuth();
@@ -83,6 +84,8 @@ export default function AdminLogin() {
             Member lookup
           </Link>
         </p>
+
+        <CreditLine className="mt-4 text-center" />
       </main>
     </div>
   );

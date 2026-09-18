@@ -1,5 +1,6 @@
 import BottomNav from './BottomNav';
 import Sidebar from './Sidebar';
+import CreditLine from '../shared/CreditLine';
 import { useAuth } from '../../context/AuthContext';
 import { CHAMA_NAME } from '../../utils/branding';
 
@@ -22,6 +23,11 @@ export default function AdminLayout({ children }) {
       </header>
       <main className="mx-auto w-full max-w-3xl px-4 pb-40 pt-6 md:max-w-6xl md:px-8 md:pb-10">
         {children}
+
+        {/* The credit goes at the foot of the page rather than in the sidebar: the
+            sidebar is hidden on a phone, and this is the one place every role and
+            every admin screen passes through. */}
+        <CreditLine className="mt-10 border-t border-rule pt-6 text-center" />
       </main>
       <BottomNav />
     </div>

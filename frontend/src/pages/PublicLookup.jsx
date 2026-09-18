@@ -8,6 +8,7 @@ import GroupOverview from '../components/public/GroupOverview';
 import PassbookCard from '../components/public/PassbookCard';
 import PublicRecords from '../components/public/PublicRecords';
 import VisionMission from '../components/public/VisionMission';
+import CreditLine from '../components/shared/CreditLine';
 
 export default function PublicLookup() {
   const [phone, setPhone] = useState('');
@@ -365,17 +366,7 @@ export default function PublicLookup() {
           {/* The credit, at the very bottom where one belongs. The link opens in a
               new tab so a member never loses the page — and the phone number he
               just typed — by tapping it. */}
-          <p className="mt-4">
-            Created and managed by{' '}
-            <a
-              href="https://glimmerink.co.ke/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-primary underline-offset-2 hover:underline"
-            >
-              GlimmerInk Creations
-            </a>
-          </p>
+          <CreditLine className="mt-4" />
         </footer>
 
       </div>
