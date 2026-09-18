@@ -387,9 +387,9 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
           </p>
         </div>
 
-        {/* The admission form's personal section. Optional here for the same reason
-            it is optional on the paper: a member is often entered before his copy
-            comes back from the desk. The profile shows what is still missing. */}
+        {/* Date of birth, ID and address. Optional: a member is often entered from a
+            name and a phone number first, and these filled in as he provides them.
+            The profile shows what is still missing. */}
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="m-dob" className="mb-1 block text-sm font-medium">
@@ -570,9 +570,9 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
           </div>
         </fieldset>
 
-        {/* The admission form's family section. Collapsed unless there is something
-            in it: on a phone this form is already long, and a member can sit in the
-            register for months with nothing but a name and a number. */}
+        {/* The family block. Collapsed unless there is something in it: on a phone this
+            form is already long, and a member can sit in the register for months with
+            nothing but a name and a number. */}
         <details className="rounded-xl border border-rule p-3" defaultOpen={familyOpen}>
           <summary className="cursor-pointer px-1 text-xs font-semibold uppercase tracking-widest text-muted">
             Family <span className="font-normal normal-case tracking-normal">
@@ -581,7 +581,8 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
           </summary>
 
           <p className="mt-2 text-xs text-muted">
-            Spouse, children, parents and in-laws — as written on the admission form.
+            Spouse, children, parents and in-laws — the family the group supports
+            and calls on.
           </p>
 
           <div className="mt-3 space-y-3">

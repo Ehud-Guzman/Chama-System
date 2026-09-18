@@ -292,9 +292,9 @@ async function exportStatementExcel() {
       : [];
   const hasKin = kin.length > 0;
 
-  // The admission form's own fields, as the server normalises them: the family
-  // block is always the same shape, and `admission` says which of the three office
-  // bearers have signed.
+  // The member's own details, as the server normalises them: the family block is
+  // always the same shape, and `admission` says which of the three office bearers
+  // have signed.
   const family = member.family || {};
   const children = Array.isArray(family.children)
     ? family.children.filter((child) => String(child || '').trim())
@@ -415,9 +415,9 @@ async function exportStatementExcel() {
           )}
         </div>
 
-        {/* The rest of the admission form, in the order the paper asks it. Each block
-            is only as long as what is known: a member entered from a name and a
-            number shows the prompt to fill him in, not a column of blanks. */}
+        {/* The member's own details beyond the name and the number, each block only as
+            long as what is known: a member entered from a name and a number shows the
+            prompt to fill him in, not a column of blanks. */}
         <div className="mt-3 border-t border-rule pt-3">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
             Personal details
