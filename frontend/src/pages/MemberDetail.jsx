@@ -4,7 +4,6 @@ import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
 import { money, shortDate } from '../utils/format';
 import MemberForm from '../components/members/MemberForm';
-import PledgeEditor from '../components/members/PledgeEditor';
 import LedgerRows from '../components/contributions/LedgerRows';
 import EditContributionModal from '../components/contributions/EditContributionModal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
@@ -269,7 +268,7 @@ async function exportStatementExcel() {
     );
   }
 
-  const { member, contributions, totalContributed, totalPledged, byType, fines, weeklySchedules, ledger, constitution } = data;
+  const { member, contributions, totalContributed, byType, fines, weeklySchedules, ledger, constitution } = data;
 
   // The contacts as a list, whichever shape this member's record holds — records
   // created before the list existed still carry a single object.
@@ -330,9 +329,6 @@ async function exportStatementExcel() {
               <p className="amount mt-1 text-xs font-semibold text-alert">
                 {money(ledger.arrears)} behind
               </p>
-            )}
-            {totalPledged > 0 && (
-              <p className="amount mt-1 text-xs text-muted">of {money(totalPledged)} pledged</p>
             )}
           </div>
         </div>
@@ -498,11 +494,39 @@ async function exportStatementExcel() {
 
       <div className="md:grid md:grid-cols-[320px_1fr] md:items-start md:gap-6">
         <section className="space-y-4">
+          {/* What he has paid into, by type. This was the pledge editor — an amount
+              the office set per fund. Pledges are gone: the member's page shows
+              what actually moved, which is what the books can back. */}
           <div>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-              Pledges
+              Paid by contribution type
             </h2>
-            <PledgeEditor memberId={member._id} byType={byType} onSaved={load} />
+            {byType.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-rule px-5 py-6 text-center text-sm text-muted">
+                No contribution types set up yet.
+              </p>
+            ) : (
+              <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
+                {byType.map((entry) => (
+                  <li
+                    key={entry.typeId}
+                    className="flex items-baseline justify-between gap-3 border-b border-rule px-4 py-3 last:border-b-0"
+                  >
+                    <span className="min-w-0 truncate text-sm">
+                      {entry.name}
+                      {entry.isGroupFund && (
+                        <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                          group fund
+                        </span>
+                      )}
+                    </span>
+                    <span className="amount shrink-0 text-sm font-semibold">
+                      {money(entry.contributed)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div>

@@ -12,7 +12,8 @@ const { resolveConfig, cycleHistory, weekNumberForDate } = require('../utils/wee
 const { bucketForType } = require('../utils/ledgerTypes');
 const { computeMemberLedger } = require('../utils/memberLedger');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
-const { renderStatementPdf } = require('../utils/statementPdf');
+const { renderMemberStatementPdf } = require('../utils/memberStatementPdf');
+const { memberStatementSheets } = require('../utils/memberStatement');
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { cleanEmail, isValidEmail } = require('../utils/mailer');
@@ -277,7 +278,6 @@ async function getMember(req, res, next) {
     const totalContributed = contributions
       .filter((c) => !c.typeId?.isGroupFund)
       .reduce((sum, c) => sum + c.amount, 0);
-    const totalPledged = byType.reduce((sum, b) => sum + b.pledged, 0);
     const config = resolveConfig(settings);
     const { fines, weeklySchedules } = await buildFinesAndSchedules(member, contributions, settings);
 
@@ -301,7 +301,6 @@ async function getMember(req, res, next) {
       member: { ...member, nextOfKin: nextOfKinList(member.nextOfKin) },
       contributions,
       totalContributed,
-      totalPledged,
       byType,
       fines,
       weeklySchedules,
@@ -721,7 +720,6 @@ async function buildPublicProfile(member, lookupPhone, options = {}) {
     };
   });
 
-  const totalPledged = visibleBreakdown.reduce((sum, b) => sum + b.pledged, 0);
   const { fines, weeklySchedules } = await buildFinesAndSchedules(member, docs, settings);
   const visibleSchedules = showTeaFund
     ? weeklySchedules
@@ -771,7 +769,6 @@ async function buildPublicProfile(member, lookupPhone, options = {}) {
     // Kept because the statement exports still print it as its own line, but the
     // figure that answers "what does he hold?" is `ledger.money` below.
     totalContributed: running,
-    totalPledged,
     // What the member actually holds, and the four figures it is made of, so the
     // passbook can show its work exactly as the treasurer's page does.
     ledger: {
@@ -791,7 +788,6 @@ async function buildPublicProfile(member, lookupPhone, options = {}) {
     },
     byType: visibleBreakdown.map((b) => ({
       type: b.name,
-      pledged: b.pledged,
       contributed: b.contributed,
     })),
     contributions,
@@ -817,231 +813,20 @@ async function buildPublicProfile(member, lookupPhone, options = {}) {
   };
 }
 
-// Renders a buildPublicProfile() result as a downloadable PDF statement — a
-// spreadsheet isn't a great fit for someone checking their own record on a
-// phone; PDF opens/prints cleanly everywhere.
+// Renders a buildPublicProfile() result as a downloadable statement. Both formats
+// come from the same profile, so a member's own download and the office's copy can
+// never tell two different stories — the only difference between them is whether
+// the Tea Fund is named (see buildPublicProfile).
 async function sendStatement(res, profile) {
   const settings = await getOrCreateSettings();
-  renderStatementPdf(res, profile, settings.chamaName);
+  renderMemberStatementPdf(res, profile, settings.chamaName);
 }
-// Renders a member's statement as an Excel workbook.
+
+// The workbook: a sheet per question the office asks, built from the same profile.
 async function sendStatementExcel(res, profile) {
   const settings = await getOrCreateSettings();
-
-  const summaryRows = [
-    {
-      Field: 'Chama',
-      Value: settings.chamaName || '',
-    },
-    {
-      Field: 'Member Name',
-      Value: profile.name || '',
-    },
-    {
-      Field: 'Registration Number',
-      Value: profile.regNumber || '',
-    },
-    {
-      // The figure that answers "what does he hold?" — the same cycle maths the
-      // ledger screen and the passbook show. Total contributed on its own is 0
-      // for every member while the money carried forward sits in openingBalance.
-      Field: 'Held by Member',
-      Value: profile.ledger ? profile.ledger.money : profile.totalContributed || 0,
-    },
-    {
-      Field: 'Carried Forward (opening balance)',
-      Value: profile.ledger ? profile.ledger.openingBalance : 0,
-    },
-    {
-      Field: 'Paid Since Cycle Opened',
-      Value: profile.ledger ? profile.ledger.paid : profile.totalContributed || 0,
-    },
-    {
-      // For a member's own statement this figure also carries the tea the Group
-      // deducted, so the summary reconciles without naming a fund he never
-      // contributed to. The office's copy keeps the two apart, exactly as its
-      // ledger does.
-      Field: 'Required So Far',
-      Value: profile.ledger
-        ? profile.teaFundIncluded
-          ? profile.ledger.required
-          : profile.ledger.required + profile.ledger.tea
-        : 0,
-    },
-    ...(profile.teaFundIncluded
-      ? [
-          {
-            Field: 'Tea (automatic)',
-            Value: profile.ledger ? profile.ledger.tea : 0,
-          },
-        ]
-      : []),
-    {
-      Field: 'Total Pledged',
-      Value: profile.totalPledged || 0,
-    },
-    {
-      Field: 'Outstanding Fines',
-      Value: profile.fines?.totalOwed || 0,
-    },
-    {
-      Field: 'Generated On',
-      Value: new Date(),
-    },
-  ];
-
-  const contributionRows = (profile.contributions || []).map((c, index) => ({
-    '#': index + 1,
-    Date: c.date || '',
-    'Contribution Type': c.type || '',
-    Amount: c.amount || 0,
-    'Payment Method': c.method || '',
-    'Fine Deducted': c.fineDeducted || 0,
-    'Gross Amount': c.grossAmount || c.amount || 0,
-    'Group Fund': c.isGroupFund ? 'Yes' : 'No',
-    'Paid to date': c.runningBalance || 0,
-  }));
-
-  const breakdownRows = (profile.byType || []).map((b) => ({
-    'Contribution Type': b.type || '',
-    Pledged: b.pledged || 0,
-    Contributed: b.contributed || 0,
-    Balance: Math.max((b.pledged || 0) - (b.contributed || 0), 0),
-  }));
-
-  const fineRows = [
-    ...(profile.fines?.pending || []).map((f) => ({
-      Date: f.date || '',
-      Type: f.type || '',
-      Amount: f.amount || 0,
-      Remaining: f.remaining || 0,
-      Reason: f.reason || '',
-      Status: 'Pending',
-    })),
-    ...(profile.fines?.settled || []).map((f) => ({
-      Date: f.date || '',
-      Type: f.type || '',
-      Amount: f.amount || 0,
-      Remaining: f.remaining || 0,
-      Reason: f.reason || '',
-      Status: 'Settled',
-    })),
-  ];
-
-  sendWorkbook(res, 'contribution-statement.xlsx', [
-    {
-      name: 'Summary',
-      rows: summaryRows,
-    },
-    {
-      name: 'Contribution History',
-      rows: contributionRows,
-    },
-    {
-      name: 'Contribution Breakdown',
-      rows: breakdownRows,
-    },
-    {
-      name: 'Fines',
-      rows: fineRows,
-    },
-  ]);
-}
-// Renders a buildPublicProfile() result as a downloadable Excel statement.
-async function sendStatementExcel(res, profile) {
-  const settings = await getOrCreateSettings();
-
-  const summaryRows = [
-    { Field: 'Chama', Value: settings.chamaName || '' },
-    { Field: 'Member Name', Value: profile.name || '' },
-    { Field: 'Registration Number', Value: profile.regNumber || '' },
-    { Field: 'Held by Member', Value: profile.ledger ? profile.ledger.money : profile.totalContributed || 0 },
-    { Field: 'Carried Forward (opening balance)', Value: profile.ledger ? profile.ledger.openingBalance : 0 },
-    { Field: 'Paid Since Cycle Opened', Value: profile.ledger ? profile.ledger.paid : profile.totalContributed || 0 },
-    { Field: 'Required So Far', Value: profile.ledger ? profile.ledger.required : 0 },
-    { Field: 'Tea (automatic)', Value: profile.ledger ? profile.ledger.tea : 0 },
-    { Field: 'Total Pledged', Value: profile.totalPledged || 0 },
-    { Field: 'Outstanding Fines', Value: profile.fines?.totalOwed || 0 },
-    { Field: 'Generated On', Value: new Date() },
-  ];
-
-  const contributionRows = (profile.contributions || []).map((c, index) => ({
-    '#': index + 1,
-    Date: c.date || '',
-    'Contribution Type': c.type || '',
-    Amount: c.amount || 0,
-    'Payment Method': c.method || '',
-    'Fine Deducted': c.fineDeducted || 0,
-    'Group Fund': c.isGroupFund ? 'Yes' : 'No',
-    'Paid to date': c.runningBalance || 0,
-  }));
-
-  const breakdownRows = (profile.byType || []).map((b) => ({
-    'Contribution Type': b.type || '',
-    Pledged: b.pledged || 0,
-    Contributed: b.contributed || 0,
-    Balance: Math.max((b.pledged || 0) - (b.contributed || 0), 0),
-  }));
-
-  const pendingFineRows = (profile.fines?.pending || []).map((f) => ({
-    Date: f.date || '',
-    Type: f.type || '',
-    Amount: f.amount || 0,
-    Remaining: f.remaining || 0,
-    Reason: f.reason || '',
-    Status: 'Pending',
-  }));
-
-  const settledFineRows = (profile.fines?.settled || []).map((f) => ({
-    Date: f.date || '',
-    Type: f.type || '',
-    Amount: f.amount || 0,
-    Remaining: f.remaining || 0,
-    Reason: f.reason || '',
-    Status: 'Settled',
-  }));
-
-  const fineRows = [...pendingFineRows, ...settledFineRows];
-
-  const weeklyRows = [];
-
-  for (const schedule of profile.weeklySchedules || []) {
-    for (const week of schedule.weeks || []) {
-      weeklyRows.push({
-        'Contribution Type': schedule.typeName || '',
-        'Weekly Amount': schedule.weeklyAmount || 0,
-        Week: week.week || '',
-        Date: week.date || '',
-        Due: week.due || 0,
-        Contributed: week.contributed || 0,
-        Balance: week.balance || 0,
-        Status: week.status || '',
-      });
-    }
-  }
-
-  sendWorkbook(res, 'contribution-statement.xlsx', [
-    {
-      name: 'Summary',
-      rows: summaryRows,
-    },
-    {
-      name: 'Contribution History',
-      rows: contributionRows,
-    },
-    {
-      name: 'Contribution Breakdown',
-      rows: breakdownRows,
-    },
-    {
-      name: 'Fines',
-      rows: fineRows,
-    },
-    {
-      name: 'Weekly Schedule',
-      rows: weeklyRows,
-    },
-  ]);
+  const slug = (profile.regNumber || profile.name || 'member').replace(/[^a-z0-9]+/gi, '-');
+  sendWorkbook(res, `statement-${slug}.xlsx`, memberStatementSheets(profile, settings.chamaName));
 }
 
 // GET /api/public/lookup/statement?phone= — PUBLIC, same access rule as publicLookup.

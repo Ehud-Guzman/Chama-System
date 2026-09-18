@@ -13,7 +13,6 @@ const {
   memberStatementExcel,
 } = require('../controllers/memberController');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { setPledge } = require('../controllers/pledgeController');
 
 router.use(requireAuth);
 
@@ -32,6 +31,5 @@ router.post('/import', importMembers);
 router.patch('/:id', updateMember);
 router.delete('/:id', deleteMember);
 router.post('/:id/resign', resignMember);
-router.put('/:memberId/pledges/:typeId', setPledge);
 
 module.exports = router;

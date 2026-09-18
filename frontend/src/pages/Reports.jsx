@@ -10,6 +10,7 @@ import {
 import Loader from "../components/shared/Loader";
 import MemberPerformanceList from "../components/reports/MemberPerformanceList";
 import MemberChartModal from "../components/reports/MemberChartModal";
+import ContributionChart from "../components/reports/ContributionChart";
 
 const ACTION_LABELS = {
   create: "Created",
@@ -17,6 +18,14 @@ const ACTION_LABELS = {
   delete: "Deleted",
   reset: "Reset",
 };
+
+// Month keys arrive as 'YYYY-MM' (the group's own calendar month). A fixed list
+// rather than a locale call: the same label on every device, in any language.
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function monthLabel(key) {
+  const [year, month] = String(key).split("-");
+  return `${MONTH_SHORT[Number(month) - 1]} ${year.slice(2)}`;
+}
 
 async function downloadFile(url, filename, toast) {
   try {
@@ -34,14 +43,17 @@ async function downloadFile(url, filename, toast) {
 
 export default function Reports() {
   const toast = useToast();
-  const [tab, setTab] = useState("summary"); // summary | performance | monthly | weekly
+  const [tab, setTab] = useState("summary"); // summary | weekly | performance | monthly | fines
   const [summary, setSummary] = useState(null);
+  const [trend, setTrend] = useState(null);
   const [audit, setAudit] = useState({ entries: [], page: 1, pages: 1 });
   const [performance, setPerformance] = useState(null);
+  const [performanceTotals, setPerformanceTotals] = useState(null);
   const [months, setMonths] = useState(null);
   const [monthTotals, setMonthTotals] = useState(null);
   const [weeks, setWeeks] = useState(null);
   const [openWeek, setOpenWeek] = useState(null);
+  const [fines, setFines] = useState(null);
   // The member whose chart is open. Held as the row the table gave us, so the
   // sheet can name him before its own figures arrive.
   const [chartMember, setChartMember] = useState(null);
@@ -57,8 +69,18 @@ export default function Reports() {
   }, []);
 
   useEffect(() => {
-    Promise.all([api.get("/api/reports/summary"), loadAudit(1)])
-      .then(([s]) => setSummary(s.data))
+    // The summary and the year's trend are read together: the chart is the first
+    // thing on the summary screen, and a summary that arrived without it would
+    // leave a hole where the trend belongs.
+    Promise.all([
+      api.get("/api/reports/summary"),
+      api.get("/api/reports/trend", { params: { weeks: 12 } }),
+      loadAudit(1),
+    ])
+      .then(([summaryRes, trendRes]) => {
+        setSummary(summaryRes.data);
+        setTrend(trendRes.data.weeks || []);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [loadAudit]);
@@ -67,7 +89,10 @@ export default function Reports() {
     if (tab === "performance" && !performance) {
       api
         .get("/api/reports/performance")
-        .then((res) => setPerformance(res.data.members))
+        .then((res) => {
+          setPerformance(res.data.members);
+          setPerformanceTotals(res.data.totals || null);
+        })
         .catch(() => {});
     }
     if (tab === "monthly" && !months) {
@@ -85,7 +110,13 @@ export default function Reports() {
         .then((res) => setWeeks(res.data.weeks))
         .catch(() => {});
     }
-  }, [tab, performance, months, weeks]);
+    if (tab === "fines" && !fines) {
+      api
+        .get("/api/reports/fines")
+        .then((res) => setFines(res.data))
+        .catch(() => {});
+    }
+  }, [tab, performance, months, weeks, fines]);
 
   if (loading) return <Loader />;
 
@@ -103,7 +134,9 @@ export default function Reports() {
                 ? "Member performance"
                 : tab === "monthly"
                   ? "Monthly totals"
-                  : "Weekly reconciliation"}
+                  : tab === "fines"
+                    ? "Fines"
+                    : "Weekly reconciliation"}
           </h1>
         </div>
         <div className="flex gap-2">
@@ -112,6 +145,17 @@ export default function Reports() {
               type="button"
               onClick={() =>
                 downloadFile("/api/reports/export", "contributions.xlsx", toast)
+              }
+              className="min-h-12 rounded-xl border border-rule bg-surface px-4 text-sm font-semibold"
+            >
+              Export Excel
+            </button>
+          )}
+          {tab === "fines" && (
+            <button
+              type="button"
+              onClick={() =>
+                downloadFile("/api/reports/fines/export", "fines-report.xlsx", toast)
               }
               className="min-h-12 rounded-xl border border-rule bg-surface px-4 text-sm font-semibold"
             >
@@ -166,7 +210,7 @@ export default function Reports() {
         </div>
       </header>
 
-      {/* Tabs wrap rather than scroll: four labels never fit one 360px row, and a
+      {/* Tabs wrap rather than scroll: five labels never fit one 360px row, and a
           tab you have to scroll to find is a tab nobody finds. */}
       <div className="flex flex-wrap gap-2">
         {[
@@ -174,6 +218,7 @@ export default function Reports() {
           ["weekly", "Weekly reconciliation"],
           ["performance", "Member performance"],
           ["monthly", "Monthly totals"],
+          ["fines", "Fines"],
         ].map(([value, label]) => (
           <button
             key={value}
@@ -192,7 +237,44 @@ export default function Reports() {
       </div>
 
       {tab === "summary" && (
-        <div className="md:grid md:grid-cols-2 md:items-start md:gap-6">
+        <>
+          {/* The trend first: twelve weeks of what the members actually paid, so the
+              headline figures below have a shape behind them rather than being four
+              numbers with no history. */}
+          {trend && (
+            <section className="rounded-xl border border-rule bg-surface p-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
+                  Member contributions — last {trend.length} weeks
+                </h2>
+                <p className="amount text-xs text-muted">
+                  {money(trend.reduce((sum, w) => sum + w.memberTotal, 0))} over the period
+                </p>
+              </div>
+
+              <div className="mt-3">
+                <ContributionChart
+                  points={trend.map((w) => ({
+                    label: w.label,
+                    personal: w.memberTotal,
+                    groupFund: w.groupFundTotal,
+                    other: 0,
+                    total: w.total,
+                  }))}
+                  seriesLabel="Members"
+                  emptyMessage="No week has been collected yet, so there is nothing to chart."
+                />
+              </div>
+
+              <p className="mt-2 text-[11px] leading-5 text-muted">
+                Each bar is a week of the cycle: the dark part is what the members paid in,
+                the pale part the funds collected alongside them. Weeks that closed with
+                somebody still short are named week by week in the weekly reconciliation.
+              </p>
+            </section>
+          )}
+
+          <div className="mt-5 md:grid md:grid-cols-2 md:items-start md:gap-6">
           {summary && (
             <section className="rounded-xl border border-rule bg-surface p-5">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
@@ -362,6 +444,275 @@ export default function Reports() {
             )}
           </section>
         </div>
+
+        {/* The fines position and what each fund holds, under the totals they belong
+            to: a committee reads "what came in" and then immediately asks what is
+            still owed and what is left in the funds. */}
+        {summary?.fines && (
+          <section className="mt-5">
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+              Fines
+            </h2>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  Still owed
+                </p>
+                <p
+                  className={`amount mt-0.5 truncate text-lg font-bold ${
+                    summary.fines.outstanding > 0 ? "text-alert" : ""
+                  }`}
+                >
+                  {money(summary.fines.outstanding)}
+                </p>
+                <p className="amount text-[11px] text-muted">
+                  {summary.fines.pendingCount} of {summary.fines.count} not cleared
+                </p>
+              </div>
+
+              <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  Issued
+                </p>
+                <p className="amount mt-0.5 truncate text-lg font-bold">
+                  {money(summary.fines.issued)}
+                </p>
+                <p className="amount text-[11px] text-muted">{summary.fines.count} fines</p>
+              </div>
+
+              <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  Paid off
+                </p>
+                <p className="amount mt-0.5 truncate text-lg font-bold text-accent">
+                  {money(summary.fines.cleared)}
+                </p>
+                <p className="amount text-[11px] text-muted">
+                  {summary.fines.clearedCount} cleared
+                </p>
+              </div>
+
+              <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  Cash from fines
+                </p>
+                <p className="amount mt-0.5 truncate text-lg font-bold">
+                  {money(summary.fines.collected)}
+                </p>
+                <p className="text-[11px] text-muted">kept out of contributions</p>
+              </div>
+            </div>
+
+            {summary.fines.byType?.length > 0 && (
+              <ul className="mt-2 divide-y divide-rule overflow-hidden rounded-xl border border-rule bg-surface">
+                {summary.fines.byType.map((t) => (
+                  <li key={t.name} className="flex items-baseline justify-between gap-3 px-4 py-2.5">
+                    <span className="min-w-0 truncate text-sm">
+                      {t.name}
+                      <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                        {t.category}
+                      </span>
+                    </span>
+                    <span className="amount shrink-0 text-right text-sm font-semibold">
+                      {t.issued > 0 ? money(t.issued) : "—"}
+                      {t.remaining > 0 && (
+                        <span className="block text-[11px] font-normal text-alert">
+                          {money(t.remaining)} owed
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {summary?.funds?.length > 0 && (
+          <section className="mt-5">
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+              What each fund holds
+            </h2>
+            <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-rule bg-surface">
+              {summary.funds.map((fund) => (
+                <li key={fund.name} className="px-4 py-3">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 truncate text-sm font-medium">{fund.name}</span>
+                    <span className="amount shrink-0 text-sm font-semibold">
+                      {money(fund.balance)}
+                    </span>
+                  </div>
+                  <p className="amount mt-0.5 text-[11px] text-muted">
+                    {money(fund.carriedIn)} carried in + {money(fund.collected)} collected
+                    {fund.derived > 0 ? ` + ${money(fund.derived)} automatic tea` : ""}
+                    {fund.spent > 0 ? ` − ${money(fund.spent)} spent` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        </>
+      )}
+
+      {tab === "fines" && (
+        <section className="space-y-4">
+          {!fines ? (
+            <Loader />
+          ) : fines.totals.count === 0 ? (
+            <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
+              No fines have been issued.
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    Still owed
+                  </p>
+                  <p
+                    className={`amount mt-0.5 truncate text-lg font-bold ${
+                      fines.totals.outstanding > 0 ? "text-alert" : ""
+                    }`}
+                  >
+                    {money(fines.totals.outstanding)}
+                  </p>
+                  <p className="amount text-[11px] text-muted">
+                    {fines.totals.pendingCount} fines
+                  </p>
+                </div>
+
+                <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    Issued in total
+                  </p>
+                  <p className="amount mt-0.5 truncate text-lg font-bold">
+                    {money(fines.totals.issued)}
+                  </p>
+                  <p className="amount text-[11px] text-muted">{fines.totals.count} fines</p>
+                </div>
+
+                <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    Paid off
+                  </p>
+                  <p className="amount mt-0.5 truncate text-lg font-bold text-accent">
+                    {money(fines.totals.cleared)}
+                  </p>
+                  <p className="amount text-[11px] text-muted">
+                    {fines.totals.clearedCount} cleared
+                  </p>
+                </div>
+
+                <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    Share cleared
+                  </p>
+                  <p className="amount mt-0.5 text-lg font-bold">
+                    {Math.round(
+                      (fines.totals.cleared / Math.max(fines.totals.issued, 1)) * 100,
+                    )}
+                    %
+                  </p>
+                  <p className="text-[11px] text-muted">of everything issued</p>
+                </div>
+              </div>
+
+              <div>
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+                  By fine type
+                </h2>
+                <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-rule bg-surface">
+                  {fines.byType.map((t) => (
+                    <li key={t.name} className="px-4 py-3">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="min-w-0 truncate text-sm font-medium">
+                          {t.name}
+                          <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                            {t.category}
+                          </span>
+                        </span>
+                        <span className="amount shrink-0 text-sm font-semibold">
+                          {money(t.issued)}
+                        </span>
+                      </div>
+                      <p className="amount mt-0.5 text-[11px] text-muted">
+                        {t.count} issued
+                        {t.outstanding > 0 ? (
+                          <span className="text-alert"> · {money(t.outstanding)} still owed</span>
+                        ) : (
+                          " · all cleared"
+                        )}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div>
+                  <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+                    Who owes what
+                  </h2>
+                  {fines.byMember.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-rule px-5 py-6 text-center text-sm text-muted">
+                      Nobody owes a fine — every one issued has been cleared.
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-rule bg-surface">
+                      {fines.byMember.map((row) => (
+                        <li
+                          key={row.memberId}
+                          className="flex items-baseline justify-between gap-3 px-4 py-2.5"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm">
+                              {row.name}
+                              {!row.active && (
+                                <span className="ml-1 text-[10px] uppercase tracking-wide text-muted">
+                                  resigned
+                                </span>
+                              )}
+                            </span>
+                            <span className="amount block text-[11px] text-muted">
+                              {row.regNumber || row.phone} · {row.fines}{" "}
+                              {row.fines === 1 ? "fine" : "fines"}
+                            </span>
+                          </span>
+                          <span className="amount shrink-0 text-sm font-semibold text-alert">
+                            {money(row.outstanding)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div>
+                  <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+                    Month by month
+                  </h2>
+                  <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-rule bg-surface">
+                    {fines.byMonth.map((m) => (
+                      <li
+                        key={m.month}
+                        className="flex items-baseline justify-between gap-3 px-4 py-2.5"
+                      >
+                        <span className="amount text-sm">{m.month}</span>
+                        <span className="amount text-right text-sm font-semibold">
+                          {money(m.issued)}
+                          <span className="block text-[11px] font-normal text-muted">
+                            {m.count} issued
+                            {m.outstanding > 0 ? ` · ${money(m.outstanding)} owed` : ""}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </>
+          )}
+        </section>
       )}
 
       {tab === "performance" && (
@@ -376,6 +727,66 @@ export default function Reports() {
             /* Cards on a phone, the table from md up — and every row opens that
                member's own chart. */
             <MemberPerformanceList members={performance} onOpenChart={setChartMember} />
+          )}
+
+          {/* The group's own headings, above the ranking: what the members have paid
+              between them, how consistent they are on average, and what is still
+              owed. The list below answers "who"; this answers "how are we doing". */}
+          {performanceTotals && performance.length > 0 && (
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  Paid between them
+                </p>
+                <p className="amount mt-0.5 truncate text-lg font-bold text-primary">
+                  {money(performanceTotals.totalContributed)}
+                </p>
+                <p className="amount text-[11px] text-muted">
+                  incl. {money(performanceTotals.carriedIn)} carried forward
+                </p>
+              </div>
+
+              <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  Average consistency
+                </p>
+                <p className="amount mt-0.5 text-lg font-bold">
+                  {performanceTotals.averageConsistency === null
+                    ? "—"
+                    : `${performanceTotals.averageConsistency}%`}
+                </p>
+                <p className="amount text-[11px] text-muted">
+                  {performanceTotals.weeksPaid} of {performanceTotals.weeksExpected} weeks paid
+                </p>
+              </div>
+
+              <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  Keeping up
+                </p>
+                <p className="amount mt-0.5 text-lg font-bold text-accent">
+                  {performanceTotals.fullyPaidMembers}
+                </p>
+                <p className="amount text-[11px] text-muted">
+                  of {performanceTotals.members} at 100% · {performanceTotals.membersBehind} below
+                  80%
+                </p>
+              </div>
+
+              <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  Fines owed
+                </p>
+                <p
+                  className={`amount mt-0.5 truncate text-lg font-bold ${
+                    performanceTotals.pendingFines > 0 ? "text-alert" : ""
+                  }`}
+                >
+                  {money(performanceTotals.pendingFines)}
+                </p>
+                <p className="text-[11px] text-muted">across everyone below</p>
+              </div>
+            </div>
           )}
 
           <p className="mt-2 text-xs text-muted">
@@ -445,6 +856,23 @@ export default function Reports() {
                   </div>
                 </div>
               )}
+
+            {/* The same months as a chart: a month that came in short should be
+                visible at a glance, not something you find by reading twelve rows
+                of figures. */}
+            <div className="mb-3 rounded-xl border border-rule bg-surface px-3 py-3">
+              <ContributionChart
+                points={[...months].reverse().map((m) => ({
+                  label: monthLabel(m.month),
+                  personal: m.personalTotal,
+                  groupFund: m.groupFundTotal,
+                  other: 0,
+                  total: m.total,
+                }))}
+                seriesLabel="Members"
+                emptyMessage="No month has anything logged against it yet."
+              />
+            </div>
 
             <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
               {months.map((m) => (

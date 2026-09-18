@@ -9,7 +9,7 @@ import WeeklyScheduleTable from '../shared/WeeklyScheduleTable';
 
 const PAGE_SIZE = 20;
 
-// One member's full public passbook: header, pledged-vs-contributed by type,
+// One member's full public passbook: header, what he has paid by type,
 // the ledger, and a stamped total. It is the one public view of a member there
 // is, and it is only ever reached by typing that member's own registered phone
 // number — pass a fresh `key` from the caller when the underlying member changes
@@ -123,7 +123,7 @@ export default function PassbookCard({
 
         {/* Everything about this member at a glance: who they are (masked
             phone, member since) and the numbers behind the ledger —
-            contributions logged, what they pledged, fines owed and cleared. */}
+            contributions logged, his own total, fines owed and cleared. */}
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-rule px-5 py-4 md:grid-cols-3">
           {/* What he brought forward leads: it is the figure his money is built
               on, and the one the treasurer verified when the books opened. */}
@@ -163,9 +163,9 @@ export default function PassbookCard({
 
           <div>
             <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-              Pledged
+              Paid in his own name
             </dt>
-            <dd className="amount mt-0.5 text-sm font-medium">{money(result.totalPledged)}</dd>
+            <dd className="amount mt-0.5 text-sm font-medium">{money(result.totalContributed)}</dd>
           </div>
 
           <div>
@@ -259,21 +259,19 @@ export default function PassbookCard({
           )}
         </div>
 
-        {/* Open book: pledged vs. contributed per type, shown whether or not
-            there are contributions yet */}
+        {/* What he has paid into, by type, shown whether or not there are any
+            contributions yet — a member reading this wants to see every fund the
+            group tracks, not only the ones he has touched. */}
         {result.byType?.length > 0 && (
           <div className="border-b border-rule px-5 py-4">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-              By contribution type
+              Paid by contribution type
             </p>
             <ul className="space-y-2">
               {result.byType.map((b) => (
                 <li key={b.type} className="flex items-baseline justify-between gap-3 text-sm">
                   <span className="min-w-0 truncate">{b.type}</span>
-                  <span className="amount shrink-0 font-medium">
-                    {money(b.contributed)}
-                    {b.pledged > 0 && <span className="text-muted"> / {money(b.pledged)}</span>}
-                  </span>
+                  <span className="amount shrink-0 font-medium">{money(b.contributed)}</span>
                 </li>
               ))}
             </ul>
@@ -389,16 +387,13 @@ export default function PassbookCard({
               (weekly contribution and fund deductions)
             </p>
           )}
-          {(result.ledger ? result.ledger.arrears > 0 : false) && (
+          {result.ledger?.arrears > 0 && (
             <p className="amount mt-1 text-sm font-medium text-alert">
               {money(result.ledger.arrears)} behind
               {result.ledger.weeksBehind > 0
                 ? ` · ${result.ledger.weeksBehind} week${result.ledger.weeksBehind === 1 ? '' : 's'}`
                 : ''}
             </p>
-          )}
-          {result.totalPledged > 0 && (
-            <p className="amount mt-1 text-sm text-muted">of {money(result.totalPledged)} pledged</p>
           )}
         </footer>
       </section>

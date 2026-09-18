@@ -2,31 +2,139 @@ const Fine = require('../models/Fine');
 const Member = require('../models/Member');
 const FineType = require('../models/FineType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
+const { getOrCreateSettings } = require('../utils/settings');
+const { sendWorkbook } = require('../utils/xlsxExport');
+const { buildFineReport, renderFineReportPdf, fineReportSheets } = require('../utils/fineReport');
 
-// GET /api/fines?memberId=&status=pending|settled&page=&limit=
+// The disciplinary officer works in his own world: he issues conduct fines and has
+// no business reading the treasurer's. So every read he makes is narrowed to
+// disciplinary-category types — the same boundary createFine already enforces when
+// he issues one — and his exports say so on the page.
+async function scopeForUser(user) {
+  if (user.role !== 'disciplinary') return { isScoped: false, filter: {}, scopeLabel: 'All fines' };
+
+  const typeIds = await FineType.distinct('_id', { category: 'disciplinary' });
+  return {
+    isScoped: true,
+    filter: { typeId: { $in: typeIds } },
+    scopeLabel: 'Disciplinary fines',
+  };
+}
+
+// The totals a screen or a report shows above the list.
+function summariseFines(fines) {
+  const issued = fines.reduce((sum, f) => sum + (Number(f.amount) || 0), 0);
+  const outstanding = fines.reduce((sum, f) => sum + (Number(f.remaining) || 0), 0);
+  return {
+    count: fines.length,
+    issued,
+    outstanding,
+    cleared: issued - outstanding,
+    pendingCount: fines.filter((f) => Number(f.remaining) > 0).length,
+    clearedCount: fines.filter((f) => Number(f.remaining) <= 0).length,
+  };
+}
+
+function toFineJson(fine) {
+  return {
+    id: fine._id,
+    date: fine.date,
+    amount: fine.amount,
+    remaining: fine.remaining,
+    reason: fine.reason || '',
+    status: Number(fine.remaining) > 0 ? 'pending' : 'settled',
+    type: fine.typeId?.name || null,
+    category: fine.typeId?.category || null,
+    memberId: fine.memberId?._id || fine.memberId,
+    memberName: fine.memberId?.name || null,
+    memberRegNumber: fine.memberId?.regNumber || null,
+    issuedBy: fine.issuedBy?.name || null,
+    voided: fine.deleted === true,
+  };
+}
+
+// GET /api/fines?memberId=&status=pending|settled|voided&page=&limit=
+// Admin sees every fine; the disciplinary officer sees his own category only.
 async function listFines(req, res, next) {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
 
-    const filter = { deleted: false };
+    const scope = await scopeForUser(req.user);
+    const filter = { ...scope.filter, deleted: req.query.status === 'voided' };
     if (req.query.memberId) filter.memberId = req.query.memberId;
     if (req.query.status === 'pending') filter.remaining = { $gt: 0 };
     if (req.query.status === 'settled') filter.remaining = { $lte: 0 };
 
-    const [fines, total] = await Promise.all([
+    const [fines, total, all] = await Promise.all([
       Fine.find(filter)
         .sort({ date: -1, createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .populate('memberId', 'name phone regNumber')
-        .populate('typeId', 'name')
+        .populate('typeId', 'name category')
         .populate('issuedBy', 'name')
         .lean(),
       Fine.countDocuments(filter),
+      // The summary is over every fine in scope, not just this page: a screen that
+      // totalled only the rows it happened to load would under-report the debt.
+      Fine.find({ ...scope.filter, deleted: false })
+        .select('amount remaining')
+        .lean(),
     ]);
 
-    res.json({ fines, total, page, pages: Math.ceil(total / limit) || 1 });
+    res.json({
+      fines: fines.map(toFineJson),
+      summary: summariseFines(all),
+      scopeLabel: scope.scopeLabel,
+      total,
+      page,
+      pages: Math.ceil(total / limit) || 1,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/fines/member/:memberId/export?format=pdf|xlsx — ADMIN & DISCIPLINARY.
+// One member's whole fine record: issued, paid off, outstanding, and what was
+// voided. The disciplinary officer asked for this so he can hand a member (or a
+// meeting) a proper document instead of reading a screen aloud.
+async function exportMemberFines(req, res, next) {
+  try {
+    const member = await Member.findById(req.params.memberId).lean();
+    if (!member) return res.status(404).json({ message: 'Member not found' });
+
+    const scope = await scopeForUser(req.user);
+    const [fines, voidedFines, settings] = await Promise.all([
+      Fine.find({ ...scope.filter, memberId: member._id, deleted: false })
+        .sort({ date: -1, createdAt: -1 })
+        .populate('typeId', 'name category')
+        .populate('issuedBy', 'name')
+        .lean(),
+      Fine.find({ ...scope.filter, memberId: member._id, deleted: true })
+        .sort({ date: -1 })
+        .populate('typeId', 'name category')
+        .populate('issuedBy', 'name')
+        .lean(),
+      getOrCreateSettings(),
+    ]);
+
+    const report = buildFineReport({
+      member,
+      fines,
+      voidedFines,
+      scopeLabel: scope.scopeLabel,
+    });
+
+    const slug = (member.regNumber || member.name || 'member').replace(/[^a-z0-9]+/gi, '-');
+    const format = String(req.query.format || 'pdf').toLowerCase();
+
+    if (format === 'xlsx' || format === 'excel') {
+      return sendWorkbook(res, `fines-${slug}.xlsx`, fineReportSheets(report, settings.chamaName));
+    }
+
+    return renderFineReportPdf(res, report, settings.chamaName);
   } catch (err) {
     next(err);
   }
@@ -140,4 +248,4 @@ async function voidFine(req, res, next) {
   }
 }
 
-module.exports = { listFines, createFine, settleFine, voidFine };
+module.exports = { listFines, exportMemberFines, createFine, settleFine, voidFine };

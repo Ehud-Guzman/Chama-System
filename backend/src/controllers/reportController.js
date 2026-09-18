@@ -6,7 +6,9 @@ const AuditLog = require('../models/AuditLog');
 const { carriedInTotals } = require('../utils/carriedIn');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
-const { resolveConfig } = require('../utils/weekCycle');
+const { resolveConfig, scoredWeeks } = require('../utils/weekCycle');
+const { bucketForType } = require('../utils/ledgerTypes');
+const { fundBalance } = require('../utils/fundBalance');
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { totalFinesCollected } = require('../utils/finesCollected');
@@ -110,7 +112,8 @@ async function computePerformance() {
 // types only) and pending fines, for spotting who's keeping up and who isn't.
 async function performance(req, res, next) {
   try {
-    res.json({ members: await computePerformance() });
+    const members = await computePerformance();
+    res.json({ members, totals: performanceTotals(members) });
   } catch (err) {
     next(err);
   }
@@ -121,7 +124,7 @@ async function performance(req, res, next) {
 async function summary(req, res, next) {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected, expensesAgg] =
+    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected, expensesAgg, settings] =
       await Promise.all([
         Contribution.aggregate([
           { $match: { deleted: false } },
@@ -142,14 +145,16 @@ async function summary(req, res, next) {
           { $group: { _id: null, total: { $sum: '$amount' } } },
         ]),
         totalFinesCollected(),
-  Expense.aggregate([
-  { $match: { deleted: false } },
-  { $group: { _id: '$typeId', total: { $sum: '$amount' } } },
-  { $lookup: { from: 'contributiontypes', localField: '_id', foreignField: '_id', as: 'type' } },
-  { $unwind: '$type' },
-  { $match: { 'type.isRecoverable': { $ne: true } } },
-  { $group: { _id: null, total: { $sum: '$total' } } },
-]),
+        Expense.aggregate([
+          { $match: { deleted: false } },
+          { $group: { _id: '$typeId', total: { $sum: '$amount' } } },
+          { $lookup: { from: 'contributiontypes', localField: '_id', foreignField: '_id', as: 'type' } },
+          { $unwind: '$type' },
+          { $match: { 'type.isRecoverable': { $ne: true } } },
+          { $group: { _id: null, total: { $sum: '$total' } } },
+        ]),
+        // The cycle's own figures, for the Tea Fund's derived income below.
+        getOrCreateSettings(),
       ]);
 
     const totalContributed = byMethod.reduce((sum, m) => sum + m.total, 0);
@@ -169,6 +174,91 @@ async function summary(req, res, next) {
       _id: { $in: contributingIds },
       active: true,
     });
+
+    // The office's fines position, all time. Kept beside the contribution figures
+    // because a committee asks the three questions together: what came in, what is
+    // in the funds, and what is still owed in fines.
+    const [fineAgg, fineByType, fundTypes] = await Promise.all([
+      Fine.aggregate([
+        { $match: { deleted: false } },
+        {
+          $group: {
+            _id: null,
+            issued: { $sum: '$amount' },
+            remaining: { $sum: '$remaining' },
+            count: { $sum: 1 },
+            pendingCount: { $sum: { $cond: [{ $gt: ['$remaining', 0] }, 1, 0] } },
+          },
+        },
+      ]),
+      Fine.aggregate([
+        { $match: { deleted: false } },
+        { $group: { _id: '$typeId', issued: { $sum: '$amount' }, remaining: { $sum: '$remaining' }, count: { $sum: 1 } } },
+        { $lookup: { from: 'finetypes', localField: '_id', foreignField: '_id', as: 'type' } },
+        { $unwind: '$type' },
+        {
+          $project: {
+            _id: 0,
+            name: '$type.name',
+            category: '$type.category',
+            issued: 1,
+            remaining: 1,
+            count: 1,
+          },
+        },
+        { $sort: { remaining: -1 } },
+      ]),
+      ContributionType.find().select('name isGroupFund tracksExpenses openingBalance active').lean(),
+    ]);
+
+    const finesSummary = {
+      issued: fineAgg[0]?.issued || 0,
+      outstanding: fineAgg[0]?.remaining || 0,
+      cleared: (fineAgg[0]?.issued || 0) - (fineAgg[0]?.remaining || 0),
+      count: fineAgg[0]?.count || 0,
+      pendingCount: fineAgg[0]?.pendingCount || 0,
+      clearedCount: (fineAgg[0]?.count || 0) - (fineAgg[0]?.pendingCount || 0),
+      collected: finesCollected,
+      byType: fineByType,
+    };
+
+    // What each fund holds, as the office's own setup screen works it out — with
+    // the Tea Fund's automatic income included, because this is the office's copy
+    // and a fund list that disagrees with the ledger is worse than none.
+    const config = resolveConfig(settings);
+    const chaiType = fundTypes.find((t) => bucketForType(t) === 'chai') || null;
+    const teaBeforeCycle = chaiType
+      ? await Contribution.aggregate([
+          { $match: { deleted: false, typeId: chaiType._id, date: { $lt: config.anchorDate } } },
+          { $group: { _id: null, total: { $sum: { $ifNull: ['$grossAmount', '$amount'] } } } },
+        ])
+      : [];
+    const teaIncome = config.chaiAmount * scoredWeeks(config) * activeMembers + (teaBeforeCycle[0]?.total || 0);
+
+    const funds = await Promise.all(
+      fundTypes
+        .filter((t) => t.active !== false && (t.isGroupFund || t.tracksExpenses))
+        .map(async (t) => {
+          const derived = bucketForType(t) === 'chai' ? teaIncome : 0;
+          const balance = await fundBalance(t._id, {
+            carriedIn: t.openingBalance,
+            extraIncome: derived,
+          });
+          return {
+            name: t.name,
+            tracksExpenses: Boolean(t.tracksExpenses),
+            // The part of the balance the ledger derives rather than reads from a
+            // row — today only the automatic tea — so a list can name it.
+            derived,
+            ...balance,
+            // fundBalance() folds the carry-in and the derived income into
+            // totalContributed, so what actually came in as logged rows has to be
+            // named separately for a screen that shows its work.
+            collected: balance.totalContributed - balance.carriedIn - derived,
+            spent: balance.totalExpenses,
+          };
+        })
+    );
 
     res.json({
       totalContributed: allTime,
@@ -194,6 +284,11 @@ async function summary(req, res, next) {
       // Cash collected against fines never shows up as a Contribution — kept
       // separate from totalContributed so it isn't mistaken for total cash held.
       finesCollected,
+      // What is owed in fines, by type, beside what has been collected — the two
+      // halves of the same story, and the figures a committee asks for by name.
+      fines: finesSummary,
+      // What each fund holds today, carry-in and automatic tea included.
+      funds,
     });
   } catch (err) {
     next(err);
@@ -204,6 +299,7 @@ async function summary(req, res, next) {
 async function exportPerformance(req, res, next) {
   try {
     const rows = await computePerformance();
+    const totals = performanceTotals(rows);
     const sheetRows = rows.map((r) => ({
       Name: r.name,
       'Reg number': r.regNumber || '',
@@ -219,7 +315,22 @@ async function exportPerformance(req, res, next) {
         ? new Date(r.lastContributionDate).toISOString().slice(0, 10)
         : '',
     }));
-    sendWorkbook(res, 'member-performance.xlsx', [{ name: 'Performance', rows: sheetRows }]);
+    sendWorkbook(res, 'member-performance.xlsx', [
+      { name: 'Performance', rows: sheetRows },
+      {
+        name: 'Totals',
+        rows: [
+          { Field: 'Members', Value: totals.members },
+          { Field: 'Total contributed (all-time)', Value: totals.totalContributed },
+          { Field: 'Carried forward inside that', Value: totals.carriedIn },
+          { Field: 'Average consistency (%)', Value: totals.averageConsistency ?? '' },
+          { Field: 'Members fully paid', Value: totals.fullyPaidMembers },
+          { Field: 'Members below 80%', Value: totals.membersBehind },
+          { Field: 'Weeks paid / expected', Value: `${totals.weeksPaid} / ${totals.weeksExpected}` },
+          { Field: 'Pending fines', Value: totals.pendingFines },
+        ],
+      },
+    ]);
   } catch (err) {
     next(err);
   }
@@ -636,6 +747,189 @@ async function computeMemberReport(memberId) {
   };
 }
 
+// The headings a committee reads above the ranking: how many members, what they
+// have paid between them, how consistent they are, and what is still owed.
+function performanceTotals(rows) {
+  const scored = rows.filter((r) => r.consistency !== null);
+  return {
+    members: rows.length,
+    totalContributed: rows.reduce((sum, r) => sum + r.totalContributed, 0),
+    carriedIn: rows.reduce((sum, r) => sum + r.carriedIn, 0),
+    averageConsistency: scored.length
+      ? Math.round(scored.reduce((sum, r) => sum + r.consistency, 0) / scored.length)
+      : null,
+    fullyPaidMembers: scored.filter((r) => r.consistency === 100).length,
+    membersBehind: scored.filter((r) => r.consistency < 80).length,
+    pendingFines: rows.reduce((sum, r) => sum + r.pendingFines, 0),
+    weeksPaid: rows.reduce((sum, r) => sum + r.weeksPaid, 0),
+    weeksExpected: rows.reduce((sum, r) => sum + r.weeksExpected, 0),
+  };
+}
+
+// GET /api/reports/trend?weeks=12 — the last N weeks, oldest first, for the trend
+// chart the summary opens with: what the members put in each week, what the funds
+// took alongside them, and how many were still short when the week closed.
+async function trend(req, res, next) {
+  try {
+    const wanted = Math.min(52, Math.max(4, parseInt(req.query.weeks, 10) || 12));
+    const weeks = await computeWeeklyReconciliation();
+    // computeWeeklyReconciliation() answers newest-first (that is how the weekly
+    // screen reads); a chart reads left to right.
+    const recent = weeks.slice(0, wanted).reverse();
+
+    res.json({
+      weeks: recent.map((w) => ({
+        weekNumber: w.weekNumber,
+        startDate: w.startDate,
+        endDate: w.endDate,
+        label: `Wk ${w.weekNumber}`,
+        memberTotal: w.memberTotal,
+        groupFundTotal: w.groupFundTotal,
+        total: w.memberTotal + w.groupFundTotal,
+        expected: w.memberExpected,
+        memberPaidCount: w.memberPaidCount,
+        memberEligibleCount: w.memberEligibleCount,
+        shortfallCount: w.shortfallCount,
+        balanced: w.balanced,
+        isBaseline: w.isBaseline,
+        isCurrent: w.isCurrent,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+// The group's fines, in the three cuts the office asks for by name: what has been
+// issued and what is still owed in total, which fine types carry the debt, who owes
+// it, and how it has moved month by month.
+async function computeFinesReport() {
+  const [totals, byType, byMember, byMonth] = await Promise.all([
+    Fine.aggregate([
+      { $match: { deleted: false } },
+      {
+        $group: {
+          _id: null,
+          issued: { $sum: '$amount' },
+          outstanding: { $sum: '$remaining' },
+          count: { $sum: 1 },
+          pendingCount: { $sum: { $cond: [{ $gt: ['$remaining', 0] }, 1, 0] } },
+        },
+      },
+    ]),
+    Fine.aggregate([
+      { $match: { deleted: false } },
+      {
+        $group: {
+          _id: '$typeId',
+          issued: { $sum: '$amount' },
+          outstanding: { $sum: '$remaining' },
+          count: { $sum: 1 },
+        },
+      },
+      { $lookup: { from: 'finetypes', localField: '_id', foreignField: '_id', as: 'type' } },
+      { $unwind: '$type' },
+      {
+        $project: {
+          _id: 0,
+          name: '$type.name',
+          category: '$type.category',
+          issued: 1,
+          outstanding: 1,
+          count: 1,
+        },
+      },
+      { $sort: { outstanding: -1, issued: -1 } },
+    ]),
+    Fine.aggregate([
+      { $match: { deleted: false, remaining: { $gt: 0 } } },
+      { $group: { _id: '$memberId', outstanding: { $sum: '$remaining' }, fines: { $sum: 1 } } },
+      { $lookup: { from: 'members', localField: '_id', foreignField: '_id', as: 'member' } },
+      { $unwind: '$member' },
+      {
+        $project: {
+          _id: 0,
+          memberId: '$_id',
+          name: '$member.name',
+          regNumber: '$member.regNumber',
+          phone: '$member.phone',
+          active: '$member.active',
+          outstanding: 1,
+          fines: 1,
+        },
+      },
+      { $sort: { outstanding: -1 } },
+      { $limit: 100 },
+    ]),
+    Fine.aggregate([
+      { $match: { deleted: false } },
+      {
+        $group: {
+          // The group's own calendar month (Kenya, UTC+3), as every other report
+          // groups it, so the same money lands in the same month on every screen.
+          _id: { $dateToString: { format: '%Y-%m', date: '$date', timezone: 'Africa/Nairobi' } },
+          issued: { $sum: '$amount' },
+          outstanding: { $sum: '$remaining' },
+          count: { $sum: 1 },
+        },
+      },
+      { $project: { _id: 0, month: '$_id', issued: 1, outstanding: 1, count: 1 } },
+      { $sort: { month: -1 } },
+      { $limit: 24 },
+    ]),
+  ]);
+
+  const head = totals[0] || { issued: 0, outstanding: 0, count: 0, pendingCount: 0 };
+
+  return {
+    totals: {
+      issued: head.issued,
+      outstanding: head.outstanding,
+      cleared: head.issued - head.outstanding,
+      count: head.count,
+      pendingCount: head.pendingCount,
+      clearedCount: head.count - head.pendingCount,
+    },
+    byType,
+    byMember,
+    byMonth,
+  };
+}
+
+// GET /api/reports/fines
+async function finesReport(req, res, next) {
+  try {
+    res.json(await computeFinesReport());
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/reports/fines/export — the same cuts as a workbook.
+async function exportFinesReport(req, res, next) {
+  try {
+    const report = await computeFinesReport();
+    sendWorkbook(res, 'fines-report.xlsx', [
+      {
+        name: 'Totals',
+        rows: [
+          { Field: 'Fines on record', Value: report.totals.count },
+          { Field: 'Amount issued', Value: report.totals.issued },
+          { Field: 'Paid off', Value: report.totals.cleared },
+          { Field: 'Still owed', Value: report.totals.outstanding },
+          { Field: 'Not yet cleared', Value: report.totals.pendingCount },
+        ],
+      },
+      { name: 'By fine type', rows: report.byType },
+      { name: 'By member', rows: report.byMember.map(({ memberId, ...row }) => row) },
+      { name: 'By month', rows: report.byMonth },
+    ]);
+  } catch (err) {
+    next(err);
+  }
+}
+
 // GET /api/reports/member/:id — one member's own report, for the chart the
 // performance list opens when a member is tapped.
 async function memberReport(req, res, next) {
@@ -658,5 +952,8 @@ module.exports = {
   exportMonthly,
   weekly,
   exportWeekly,
+  trend,
+  finesReport,
+  exportFinesReport,
   memberReport,
 };

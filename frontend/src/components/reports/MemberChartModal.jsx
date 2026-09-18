@@ -141,7 +141,10 @@ export default function MemberChartModal({ member, onClose }) {
                 </div>
 
                 <div className="mt-2 rounded-xl border border-rule px-3 py-3">
-                  <ContributionChart months={report.months} />
+                  <ContributionChart
+                    points={report.months}
+                    emptyMessage="Nothing was logged against this member in the last 12 months."
+                  />
                 </div>
 
                 <p className="mt-2 text-[11px] leading-5 text-muted">
