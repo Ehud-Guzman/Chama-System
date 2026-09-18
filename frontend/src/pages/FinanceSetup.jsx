@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
 import { money, shortDate, METHOD_LABELS } from '../utils/format';
 import { invalidateLedger } from '../services/ledgerCache';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import BackLink from '../components/shared/BackLink';
 import Loader from '../components/shared/Loader';
 
 // Money typed by hand: "1,400", " 1400 " and "Ksh 1400" all mean the same number —
@@ -277,9 +277,7 @@ export default function FinanceSetup() {
     <form onSubmit={save} className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link to="/admin/finance" className="text-xs font-medium text-primary">
-            ← Back to the ledger
-          </Link>
+          <BackLink to="/admin/finance">Back to the ledger</BackLink>
           <h1 className="mt-1 text-2xl font-bold">Opening balances — the one-time week {settings.cycleStartWeek} setup</h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
             Key in what each member holds today. This is the only manual entry the system needs: every

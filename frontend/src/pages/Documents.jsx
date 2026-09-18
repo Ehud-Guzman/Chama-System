@@ -5,6 +5,7 @@ import { useToast } from '../components/shared/Toast';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import ErrorState from '../components/shared/ErrorState';
 import Loader from '../components/shared/Loader';
+import BackLink from '../components/shared/BackLink';
 import { shortDate, formatBytes } from '../utils/format';
 import { DOCUMENT_CATEGORIES, documentCategoryLabel } from '../utils/documentCategories';
 import { opensInBrowser } from '../utils/documentFiles';
@@ -207,6 +208,7 @@ export default function Documents() {
   return (
     <div className="space-y-4">
       <header>
+        <BackLink to="/admin/dashboard" className="mb-2">Back</BackLink>
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">Documents</p>
         <h1 className="mt-1 text-2xl font-bold">Chama documents</h1>
         <p className="mt-1 text-sm text-muted">

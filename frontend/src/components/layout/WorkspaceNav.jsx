@@ -1,7 +1,5 @@
-import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { warmRoute } from '../../services/prefetch';
-
+import NavTile from '../shared/NavTile';
 // The dashboard's second navigation, grouped by what the group actually does.
 //
 // It exists for two reasons. The main navigation has to stay short — four tabs and
@@ -89,41 +87,10 @@ export const WORKSPACE_GROUPS = [
   },
 ];
 
-const ROW =
-  'flex min-h-11 flex-wrap items-baseline gap-x-2 rounded-lg px-2 py-2 transition hover:bg-elevation active:bg-elevation';
-
+// A row is one shared component (components/shared/NavTile) so this nav and the
+// Settings rail cannot drift apart in how a destination looks or how big it is.
 function WorkspaceItem({ item }) {
-  const inner = (
-    <>
-      <span className="text-sm font-medium text-ink">{item.label}</span>
-      {/* The one-line explanation is for the first visit and for the screens nobody
-          opens twice a month; on a phone the labels alone carry the meaning. */}
-      {item.hint && (
-        <span className="hidden text-xs leading-5 text-muted sm:inline">{item.hint}</span>
-      )}
-    </>
-  );
-
-  if (item.anchor) {
-    return (
-      <a href={item.anchor} className={ROW}>
-        {inner}
-      </a>
-    );
-  }
-
-  return (
-    <Link
-      to={item.to}
-      // Warm the destination on intent, exactly like the main navigation: hover on a
-      // laptop, pointer-down on a phone.
-      onMouseEnter={() => warmRoute(item.to)}
-      onPointerDown={() => warmRoute(item.to)}
-      className={ROW}
-    >
-      {inner}
-    </Link>
-  );
+  return <NavTile to={item.to} href={item.anchor} label={item.label} hint={item.hint} />;
 }
 
 export default function WorkspaceNav({ className = '' }) {
@@ -150,10 +117,12 @@ export default function WorkspaceNav({ className = '' }) {
             key={group.title}
             className="min-w-0 rounded-xl border border-rule bg-surface p-2 sm:p-3"
           >
-            <h3 className="px-2 text-[11px] font-semibold uppercase tracking-widest text-muted">
+            {/* px-3 lines the heading up with the row labels (card padding + 12px),
+                so the group reads as a heading over its items rather than above them. */}
+            <h3 className="px-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
               {group.title}
             </h3>
-            <ul className="mt-1 space-y-0.5">
+            <ul className="mt-2 space-y-1.5">
               {group.items.map((item) => (
                 <li key={item.label}>
                   <WorkspaceItem item={item} />

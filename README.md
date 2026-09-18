@@ -611,6 +611,16 @@ them. The admin tooling lives at `/admin/settings`, grouped, with its own rail. 
 you add an admin screen, give it a group in `WorkspaceNav` (and a section in
 `AdminSettings`), not a card at the foot of the dashboard.
 
+**Two conventions that came out of that.** A navigation row is
+`components/shared/NavTile.jsx` — a bordered chip with a chevron, a 44px target and
+hover/press/focus states, because a label sitting inside a card reads as a caption
+and the one thing on the page that cannot be pressed should not look like the rest of
+the page. A screen that is not one of the five bottom-nav destinations opens with
+`components/shared/BackLink.jsx`, always pointing at a real parent route rather than
+`navigate(-1)`: back that goes wherever you came from is unpredictable after a form
+submit or a link somebody sent.
+
+
 **Icons.** `npm run icons` regenerates `public/icon-*.png` from the geometry in
 `public/icon.svg` (iOS will not take an SVG apple-touch-icon and Android wants a
 maskable one); `prebuild` runs it automatically, and `npm run verify:icons` parses the

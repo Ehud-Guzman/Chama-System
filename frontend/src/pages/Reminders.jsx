@@ -3,6 +3,7 @@ import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
 import ErrorState from '../components/shared/ErrorState';
 import Loader from '../components/shared/Loader';
+import BackLink from '../components/shared/BackLink';
 import MemberAvatar from '../components/members/MemberAvatar';
 import { money } from '../utils/format';
 
@@ -105,6 +106,7 @@ export default function Reminders() {
   return (
     <div className="space-y-4">
       <header>
+        <BackLink to="/admin/dashboard" className="mb-2">Back</BackLink>
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">Reminders</p>
         <h1 className="mt-1 text-2xl font-bold">Outstanding contributions &amp; fines</h1>
         <p className="mt-1 text-sm text-muted">

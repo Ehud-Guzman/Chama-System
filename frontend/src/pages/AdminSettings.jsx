@@ -3,6 +3,8 @@ import ChamaSettingsForm from '../components/shared/ChamaSettingsForm';
 import ChangePasswordForm from '../components/shared/ChangePasswordForm';
 import AddAdminForm from '../components/shared/AddAdminForm';
 import BackupPanel from '../components/shared/BackupPanel';
+import BackLink from '../components/shared/BackLink';
+import NavTile from '../components/shared/NavTile';
 import FineTypeManager from '../components/contributions/FineTypeManager';
 
 // The admin tooling, off the logging screen and grouped.
@@ -52,16 +54,12 @@ function SectionNav({ sections, className = '' }) {
   return (
     <nav aria-label="On this page" className={`min-w-0 space-y-2 ${className}`.trim()}>
       <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">On this page</h2>
-      <ul className="grid min-w-0 gap-0.5 sm:grid-cols-2 xl:grid-cols-1">
+      <ul className="grid min-w-0 gap-1.5 sm:grid-cols-2 xl:grid-cols-1">
         {sections.map((section) => (
           <li key={section.id}>
-            <a
-              href={`#${section.id}`}
-              className="flex min-h-11 flex-wrap items-baseline gap-x-2 rounded-lg px-2 py-2 transition hover:bg-elevation active:bg-elevation"
-            >
-              <span className="text-sm font-medium text-ink">{section.label}</span>
-              <span className="hidden text-xs leading-5 text-muted sm:inline">{section.hint}</span>
-            </a>
+            {/* The same row as the dashboard's "Go to" groups: a section in this rail
+                is a destination too, it just happens to be further down this page. */}
+            <NavTile href={`#${section.id}`} label={section.label} hint={section.hint} />
           </li>
         ))}
       </ul>
@@ -78,6 +76,7 @@ export default function AdminSettings() {
   return (
     <div className="min-w-0 space-y-4">
       <header className="min-w-0">
+        <BackLink to="/admin/dashboard" className="mb-2">Back</BackLink>
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">Administration</p>
         <h1 className="mt-1 text-2xl font-bold">Settings</h1>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">

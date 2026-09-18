@@ -7,6 +7,7 @@ import Modal from '../components/shared/Modal';
 import ErrorState from '../components/shared/ErrorState';
 import { money, shortDate, todayISO, isoDateOf, METHOD_LABELS } from '../utils/format';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import BackLink from '../components/shared/BackLink';
 import Loader from '../components/shared/Loader';
 import { fetchMember, getCachedMember, invalidateLedger } from '../services/ledgerCache';
 
@@ -275,12 +276,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
               ← Back to the list
             </button>
           ) : (
-            <Link
-              to="/admin/finance"
-              className="inline-flex min-h-11 items-center text-sm font-medium text-primary"
-            >
-              ← All members
-            </Link>
+            <BackLink to="/admin/finance">All members</BackLink>
           )}
           <h1 className="mt-1 truncate text-2xl font-bold">{member.name}</h1>
           <p className="mt-1 text-sm text-muted">

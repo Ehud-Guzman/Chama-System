@@ -4,6 +4,7 @@ import { useToast } from '../components/shared/Toast';
 import { money, shortDate, todayISO } from '../utils/format';
 import { blobErrorMessage } from '../utils/blobError';
 import Loader from '../components/shared/Loader';
+import BackLink from '../components/shared/BackLink';
 
 // Disciplinary officer's one screen: pick a member, pick an infraction type,
 // pick a date, done. Amount is prefilled from the type's default penalty but
@@ -195,6 +196,7 @@ export default function DisciplinaryFines() {
   return (
     <div className="space-y-4">
       <header>
+        <BackLink to="/admin/dashboard" className="mb-2">Back</BackLink>
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">Discipline</p>
         <h1 className="mt-1 text-2xl font-bold">Issue a disciplinary fine</h1>
       </header>

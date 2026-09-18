@@ -7,6 +7,7 @@ import MemberForm from '../components/members/MemberForm';
 import LedgerRows from '../components/contributions/LedgerRows';
 import EditContributionModal from '../components/contributions/EditContributionModal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import BackLink from '../components/shared/BackLink';
 import ErrorState from '../components/shared/ErrorState';
 import ResignDialog from '../components/members/ResignDialog';
 import IssueFineForm from '../components/members/IssueFineForm';
@@ -340,9 +341,7 @@ async function exportStatementExcel() {
 
   return (
     <div className="space-y-4">
-      <Link to="/admin/members" className="text-sm font-medium text-primary">
-        ← Members
-      </Link>
+      <BackLink to="/admin/members">Members</BackLink>
 
       <section className="rounded-xl border border-rule bg-surface p-5">
         <div className="flex items-start justify-between gap-3">
