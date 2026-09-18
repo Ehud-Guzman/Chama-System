@@ -1,9 +1,52 @@
+# Netlify build for the frontend half of this monorepo.
+#
+# The site is served from the apex domain https://wazomojashg.co.ke (Netlify DNS
+# holds the .co.ke zone). Add www.wazomojashg.co.ke as a domain alias in
+# Domain management as well, so Netlify redirects it to the primary domain instead
+# of serving a second origin the API would have to be told about.
+#
+# The API is on its own host. Set VITE_API_URL to it under Site configuration →
+# Environment variables; it is baked in at build time, so changing it needs a
+# redeploy (Deploys → Trigger deploy → Clear cache and deploy site).
+
 [build]
   base = "frontend"
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # Vite 5 needs Node 18+; pinning avoids a surprise when Netlify's default moves.
+  NODE_VERSION = "20"
+
+# Client-side routes: an admin refreshing /admin/members, or a member opening a
+# shared /member/:id link, must get the app rather than Netlify's 404.
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Vite fingerprints every file in /assets, so a name there can never point at
+# different bytes — cache it for a year. index.html is the opposite: it names the
+# current bundle, so it has to be revalidated or a deploy keeps serving the last one.
+# The specific rules come first; Netlify matches in order.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Headers for the pages Netlify serves (the API sets its own). HSTS is safe here
+# because the domain is HTTPS-only through Netlify's certificate, and includeSubDomains
+# assumes the whole zone stays HTTPS — which it should.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"

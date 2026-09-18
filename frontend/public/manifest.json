@@ -1,7 +1,7 @@
 {
-  "name": "Contribution Manager",
-  "short_name": "Contributions",
-  "description": "Check your chama contributions",
+  "name": "Wazo Moja Self-Help Group",
+  "short_name": "Wazo Moja",
+  "description": "Contributions, fines and passbooks for Wazo Moja Self-Help Group",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F2F4F1",

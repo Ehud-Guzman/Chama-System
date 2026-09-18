@@ -287,20 +287,63 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
 ## Deploying
 
 This is a monorepo (`frontend/` + `backend/` at the root) — both hosts need to be told which
-subfolder to build.
+subfolder to build. The live site is **https://wazomojashg.co.ke**, served by Netlify; the API is
+on its own host (Render/Railway).
 
-- **Frontend → Netlify:** `netlify.toml` at the repo root already sets base directory
-  `frontend`, build command `npm run build`, and publish directory `dist`. It also configures
-  the SPA fallback (`/* → /index.html`, 200) so client-side routes like `/admin/dashboard` or
-  `/member/:id` don't 404 on refresh or direct link — `frontend/public/_redirects` carries the
-  same rule as a backup, since Vite copies anything in `public/` straight into `dist/`. Set
-  `VITE_API_URL` (Site settings → Environment variables) to the deployed backend URL.
-- **Frontend → Vercel (alternative):** project root `frontend/`, build `npm run build`, output
-  `dist/`. Set `VITE_API_URL` the same way. Add a SPA rewrite (all routes → `/index.html`) —
-  Vercel doesn't read `netlify.toml`, so this needs its own `vercel.json` if you go this route.
-- **Backend → Render/Railway:** root `backend/`, start `npm start`. Set all vars from
-  `.env.example`; `FRONTEND_URL` must be the exact deployed frontend origin (CORS is locked to
-  it). `trust proxy` is already enabled so per-IP rate limiting works behind their proxies.
+### Frontend → Netlify
+
+`netlify.toml` at the repo root already sets base directory `frontend`, build command
+`npm run build`, publish directory `dist`, Node 20, the SPA fallback (`/* → /index.html`, 200) so
+client-side routes like `/admin/dashboard` or `/member/:id` don't 404 on refresh, cache rules
+(fingerprinted `/assets/*` for a year, `index.html` always revalidated) and security headers.
+`frontend/public/_redirects` carries the SPA rule as a backup, since Vite copies anything in
+`public/` straight into `dist/`.
+
+Go-live steps for the domain:
+
+1. **Registrar** (where `wazomojashg.co.ke` was bought): set the nameservers to the four Netlify
+   shows under **Domain management → Netlify DNS** (they look like `dns1.p05.nsone.net`). Copy all
+   four; the zone is managed by Netlify, so no A/CNAME records are needed for the apex. `.co.ke`
+   delegation usually lands within a few hours, but give it a full day before worrying.
+2. **Netlify → Domain management:** add `wazomojashg.co.ke`, and add `www.wazomojashg.co.ke` as a
+   domain alias as well. Whichever one is marked **primary** is served; Netlify 301s the other to
+   it, so there is one origin rather than two.
+3. **Wait for "Netlify DNS verified", then provision the certificate** (Let's Encrypt, automatic).
+   If it says the certificate is waiting on DNS, click **Verify DNS configuration**, then
+   **Provision certificate**.
+4. **Environment variables** (Site configuration → Environment variables): set
+   `VITE_API_URL` to the API's address, e.g. `https://api.wazomojashg.co.ke` or the host's own
+   `https://<service>.onrender.com`. It is baked in at build time, so after changing it run
+   **Deploys → Trigger deploy → Clear cache and deploy site**.
+5. Keep the free `<site>.netlify.app` address working — it is handy for a preview before the
+   domain is live.
+
+### Backend → Render / Railway
+
+Root `backend/`, start `npm start`, health check `/api/health`. Set every variable from
+`.env.example`; at minimum `MONGO_URI`, `JWT_SECRET`, `NODE_ENV=production` and `FRONTEND_URL`.
+`trust proxy` is already enabled so per-IP rate limiting works behind their proxies.
+
+`FRONTEND_URL` is the CORS allow-list, and it takes a **comma-separated list** — list every
+origin the app is opened from, because a member who opens the site on `www.` while the API only
+allows the apex would see every request fail:
+
+```
+FRONTEND_URL=https://wazomojashg.co.ke,https://www.wazomojashg.co.ke,https://<site>.netlify.app
+```
+
+**Optional custom API domain:** in **Netlify DNS** add a CNAME `api → <service>.onrender.com`, then
+add `api.wazomojashg.co.ke` as a custom domain on the backend host so it issues its own
+certificate for it. That keeps the API address on the group's own domain (and out of the frontend
+bundle as a foreign-looking URL).
+
+### After the first deploy
+
+- Sign in as the super admin, check **Settings → chama name** reads `WAZO MOJA SELF-HELP GROUP`.
+- Email and Cloudinary keep working only if their variables are set on the host too (7 `SMTP_*` /
+  `MAIL_FROM` and the `CLOUDINARY_*` trio) — on the server they are silently disabled otherwise.
+- Open a member's passbook from a phone on mobile data (not the office Wi-Fi) to confirm the
+  public lookup and the gated PDF/Excel work over the real domain.
 
 ## Environment variables (backend)
 
@@ -310,7 +353,7 @@ subfolder to build.
 | `MONGO_URI` | MongoDB connection string |
 | `JWT_SECRET` | 32+ random characters — the server refuses to start without it |
 | `JWT_EXPIRES_IN` | Token lifetime, default `8h` |
-| `FRONTEND_URL` | Allowed CORS origin |
+| `FRONTEND_URL` | Allowed CORS origins — one, or several separated by commas |
 | `LOOKUP_RATE_LIMIT_WINDOW_MS` | Lookup rate-limit window (default 60000) |
 | `LOOKUP_RATE_LIMIT_MAX` | Max lookups per window per IP (default 5) |
 | `CLOUDINARY_URL` *or* `CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` | Member profile photo storage |
@@ -318,3 +361,9 @@ subfolder to build.
 | `SMTP_HOST` · `SMTP_PORT` · `SMTP_USER` · `SMTP_PASS` · `SMTP_SECURE` | Outgoing mail for reminders |
 | `MAIL_FROM` | Address reminders are sent as — required for sending to work at all |
 | `MAIL_REPLY_TO` | Optional reply-to (e.g. the treasurer's own inbox) |
+
+## Environment variables (frontend)
+
+| Variable | Purpose |
+| --- | --- |
+| `VITE_API_URL` | The API's address. Baked in at build time; unset falls back to `http://localhost:5000`. See `frontend/.env.example` |

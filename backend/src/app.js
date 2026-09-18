@@ -72,9 +72,32 @@ app.set('trust proxy', 1);
 // -----------------------------------------------------------------------------
 app.use(helmet());
 
+// -----------------------------------------------------------------------------
+// CORS
+// -----------------------------------------------------------------------------
+// FRONTEND_URL is one origin or several separated by commas — the live domain, its
+// www twin, and the site's own netlify.app address, so the app keeps working from
+// whichever of them a member has open. A request with no Origin header at all (curl,
+// a health check, a browser navigation) is not a cross-origin request and is let
+// through.
+const allowedOrigins = String(process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((value) => value.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+// The dev server is always allowed outside production, so a local checkout can talk
+// to a deployed API without editing the host's environment.
+if (process.env.NODE_ENV !== 'production') {
+  allowedOrigins.push('http://localhost:5173', 'http://127.0.0.1:5173');
+}
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin(origin, callback) {
+      // No header on the response when the origin is not allowed: the browser then
+      // refuses to hand the response to the page, which is what CORS is for.
+      callback(null, !origin || allowedOrigins.includes(origin.replace(/\/+$/, '')));
+    },
     credentials: false,
     exposedHeaders: ['Content-Disposition'],
   })
