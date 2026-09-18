@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS } from './navItems';
 import { useAuth } from '../../context/AuthContext';
 import { warmRoute } from '../../services/prefetch';
+import { CHAMA_NAME_TOP, CHAMA_NAME_BOTTOM } from '../../utils/branding';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
@@ -11,9 +12,9 @@ export default function Sidebar() {
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-rule bg-surface md:flex">
       <div className="border-b border-rule px-5 py-5">
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">
-          Contribution
+          {CHAMA_NAME_TOP}
         </p>
-        <p className="font-bold">Manager</p>
+        <p className="font-bold">{CHAMA_NAME_BOTTOM}</p>
       </div>
       <nav aria-label="Main" className="flex-1 px-3 py-4">
         <ul className="space-y-1">

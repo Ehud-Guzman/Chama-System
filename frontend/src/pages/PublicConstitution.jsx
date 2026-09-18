@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import api, { apiMessage } from "../services/api";
 import { normalizePhone } from "../utils/phone";
 import { shortDate } from "../utils/format";
+import { CHAMA_NAME_TOP } from "../utils/branding";
 import "../components/public/constitution.css";
 
 function ClauseBody({ blocks }) {
@@ -650,7 +651,7 @@ export default function PublicConstitution() {
             onClick={scrollToTop}
             aria-label="Back to top"
           >
-            WAZO MOJA
+            {CHAMA_NAME_TOP}
           </button>
 
           <div className="constitution-search">

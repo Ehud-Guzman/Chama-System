@@ -1,8 +1,8 @@
-# Contribution Manager
+# Wazo Moja Self-Help Group — contribution system
 
-Digital record-keeping for a chama / contribution group — replaces the manual book. Admins log
+Digital record-keeping for the group (a chama) — replaces the manual book. Admins log
 contributions; members check their own history by phone number (no login, rate-limited, exact
-match only). Built mobile-first: 98% of usage is on phones.
+match only). Built mobile-first: 98% of usage is on phones. Live at https://wazomojashg.co.ke
 
 ## Stack
 

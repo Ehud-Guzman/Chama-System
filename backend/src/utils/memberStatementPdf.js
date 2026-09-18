@@ -1,5 +1,6 @@
 const PDFDocument = require('pdfkit');
 const { buildStatement, money, shortDate } = require('./memberStatement');
+const { CHAMA_NAME } = require('../data/branding');
 
 // The member's own statement as a PDF — the format a person actually reads on a
 // phone, and the one the office prints for a file.
@@ -63,7 +64,7 @@ function renderMemberStatementPdf(res, profile, chamaName) {
   doc.pipe(res);
 
   // ----------------------------------------------------------------- header
-  doc.font('Helvetica-Bold').fontSize(17).text(chamaName || 'Contribution Manager');
+  doc.font('Helvetica-Bold').fontSize(17).text(chamaName || CHAMA_NAME);
   doc.font('Helvetica').fontSize(10).fillColor('#666').text('Member Contribution Statement');
   doc.moveDown(0.6);
   doc.fillColor('#000').font('Helvetica-Bold').fontSize(13).text(statement.member.name);

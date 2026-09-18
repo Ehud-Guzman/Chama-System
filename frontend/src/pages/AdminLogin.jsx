@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiMessage } from '../services/api';
 import { roleHome } from '../utils/roleHome';
+import { CHAMA_NAME } from '../utils/branding';
 
 export default function AdminLogin() {
   const { login } = useAuth();
@@ -30,7 +31,7 @@ export default function AdminLogin() {
     <div className="min-h-dvh px-4 py-10">
       <main className="mx-auto w-full max-w-[420px]">
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">
-          Contribution Manager
+          {CHAMA_NAME}
         </p>
         <h1 className="mt-2 text-3xl font-bold">Admin sign in</h1>
 

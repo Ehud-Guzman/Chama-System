@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
 import { normalizePhone } from '../utils/phone';
+import { CHAMA_NAME } from '../utils/branding';
 
 import GroupOverview from '../components/public/GroupOverview';
 import PassbookCard from '../components/public/PassbookCard';
@@ -73,7 +74,7 @@ export default function PublicLookup() {
 
             <div className="min-w-0">
               <p className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-muted sm:text-xs">
-                {chamaName || 'Contribution Manager'}
+                {chamaName || CHAMA_NAME}
               </p>
             </div>
 

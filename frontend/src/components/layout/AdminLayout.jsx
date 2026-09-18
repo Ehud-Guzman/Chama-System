@@ -1,6 +1,7 @@
 import BottomNav from './BottomNav';
 import Sidebar from './Sidebar';
 import { useAuth } from '../../context/AuthContext';
+import { CHAMA_NAME } from '../../utils/branding';
 
 export default function AdminLayout({ children }) {
   const { logout } = useAuth();
@@ -10,7 +11,7 @@ export default function AdminLayout({ children }) {
       <Sidebar />
       {/* Mobile top bar: brand + sign out (sidebar hidden) */}
       <header className="flex items-center justify-between border-b border-rule bg-surface px-4 py-3 md:hidden">
-        <p className="text-sm font-bold">Contribution Manager</p>
+        <p className="text-sm font-bold">{CHAMA_NAME}</p>
         <button
           type="button"
           onClick={logout}

@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const { CHAMA_NAME } = require('../data/branding');
 
 // One member's fines, in full: what was issued, what has been paid off, what is
 // still owed, and — kept deliberately — what was issued and later voided, because
@@ -137,7 +138,7 @@ function renderFineReportPdf(res, report, chamaName) {
   const doc = new PDFDocument({ margin: MARGIN, size: 'A4' });
   doc.pipe(res);
 
-  doc.font('Helvetica-Bold').fontSize(17).text(chamaName || 'Contribution Manager');
+  doc.font('Helvetica-Bold').fontSize(17).text(chamaName || CHAMA_NAME);
   doc.font('Helvetica').fontSize(10).fillColor('#666').text(`${report.scopeLabel} - member record`);
   doc.moveDown(0.6);
 
@@ -486,7 +487,7 @@ function renderFineGroupReportPdf(res, report, chamaName) {
   const doc = new PDFDocument({ margin: MARGIN, size: 'A4' });
   doc.pipe(res);
 
-  doc.font('Helvetica-Bold').fontSize(17).text(chamaName || 'Contribution Manager');
+  doc.font('Helvetica-Bold').fontSize(17).text(chamaName || CHAMA_NAME);
   doc.font('Helvetica').fontSize(10).fillColor('#666').text(`${report.scopeLabel} - group record`);
   doc.moveDown(0.4);
   doc.font('Helvetica').fontSize(9).fillColor('#888');
