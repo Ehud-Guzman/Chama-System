@@ -12,6 +12,7 @@ const {
   weekRange,
   cycleWeekNumber,
   cycleHistory,
+  scoredWeeks,
   fridayOf,
   parseEatDate,
   toEatDateString,
@@ -564,9 +565,9 @@ async function getSetup(req, res, next) {
     const spentMap = new Map(spentByType.map((r) => [String(r._id), r.total]));
     // The Tea Fund's income is derived rather than logged, so what the ledger
     // already counts for it has to be worked out the same way the member page
-    // works it out: the automatic 100 a member for every scored week.
-    const scoredWeeks = Math.max(0, currentWeekNumber(config) - config.cycleStartWeek);
-    const automaticTea = config.chaiAmount * scoredWeeks * activeMemberCount;
+    // works it out: the automatic 100 a member for every *closed* scored week.
+    const scoredWeekCount = scoredWeeks(config);
+    const automaticTea = config.chaiAmount * scoredWeekCount * activeMemberCount;
 
     res.json({
       settings: {

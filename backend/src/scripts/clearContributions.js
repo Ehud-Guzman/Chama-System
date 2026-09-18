@@ -47,6 +47,13 @@ const { resolveConfig, weekRange, weekNumberForDate } = require('../utils/weekCy
 
 const CONFIRMED = process.argv.includes('--confirm-write');
 const WITH_EXPENSES = process.argv.includes('--expenses');
+// --hard deletes the rows instead of marking them. Soft delete is the app's own
+// rule and stays the default; this is the exception for rows that should never
+// surface anywhere again — a batch posted against a week that turned out to be
+// part of the opening balances, say. The backup below still holds every field,
+// and the audit entry still records the count, the total and whose money it was,
+// so the trail survives even though the rows do not.
+const HARD = process.argv.includes('--hard');
 
 // Reads `--flag=value`, or null when the flag is absent or given without a value.
 function argValue(flag) {
@@ -73,15 +80,15 @@ const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
     process.exit(1);
   }
 
-  // What is live, and only that: a soft-deleted row is already gone as far as
-  // every screen and total is concerned.
-  const filter = { deleted: false };
+  // What to touch: live rows, and — when purging — whatever was soft-deleted
+  // earlier too, since the point of --hard is that the row stops existing.
+  const filter = HARD ? {} : { deleted: false };
   if (week !== null) {
     const range = weekRange(week, config);
     filter.date = { $gte: range.startDate, $lte: range.endDate };
   }
   const rows = await Contribution.find(filter)
-    .select('memberId typeId amount grossAmount date method note clientRequestId')
+    .select('memberId typeId amount grossAmount date method note clientRequestId deleted')
     .lean();
   const expenses = WITH_EXPENSES
     ? await Expense.find({ deleted: false }).select('typeId amount date note').lean()
@@ -95,9 +102,15 @@ const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
   console.log(
     `\nweek cycle: start week ${config.cycleStartWeek}, weekly ${money(config.weeklyAmount)}, tea ${money(config.chaiAmount)}`
   );
+  const liveCount = rows.filter((r) => !r.deleted).length;
+  const alreadyCleared = rows.length - liveCount;
   console.log(
-    `live contribution rows: ${rows.length}, ${money(total)}, ${memberIds.length} member(s)` +
-      (week === null ? '' : ` (week ${week} only)`)
+    HARD
+      ? `rows to delete outright: ${rows.length} (${liveCount} live, ${alreadyCleared} already cleared), ${money(
+          total
+        )}, ${memberIds.length} member(s)` + (week === null ? '' : ` (week ${week} only)`)
+      : `live contribution rows: ${rows.length}, ${money(total)}, ${memberIds.length} member(s)` +
+          (week === null ? '' : ` (week ${week} only)`)
   );
 
   const byWeek = new Map();
@@ -163,8 +176,11 @@ const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
     process.exit(1);
   }
 
-  const res = await Contribution.updateMany(filter, { $set: { deleted: true } });
-  console.log(`cleared ${res.modifiedCount} contribution row(s).`);
+  const res = HARD
+    ? { deletedCount: (await Contribution.deleteMany(filter)).deletedCount }
+    : { modifiedCount: (await Contribution.updateMany(filter, { $set: { deleted: true } })).modifiedCount };
+  const removed = res.deletedCount ?? res.modifiedCount;
+  console.log(`${HARD ? 'deleted outright' : 'cleared'} ${removed} contribution row(s).`);
   let removedExpenses = 0;
   if (WITH_EXPENSES) {
     const exp = await Expense.updateMany({ deleted: false }, { $set: { deleted: true } });
@@ -184,7 +200,7 @@ const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
       action: 'clear-contributions',
       script: 'src/scripts/clearContributions.js',
       week,
-      removed: res.modifiedCount,
+      removed,
       removedExpenses,
       total,
       memberIds,

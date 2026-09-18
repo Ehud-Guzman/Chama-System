@@ -68,21 +68,28 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   is already on the books as the opening balance the treasurer verified against the paper ledger,
   so requiring the week's 1,400 would report the whole group as being behind on the day the cycle
   started and take a week's tea off a balance that was checked without one. Week 92 therefore
-  expects nothing and costs nothing, and anything collected during it stands as credit against
-  week 93 (§7.5). Per member, from week 93 on:
-  `required so far = weeklyAmount × weeks scored` (1,400 in week 93, 2,800 in 94, …), and
-  `his money = openingBalance + what he has paid since week 92 − required − tea`. Paying above
-  the 1,400 pushes his money up instead of being swallowed; a scored week with nothing paid takes
-  1,400 back off it — the "expected total deducted from his money" the members already work to,
-  which is the accumulated credit/arrears of constitution §7.5. **Tea is automatic**: `chaiAmount`
-  is deducted from every member for every scored week of the cycle whether or not anybody logged
-  anything, it needs no entry, it can never be in arrears, and it is shown per member so each can
-  see the total he has put into the Group's Tea Fund. That mirrors the paper ledger's
-  "Previous + Weekly + Extra − Chai = Member Total". A closed NILL week is flagged for the §7.5
-  KES 50 fine but never charged automatically — a fine has to be issued with its week and reason.
-  The baseline week is labelled as the opening week everywhere it appears — the week strip, the
-  week table, the passbook's schedule and the weekly reconciliation — and it is excluded from the
-  "weeks expected" figure on the performance report, so it can never be counted against anybody.
+  expects nothing and costs nothing, and anything collected during it stands as credit against a
+  later week (§7.5). Per member, from there on:
+  `required so far = weeklyAmount × weeks that have closed` — a week is scored the day *after* its
+  Thursday, not while it is still running, because that is when the group's money for it has been
+  collected. So a go-live on a Friday shows nothing required at all: the figures the treasurer
+  keyed stay exactly as he keyed them, the collection he takes on the coming Thursday is what
+  closes that week, and from the Friday after it the week counts (1,400 then, 2,800 the next, …).
+  `his money = openingBalance + what he has paid since the cycle opened − required − tea`. Paying
+  above the 1,400 pushes his money up instead of being swallowed; a closed week with nothing paid
+  takes 1,400 back off it — the "expected total deducted from his money" the members already work
+  to, which is the accumulated credit/arrears of constitution §7.5. **Tea is automatic**:
+  `chaiAmount` is deducted from every member for every closed scored week of the cycle whether or
+  not anybody logged anything, it needs no entry, it can never be in arrears, and it is shown per
+  member so each can see the total he has put into the Group's Tea Fund. That mirrors the paper
+  ledger's "Previous + Weekly + Extra − Chai = Member Total". A closed NILL week is flagged for the
+  §7.5 KES 50 fine but never charged automatically — a fine has to be issued with its week and
+  reason. The baseline week is labelled as the opening week everywhere it appears — the week strip,
+  the week table, the passbook's schedule and the weekly reconciliation — and it is excluded from
+  the "weeks expected" figure on the performance report, along with the week still running, so
+  neither can ever be counted against anybody. The rule lives in one place,
+  `scoredWeeks()` in `weekCycle.js`, so the ledger, the funds, the public page and the performance
+  report cannot drift apart on it.
 - **Speed, and how it is kept:** the cost of a page here is *round trips to the database*, so the
   app counts them. Settings is held in-process for 30 seconds rather than re-read by nearly every
   request; one member's ledger is three round trips; the member list and each member's ledger are

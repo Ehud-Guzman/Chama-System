@@ -5,7 +5,7 @@ const { getOrCreateSettings } = require('../utils/settings');
 const { carriedInTotals } = require('../utils/carriedIn');
 const { fundBalance } = require('../utils/fundBalance');
 const { bucketForType } = require('../utils/ledgerTypes');
-const { resolveConfig, currentWeekNumber } = require('../utils/weekCycle');
+const { resolveConfig, currentWeekNumber, scoredWeeks } = require('../utils/weekCycle');
 const { totalFinesCollected } = require('../utils/finesCollected');
 
 // GET /api/public/overview — PUBLIC, no phone number needed.
@@ -59,7 +59,7 @@ async function publicOverview(req, res, next) {
     // shows the tea taken is the group reading two different books.
     const config = resolveConfig(settings);
     const chaiType = types.find((t) => bucketForType(t) === 'chai') || null;
-    const weeksScored = Math.max(0, currentWeekNumber(config) - config.cycleStartWeek);
+    const weeksScored = scoredWeeks(config);
     const teaBeforeCycle = chaiType
       ? await Contribution.aggregate([
           { $match: { deleted: false, typeId: chaiType._id, date: { $lt: config.anchorDate } } },

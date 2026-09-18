@@ -1,25 +1,32 @@
-const { weekNumberForDate, weekRange, currentWeekNumber } = require('./weekCycle');
+const { weekNumberForDate, weekRange, currentWeekNumber, scoredWeeks } = require('./weekCycle');
 
 // Everything one member's ledger shows, computed in a single pass.
 //
 // The rule, as agreed with the treasurer:
 //
-//   required so far = weeklyAmount × weeks *scored* since the opening week
-//                     (0 in week 92, 1,400 in week 93, 2,800 in week 94, …)
-//   his money       = openingBalance + what he has paid since week 92
+//   required so far = weeklyAmount × the weeks that have closed since the opening
+//                     week (0 until the first week after the opening week has
+//                     ended, 1,400 the Friday after it closes, 2,800 the next, …)
+//   his money       = openingBalance + what he has paid since the cycle opened
 //                     − required − tea
 //   tea             = totalled on its own (§7.2) but still comes *out* of his
 //                     money, exactly as the paper ledger's
 //                     "Previous + Weekly + Extra − Chai = Member Total" did
+//
+// A week is scored once it has *closed*, not while it is running: the 1,400 and
+// the tea for a week are collected on that week's Thursday, so they are counted
+// from the day after and the money the books were opened with stays exactly as the
+// treasurer verified it until the group's first collection of the cycle lands.
+// That also keeps "expected by now" describing money somebody has actually been
+// asked for — nobody is reported behind for the week they are still paying into.
 //
 // The opening week — week 92, the week the books opened — is the **baseline** and
 // is never scored. Every member's money for it is already on the books as the
 // opening balance the treasurer verified against the paper ledger, so requiring
 // another 1,400 for it would have reported the whole group as 1,400 behind on the
 // day the cycle started, and taken a week's tea off a balance that was checked
-// without one. Week 92 therefore expects nothing and costs nothing; from week 93
-// the usual 1,400 and 100 a week apply, and anything collected during week 92 is
-// credit that settles week 93 on its own — the §7.5 cumulative credit.
+// without one. Anything collected during week 92 is credit that settles a later
+// week on its own — the §7.5 cumulative credit.
 //
 // "What he has paid" is the weekly contribution plus anything extra, so paying
 // above 1,400 in a week pushes his money up instead of being swallowed. A scored
@@ -37,9 +44,12 @@ const { weekNumberForDate, weekRange, currentWeekNumber } = require('./weekCycle
 function computeMemberLedger({ member, contributions, config, now = Date.now() }) {
   const currentWeek = currentWeekNumber(config, now);
   const elapsed = currentWeek - config.cycleStartWeek + 1;
-  // Weeks that actually carry an expectation: none of them in the opening week
-  // (week 92), one in week 93, two in week 94, and so on. See the rule above.
-  const weeksScored = Math.max(0, currentWeek - config.cycleStartWeek);
+  // Weeks that actually carry an expectation: only the ones that have closed.
+  // None while the opening week is running, still none while the week after it
+  // runs, one the Friday that week closes, two the Friday after — see the rule at
+  // the top. This is what leaves the figures the books were opened with untouched
+  // until the group's first collection of the cycle is in.
+  const weeksScored = scoredWeeks(config, now);
   const required = config.weeklyAmount * weeksScored;
   // Tea is automatic: every member is charged the week's tea for every scored week
   // of the cycle, whether or not anybody logged anything, and the money goes to
