@@ -21,6 +21,12 @@ const { getLedgerTypes, bucketForType, syncLedgerTypeAmounts, seedGroupFunds } =
 const { computeMemberLedger, summariseMember, totalLedger } = require('../utils/memberLedger');
 const { suggestedOpeningBalances } = require('../utils/suggestedBalances');
 const { fundBalance } = require('../utils/fundBalance');
+const {
+  withOptionalTransaction,
+  allocateFinePayment,
+  recordFineSettlements,
+} = require('../utils/fineAllocation');
+const { logEvent } = require('../middleware/requestLogger');
 
 const METHODS = ['cash', 'bank', 'mobile', 'other'];
 // Everything the treasurer can put on a member's page. Tea is not here on
@@ -290,6 +296,12 @@ async function createLog(req, res, next) {
     }
 
     const types = await getLedgerTypes();
+    // Whether a payment pays down pending fines first is the group's own policy,
+    // and it is OFF unless the committee has turned it on (Settings.autoSettleFines).
+    // Off, this endpoint behaves exactly as it did before: what he hands over is
+    // his contribution, full stop.
+    const settings = await getOrCreateSettings();
+    const autoSettleFines = settings.autoSettleFines === true;
 
     if (kind === 'expense') {
       const fund = fundTypeId ? await ContributionType.findById(fundTypeId) : types.chai;
@@ -311,6 +323,12 @@ async function createLog(req, res, next) {
         performedBy: req.user._id,
         after: snapshot(expense),
       });
+      logEvent('expense_logged', {
+        rid: req.id,
+        userId: String(req.user._id),
+        fund: fund.name,
+        amount: value,
+      });
       return res.status(201).json({ entry: expense, kind });
     }
 
@@ -319,19 +337,54 @@ async function createLog(req, res, next) {
       return res.status(400).json({ message: 'Ledger type missing — run the ledger setup again' });
     }
 
+    // Money logged here can pay down a pending fine first — the same rule the
+    // contributions endpoint follows — but only when the group has switched that on
+    // (Settings.autoSettleFines, off by default). Group-fund money (tea) belongs to
+    // the group, not the member, so it is never redirected to a personal fine.
+    //
+    // When it does apply, all of it runs in one transaction: the fine allocation is
+    // a read-modify-write on a shared document, so two payments landing together
+    // would otherwise each see the same `remaining` and spend it twice.
     let contribution;
+    let fineDeducted = 0;
+    let netAmount = value;
     try {
-      contribution = await Contribution.create({
-        memberId: member._id,
-        typeId: type._id,
-        amount: value,
-        date: when,
-        method,
-        note: text,
-        loggedBy: req.user._id,
-        clientRequestId: clientRequestId || undefined,
+      contribution = await withOptionalTransaction(async (session) => {
+        const split =
+          type.isGroupFund || !autoSettleFines
+            ? { netAmount: value, fineDeducted: 0, allocations: [] }
+            : await allocateFinePayment(member._id, value, session);
+
+        const [row] = await Contribution.create(
+          [
+            {
+              memberId: member._id,
+              typeId: type._id,
+              amount: split.netAmount,
+              grossAmount: split.fineDeducted > 0 ? value : null,
+              fineDeducted: split.fineDeducted,
+              date: when,
+              method,
+              note: text,
+              loggedBy: req.user._id,
+              clientRequestId: clientRequestId || undefined,
+            },
+          ],
+          { session }
+        );
+
+        if (split.allocations.length) {
+          await recordFineSettlements(split.allocations, row._id, session);
+        }
+
+        fineDeducted = split.fineDeducted;
+        netAmount = split.netAmount;
+        return row;
       });
     } catch (err) {
+      // Two near-simultaneous taps carrying the same key: the unique index decides,
+      // and the loser returns the winner's entry rather than logging a second
+      // payment (or a second fine deduction).
       if (err.code === 11000 && clientRequestId) {
         const existing = await Contribution.findOne({ clientRequestId }).lean();
         if (existing) return res.status(200).json({ entry: existing, replay: true });
@@ -346,7 +399,14 @@ async function createLog(req, res, next) {
       performedBy: req.user._id,
       after: snapshot(contribution),
     });
-    res.status(201).json({ entry: contribution, kind });
+    res.status(201).json({
+      entry: contribution,
+      kind,
+      // What the payment did besides being credited, so the screen can say
+      // "Ksh 500 of that cleared a fine" instead of leaving it to be worked out.
+      fineDeducted,
+      netAmount,
+    });
   } catch (err) {
     next(err);
   }

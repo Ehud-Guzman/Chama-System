@@ -4,6 +4,14 @@ const { Schema, model } = require('mongoose');
 // No multi-tenant support, so there is never more than one of these.
 const SettingsSchema = new Schema(
   {
+    // The single-row marker.
+    //
+    // A unique key plus an upsert is what makes "there is only ever one Settings
+    // document" true *in the database*. Two concurrent cold starts used to be able
+    // to create two rows, and since this document holds the week anchor, the weekly
+    // amount and the tea, a second row would mean members' arrears differing
+    // between requests depending on which row a query happened to return.
+    key: { type: String, required: true, unique: true, default: 'main' },
     chamaName: { type: String, required: true, trim: true, default: 'Our Chama' },
     constitution: { type: String, default: '' },
     // The two statements the members' page prints under the group's totals.
@@ -35,6 +43,21 @@ const SettingsSchema = new Schema(
     // Tea Fund contribution per week. Tracked on its own and never mixed into a
     // member's personal figures — the fund belongs to the Group (§7.2).
     chaiAmount: { type: Number, default: 100 },
+    // Whether money logged against a member first pays down his pending fines.
+    //
+    // OFF, and it is meant to be: this is the one switch in the API that changes
+    // what the books say about money that has not been paid yet. Off, the books
+    // behave exactly as they always have — what the member hands over is his
+    // contribution, and a fine is cleared by hand from his page (Fines → Pay).
+    // On, a payment is split: the fines come off first, and the week is still
+    // credited the full cash the member actually handed over (utils/memberLedger
+    // reads grossAmount for that), so his weekly figures do not move — only the
+    // fine stops showing as outstanding.
+    //
+    // It exists as a setting rather than a constant because it is the committee's
+    // call, not a developer's, and because a deploy must never be able to change
+    // figures on its own.
+    autoSettleFines: { type: Boolean, default: false },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

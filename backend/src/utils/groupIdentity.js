@@ -1,5 +1,3 @@
-const { constitutionChapters } = require('../data/constitution');
-
 // The group's vision and mission.
 //
 // They are Chapter 2 of the group's own constitution — clauses 2.1 and 2.2 — so
@@ -13,25 +11,40 @@ const { constitutionChapters } = require('../data/constitution');
 // gate — the two clauses travel in the public overview because the group's
 // vision and mission are meant to be read by anyone; the rest of the document is
 // not.
+//
+// Callers that have already loaded the constitution (see utils/constitutionData)
+// pass the chapters in, so the two clauses come from wherever the text now lives —
+// the database row, or the file that seeded it. Passing nothing falls back to the
+// bundled file, which is what a first boot has.
 const VISION_CLAUSE = { chapter: 2, id: '2.1' };
 const MISSION_CLAUSE = { chapter: 2, id: '2.2' };
 
-function clauseText({ chapter, id }) {
-  const found = constitutionChapters
+function bundledChapters() {
+  try {
+    // eslint-disable-next-line global-require
+    return require('../data/constitution').constitutionChapters || [];
+  } catch {
+    // No bundled file: the text lives in the database now, and any caller that
+    // wants these clauses has to have loaded it and passed it in.
+    return [];
+  }
+}
+
+function clauseText({ chapter, id }, chapters) {
+  const found = chapters
     .find((c) => c.number === chapter)
     ?.clauses.find((clause) => clause.id === id);
   const paragraph = found?.blocks.find((block) => block.type === 'p');
   return paragraph?.text || '';
 }
 
-const CONSTITUTION_VISION = clauseText(VISION_CLAUSE);
-const CONSTITUTION_MISSION = clauseText(MISSION_CLAUSE);
-
-function visionAndMission(settings) {
+function visionAndMission(settings, chapters) {
+  const source = Array.isArray(chapters) && chapters.length > 0 ? chapters : bundledChapters();
   return {
-    vision: String(settings?.vision || '').trim() || CONSTITUTION_VISION,
-    mission: String(settings?.mission || '').trim() || CONSTITUTION_MISSION,
+    vision: String(settings?.vision || '').trim() || clauseText(VISION_CLAUSE, source),
+    mission: String(settings?.mission || '').trim() || clauseText(MISSION_CLAUSE, source),
   };
 }
 
-module.exports = { visionAndMission, CONSTITUTION_VISION, CONSTITUTION_MISSION };
+module.exports = { visionAndMission };
+

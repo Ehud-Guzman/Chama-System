@@ -7,6 +7,7 @@ const { fundBalance } = require('../utils/fundBalance');
 const { bucketForType } = require('../utils/ledgerTypes');
 const { totalFinesCollected } = require('../utils/finesCollected');
 const { visionAndMission } = require('../utils/groupIdentity');
+const { loadConstitution } = require('../utils/constitutionData');
 
 // GET /api/public/overview — PUBLIC, no phone number needed.
 // Group-wide totals only: chama name, membership size, and what has been raised
@@ -119,7 +120,7 @@ async function publicOverview(req, res, next) {
       // holds nothing (utils/groupIdentity) — the vision and mission are meant to
       // be read by anyone, which is why they travel here and the rest of the
       // constitution does not.
-      ...visionAndMission(settings),
+      ...visionAndMission(settings, (await loadConstitution()).chapters),
       logoUrl: settings.logoUrl || '',
       activeMembers,
       totalMembersEver,

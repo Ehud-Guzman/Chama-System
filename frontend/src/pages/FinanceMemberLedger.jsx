@@ -165,7 +165,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
     }
     setBusy(true);
     try {
-      await api.post(`/api/ledger/members/${id}/log`, {
+      const res = await api.post(`/api/ledger/members/${id}/log`, {
         kind,
         amount: value,
         method,
@@ -174,7 +174,15 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         description: description.trim(),
         clientRequestId: requestIdRef.current,
       });
-      toast(`${money(value)} logged`);
+      // A payment pays down pending fines first (oldest first). Say so: the figure
+      // he sees move on the ledger is the net, and the difference has to be
+      // accounted for out loud or it looks like money that went missing.
+      const deducted = Number(res.data?.fineDeducted) || 0;
+      toast(
+        deducted > 0
+          ? `${money(value)} logged — ${money(deducted)} went to his fines`
+          : `${money(value)} logged`
+      );
       requestIdRef.current = crypto.randomUUID();
       setNote('');
       setDescription('');

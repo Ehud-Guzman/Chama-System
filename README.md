@@ -11,6 +11,62 @@ match only). Built mobile-first: 98% of usage is on phones. Live at https://wazo
 - **Database:** MongoDB (Atlas free tier works)
 - **Auth:** JWT, admins only. Members are never authenticated.
 
+## Member data in this repository — read this before publishing anything
+
+**This repository has been public, and it has contained the group's real member data.**
+
+Two spreadsheets were committed under `backend/` — `test.xlsx` (one member's full
+statement) and `data/ledger_weeks_62_84_template.xlsx` (829 rows, 32 members) — and
+two import scripts that are still reachable in history
+(`importHarambeeContributions.js` with 355 phone numbers, `findWrongAmounts.js`)
+carried the same material. A phone number is not a name here: it is the *credential*
+for the members' area, and it opens that member's documents, minutes and constitution.
+
+The spreadsheets have been removed from the index and the ignore rules now cover
+`backend/data/` and every spreadsheet under `backend/`, with `npm run check:data`
+(and CI) refusing a build in which one is tracked again. That stops the bleeding; it
+does not undo the exposure. **Removing a file from HEAD does not remove it from
+history** — anyone can still `git log` the old commits.
+
+What has to happen, in this order:
+
+1. **Make the repository private.** The data is already exposed, but a private
+   repository stops new copies of it. (GitHub → Settings → Danger zone.) Note that
+   anything already cloned, forked or cached stays readable — which is why step 3
+   matters.
+2. **Tell the committee what was exposed** — names, phone numbers, amounts and
+   balances — and let them decide whether the members should be told. That is their
+   call, not a technical one; it is also the honest default.
+3. **Purge the blobs from history**, once everyone who has a clone knows to re-clone:
+
+   ```bash
+   pip install git-filter-repo
+   git filter-repo --invert-paths \
+     --path backend/test.xlsx \
+     --path backend/data/ledger_weeks_62_84_template.xlsx \
+     --path backend/src/scripts/importHarambeeContributions.js \
+     --path backend/src/scripts/findWrongAmounts.js
+   git remote add origin <the repository url>     # filter-repo removes the remote
+   git push --force --all && git push --force --tags
+   ```
+
+   This rewrites every commit id. Anyone with a clone must delete it and clone again;
+   anyone with uncommitted work must push it somewhere else first. After the force
+   push, ask GitHub Support to expire the cached copies (they keep unreachable
+   objects for a while), and rotate the group's passwords — the API's
+   `JWT_SECRET` and every admin password — since the material that leaked is the
+   material those protect.
+4. **Keep the constitution out of it too.** `backend/src/data/constitution.js` is the
+   members-only document, and it lived in the repository for the same reason the
+   spreadsheets did. It now has a home in the database: run
+   `npm run seed:constitution -- --confirm-write`, check the members' page, then
+   `git rm backend/src/data/constitution.js`. The API reads the database row first
+   (`utils/constitutionData.js`) and falls back to the file, so nothing breaks if the
+   step is done in a quiet moment rather than right now.
+
+If a copy of the spreadsheets is needed for the audit, keep it outside the repository
+(or in `backend/data/`, which is ignored) — never in the tree that gets pushed.
+
 ## Local setup
 
 ### Backend
@@ -27,6 +83,42 @@ Create the first super admin (one-time, run manually — this is deliberately no
 ```bash
 node src/scripts/seedSuperAdmin.js "Your Name" you@example.com "a-strong-password"
 ```
+
+### Checks and tests
+
+```bash
+npm test                    # the week engine, money, uploads, minutes, the API's own behaviour
+npm run check:data          # refuses to pass if any spreadsheet or dump is tracked
+npm run check:national-ids  # read-only: two members sharing a national ID
+npm audit --omit=dev        # dependency advisories
+```
+
+`npm test` needs no database and no `.env`: it covers the pure logic (week numbering,
+money arithmetic, the national-ID and phone normalisers, the CSV importer, upload
+byte-sniffing, minute sanitisation) and the API's outward behaviour — the health
+check telling the truth about a database it is not connected to, every admin route
+refusing an anonymous caller, the login budget, the security headers, the CORS
+allow-list. CI runs the same three commands plus the frontend build on every push
+(`.github/workflows/ci.yml`).
+
+The first test to reach for when a balance looks wrong is `test/weekCycle.test.js`:
+it pins the Friday→Thursday boundary, the history back to week 1, and the rule that
+money dated before the cycle opens is credited to the opening week.
+
+### Maintenance scripts
+
+| Script | What it does |
+| --- | --- |
+| `npm run verify:figures` | **Read-only.** Reports anything already stored that disagrees with the rules the API now enforces on write (money needing rounding, out-of-range or non-numeric amounts, text over a new cap, duplicate national IDs, more than one Settings row) and prints the books' totals to compare against after a deploy. No writes, and indexes are not built |
+| `npm run seed:constitution -- --confirm-write` | Copies the constitution into the database (then the file can leave git). `--from=/path` seeds from a copy kept outside the repository |
+| `npm run check:national-ids` | Reports duplicate/blank/free-text IDs. Exit code 1 on duplicates — a unique index cannot build while two members share a number, and the gate refuses both |
+| `npm run audit:prune -- --days=730 --confirm-write` | Trims the audit trail to a retention window. Dry run without `--confirm-write`; the prune itself is recorded in what remains |
+| `npm run reset:week92` · `balances:restore` · `ledger:clear-contributions` · `ledger:collect-week` | The destructive ones. All dry-run by default, all back up to `backend/data/` (gitignored), all write a `System` audit entry naming the operator (`--by=<email>`, or the earliest super admin) |
+
+A fine can be cleared in two ways: automatically (a logged payment pays down pending
+fines oldest-first, on both the ledger's own log endpoint and `/api/contributions`),
+or by hand from the member's page — **Fines → Pay**. Voiding a fine is for a fine
+that should never have been issued, not for one that has been paid.
 
 ### Frontend
 
@@ -385,10 +477,14 @@ bundle as a foreign-looking URL).
 | `PORT` | API port (default 5000) |
 | `MONGO_URI` | MongoDB connection string |
 | `JWT_SECRET` | 32+ random characters — the server refuses to start without it |
-| `JWT_EXPIRES_IN` | Token lifetime, default `8h` |
-| `FRONTEND_URL` | Allowed CORS origins — one, or several separated by commas |
+| `JWT_EXPIRES_IN` | Token lifetime, default `8h`. A password change ends every existing session immediately, so this is a ceiling rather than a promise |
+| `FRONTEND_URL` | Allowed CORS origins — one, or several separated by commas. **Required in production**: without it every request from the live site is refused, so the server refuses to start instead of failing quietly |
 | `LOOKUP_RATE_LIMIT_WINDOW_MS` | Lookup rate-limit window (default 60000) |
 | `LOOKUP_RATE_LIMIT_MAX` | Max lookups per window per IP (default 5) |
+| `LOGIN_RATE_LIMIT_WINDOW_MS` · `LOGIN_RATE_LIMIT_MAX` | Sign-in budget per (address + email), default 5 per 15 minutes |
+| `LOGIN_SPRAY_LIMIT_MAX` | Sign-in attempts per address regardless of email, default 30 per 15 minutes |
+| `API_RATE_LIMIT_MAX` | Authenticated requests per minute per session, default 300 |
+| `LOG_LEVEL` | `silent` switches the request log off; every other value logs one JSON line per request |
 | `CLOUDINARY_URL` *or* `CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` | Member profile photo storage |
 | `CLOUDINARY_FOLDER` | Where photos are stored in the Cloudinary account (default `chama-system/members`) |
 | `CLOUDINARY_BRANDING_FOLDER` | Where the group's logo is stored (default `chama-system/branding`) |
@@ -402,7 +498,71 @@ bundle as a foreign-looking URL).
 | --- | --- |
 | `VITE_API_URL` | The API's address. Baked in at build time; unset falls back to `http://localhost:5000`. See `frontend/.env.example` |
 
-## Frontend: the mobile rules this app is held to
+## Server behaviour worth knowing
+
+**Sessions.** A JWT is signed with `JWT_SECRET` and verified against `HS256` only.
+`PATCH /api/auth/me/password` and an admin password reset both stamp
+`passwordChangedAt` on the account, and every token issued before that instant is
+refused from then on — so "change the password" really does end the other sessions,
+including a thief's. There is no logout endpoint on purpose: a JWT has no server-side
+session to end, and an endpoint that pretended otherwise would be a lie in the API.
+
+**One settings row.** `Settings` is identified by `key: 'main'`, which is unique.
+Two concurrent cold starts used to be able to create two rows, and since that document
+holds the week anchor and the amounts, a second row would mean two members' arrears
+differing between requests. A database that predates the key has its existing row
+adopted on first read.
+
+**Money.** Amounts are Kenyan shillings held as numbers and rounded to two decimal
+places at the model layer (`utils/money.js`), so no arithmetic path — including a
+future one nobody has written yet — can store a figure that has drifted. The UI
+collects whole shillings; two decimal places is the conservative choice, because
+rounding to whole shillings would silently alter a figure somebody did type with
+cents on it.
+
+**Uploads.** The declared `Content-Type` is only used to decide which signature to
+expect; the bytes decide what the file is (`middleware/uploadDocument.js`). SVG and
+HTML are refused outright — both are markup wearing an image's content type — and
+anything that is not a PDF or an image is served back as a download rather than
+inline.
+
+**Minutes.** Written through `sanitize-html` against the editor's own schema
+(`utils/sanitizeHtml.js`), so a script cannot reach a member's page whatever client
+posted it. The editor cannot produce anything outside that allowlist, so a legitimate
+minute round-trips unchanged.
+
+**The audit trail.** Append-only, newest-first off an index, and the audit screen only
+receives the fields it prints — the stored snapshots contain whole member records
+(national ID, family, next of kin) and there is no reason to send those to a screen
+that renders one amount next to one name. `npm run audit:prune` is how the trail is
+trimmed to whatever retention the committee decides; the prune records itself.
+
+**Backups.** `GET /api/backup` is super-admin only, streamed a collection at a time
+(the whole database with its document scans will not fit in memory twice on a small
+instance), and written to the audit trail. `?slim=1` leaves the document bytes out —
+that copy is for reading or emailing, not for restoring. The full file is the database
+as it stands, password hashes included, because that is what makes it restorable: treat
+it the way the register itself is treated.
+
+**Observability.** One JSON line per request on stdout (`rid`, method, path, status,
+duration, account, address) and `X-Request-Id` on every response. A 5xx logs the
+message, the route and the account; failed sign-ins log the address attempted (not the
+password) with a reason; a refused lookup at the members' gate logs a hash of the ID
+attempted, which is how enumeration shows up in the logs. `/api/health` returns 503
+when MongoDB is not connected — a health check that says "healthy" while the database
+is unreachable keeps traffic pointed at a broken instance. `SIGTERM` finishes in-flight
+requests before exiting, so a deploy mid-collection does not leave a half-posted week.
+
+**Two things left for the committee.** (1) The members' gate is a single factor: the
+ID alone opens the papers. A second one — the last three digits of the phone number on
+the record, or a short code sent by SMS — is a change to what members must carry, not
+a bug to patch, so it waits on a decision. What is in place meanwhile is the rate limit
+(5 lookups a minute per address), `Cache-Control: no-store` on everything unlocked by
+an ID, the refusal to answer at all when an ID matches two members, and the denial log
+above. (2) Money is stored as two-decimal numbers rather than integer cents; exact to
+two places, which is what the shilling needs, but integer cents would be exact beyond
+it if the group ever trades in fractions of a shilling.
+
 
 98% of this app's usage is a phone on Kenyan mobile data: a 375px Android on 3G, a
 5-inch iPhone on a good day of 4G. The following are not preferences — they are the

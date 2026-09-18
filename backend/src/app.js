@@ -3,14 +3,19 @@ require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const compression = require('compression');
 const mongoSanitize = require('express-mongo-sanitize');
+const mongoose = require('mongoose');
 
 const connectDB = require('./config/db');
+const { validateEnv } = require('./config/env');
+const { requestLogger, logEvent } = require('./middleware/requestLogger');
 const { seedDisciplinaryFineTypes } = require('./utils/seedDisciplinaryFineTypes');
 const { seedLedgerTypes, seedGroupFunds } = require('./utils/ledgerTypes');
 const { ensureDocumentCategories } = require('./utils/documentCategories');
 
 const {
+  apiLimiter,
   lookupLimiter,
   overviewLimiter,
   documentLimiter,
@@ -72,6 +77,15 @@ app.set('trust proxy', 1);
 // -----------------------------------------------------------------------------
 app.use(helmet());
 
+// Every response carries a request id, and every request leaves one line in the
+// log. First, so a request that fails in the middleware below is still traceable.
+app.use(requestLogger);
+
+// JSON compresses by roughly 80%, and this API has two large payloads — the
+// ledger (every member, every week) and the audit trail — both fetched on phones
+// on mobile data. Images and PDFs are already compressed, so they pass through.
+app.use(compression());
+
 // -----------------------------------------------------------------------------
 // CORS
 // -----------------------------------------------------------------------------
@@ -115,9 +129,13 @@ app.use(mongoSanitize());
 // Health check
 // -----------------------------------------------------------------------------
 app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    ok: true,
-    message: 'API is healthy',
+  // A health check that does not check anything is worse than none: a load
+  // balancer would keep sending traffic to an instance whose database is gone.
+  const dbUp = mongoose.connection?.readyState === 1;
+  res.status(dbUp ? 200 : 503).json({
+    ok: dbUp,
+    db: dbUp ? 'connected' : 'disconnected',
+    uptimeSeconds: Math.round(process.uptime()),
   });
 });
 
@@ -199,6 +217,13 @@ app.get(
 // -----------------------------------------------------------------------------
 // ADMIN / AUTHENTICATED API
 // -----------------------------------------------------------------------------
+//
+// Everything below the public block is authenticated, so it is also where the
+// volume ceiling goes: a runaway retry loop or a stolen token gets 300 requests a
+// minute, keyed on the session rather than the address (see middleware/rateLimiter).
+// Declared after the public routes so it never touches them — a matched public
+// route has already ended its chain by the time this is reached.
+app.use('/api', apiLimiter);
 
 app.use('/api/auth', authRoutes);
 
@@ -247,15 +272,14 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 if (require.main === module) {
-  // JWT is required for the application to start.
-  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-    console.error(
-      'JWT_SECRET must be set and at least 32 characters long.'
-    );
-    process.exit(1);
-  }
+  // Configuration is checked before anything else happens, so a deploy that is
+  // missing a variable fails loudly at boot rather than quietly in production.
+  validateEnv();
 
-  connectDB()
+  let server = null;
+  let shuttingDown = false;
+
+  const boot = connectDB()
     .then(() => seedDisciplinaryFineTypes())
     .then(() => seedLedgerTypes())
     // The funds the group keeps: seeded so the go-live screen lists them all
@@ -265,18 +289,74 @@ if (require.main === module) {
     // in still offers the group's own six.
     .then(() => ensureDocumentCategories())
     .then(() => {
-      app.listen(PORT, '0.0.0.0', () => {
-        console.log(`API running on port ${PORT}`);
+      server = app.listen(PORT, '0.0.0.0', () => {
+        logEvent('api_started', {
+          port: PORT,
+          node: process.version,
+          env: process.env.NODE_ENV || 'development',
+        });
       });
-    })
-    .catch((err) => {
-      console.error(
-        'Failed to connect to MongoDB:',
-        err.message
-      );
-
-      process.exit(1);
+      return server;
     });
+
+  // Graceful shutdown. The host sends SIGTERM on every deploy and expects the
+  // process to finish what it is holding: a bulk week collection writes dozens of
+  // documents, and cutting it off mid-run leaves the treasurer looking at a half
+  // posted week (the per-row keys make a re-run safe, but nothing tells them a
+  // re-run is needed). In-flight requests get fifteen seconds, then the process
+  // goes anyway — an instance that will not die is worse than one that dies.
+  async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logEvent('shutdown_started', { signal });
+
+    const timer = setTimeout(() => {
+      logEvent('shutdown_forced', { signal, afterSeconds: 15 }, 'warn');
+      process.exit(1);
+    }, 15000);
+    timer.unref?.();
+
+    try {
+      if (server) {
+        await new Promise((resolve) => server.close(resolve));
+      }
+      await mongoose.disconnect();
+      clearTimeout(timer);
+      logEvent('shutdown_complete', { signal });
+      process.exit(0);
+    } catch (err) {
+      logEvent('shutdown_failed', { signal, error: err.message }, 'error');
+      process.exit(1);
+    }
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+  // A promise that rejects outside a route (a timer, a fire-and-forget write) has
+  // nowhere to return its error. Log it with enough context to act on, then let
+  // the platform restart a clean process.
+  process.on('unhandledRejection', (reason) => {
+    logEvent(
+      'unhandled_rejection',
+      { error: reason instanceof Error ? reason.message : String(reason) },
+      'error'
+    );
+    process.exit(1);
+  });
+  process.on('uncaughtException', (err) => {
+    logEvent(
+      'uncaught_exception',
+      { error: err.message, stack: String(err.stack || '').split('\n').slice(0, 4).join(' | ') },
+      'error'
+    );
+    process.exit(1);
+  });
+
+  boot.catch((err) => {
+    logEvent('startup_failed', { error: err.message }, 'error');
+    process.exit(1);
+  });
 }
 
 module.exports = app;

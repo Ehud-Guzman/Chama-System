@@ -3,6 +3,7 @@ const Member = require('../models/Member');
 const FineType = require('../models/FineType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { getOrCreateSettings } = require('../utils/settings');
+const { readMoney } = require('../utils/money');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { buildFineReport, renderFineReportPdf, fineReportSheets,
   buildFineGroupReport, renderFineGroupReportPdf, fineGroupReportSheets,
@@ -203,14 +204,33 @@ async function settleFine(req, res, next) {
     if (!fine || fine.deleted) return res.status(404).json({ message: 'Fine not found' });
     if (fine.remaining <= 0) return res.status(400).json({ message: 'Fine is already settled' });
 
-    const n = Number(req.body?.amount);
-    if (!Number.isFinite(n) || n <= 0) {
-      return res.status(400).json({ message: 'Amount must be a number greater than zero' });
+    const read = readMoney(req.body?.amount, { min: 0.01, label: 'Amount' });
+    if (read.error) return res.status(400).json({ message: read.error });
+
+    // The day the money actually changed hands, which is not always the day it is
+    // keyed in — cash handed over at a meeting is often recorded days later, and
+    // the fine's own record is what the disciplinary report prints.
+    let paidAt = new Date();
+    if (req.body?.date) {
+      const parsed = new Date(req.body.date);
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({ message: 'Invalid date' });
+      }
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+      if (parsed > endOfToday) {
+        return res.status(400).json({ message: 'Date cannot be in the future' });
+      }
+      if (parsed < new Date(fine.date)) {
+        return res.status(400).json({ message: 'A fine cannot be paid before it was issued' });
+      }
+      paidAt = parsed;
     }
+
     const before = snapshot(fine);
-    const applied = Math.min(n, fine.remaining);
-    fine.remaining -= applied;
-    fine.settlements.push({ contributionId: null, amount: applied, date: new Date() });
+    const applied = Math.min(read.value, fine.remaining);
+    fine.remaining = Math.round((fine.remaining - applied) * 100) / 100;
+    fine.settlements.push({ contributionId: null, amount: applied, date: paidAt });
 
     await fine.save();
     await logAudit({
@@ -221,7 +241,9 @@ async function settleFine(req, res, next) {
       before,
       after: snapshot(fine),
     });
-    res.json({ fine });
+
+    await fine.populate('typeId', 'name category');
+    res.json({ fine: toFineJson(fine) });
   } catch (err) {
     next(err);
   }

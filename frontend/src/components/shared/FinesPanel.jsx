@@ -1,8 +1,9 @@
 import { money, shortDate } from '../../utils/format';
 
-// Pending/settled fines for one member. Pass `onVoid` (admin only) to show a
-// void button per pending fine; omit it for the read-only public passbook view.
-export default function FinesPanel({ fines, onVoid }) {
+// Pending/settled fines for one member. Pass `onVoid` (admin only) to show a void
+// button per pending fine, and `onSettle` to let one be paid off; omit both for the
+// read-only public passbook view.
+export default function FinesPanel({ fines, onVoid, onSettle }) {
   if (!fines || (fines.pending.length === 0 && fines.settled.length === 0)) return null;
 
   return (
@@ -26,6 +27,15 @@ export default function FinesPanel({ fines, onVoid }) {
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <span className="amount text-sm font-semibold text-alert">{money(f.remaining)}</span>
+                {onSettle && (
+                  <button
+                    type="button"
+                    onClick={() => onSettle(f)}
+                    className="min-h-11 rounded-lg border border-primary px-3 text-sm font-medium text-primary"
+                  >
+                    Pay
+                  </button>
+                )}
                 {onVoid && (
                   <button
                     type="button"

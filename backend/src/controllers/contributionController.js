@@ -1,91 +1,21 @@
-const mongoose = require('mongoose');
 const Contribution = require('../models/Contribution');
 const Member = require('../models/Member');
 const ContributionType = require('../models/ContributionType');
-const Fine = require('../models/Fine');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { sendWorkbook } = require('../utils/xlsxExport');
+const { getOrCreateSettings } = require('../utils/settings');
+// Shared with the ledger's own log endpoint (utils/fineAllocation). They were
+// private here once, which is exactly how the two write paths drifted apart: this
+// one paid down fines, the one the member panel actually calls did not.
+const {
+  withOptionalTransaction,
+  allocateFinePayment,
+  recordFineSettlements,
+  reverseFineSettlements,
+} = require('../utils/fineAllocation');
 
 const METHODS = ['cash', 'bank', 'mobile', 'other'];
 const DUPLICATE_WINDOW_MS = 10 * 1000;
-
-// Runs `work(session)` inside a transaction when the connected MongoDB
-// supports one (any real replica set, including every Atlas tier). Standalone
-// MongoDB — common in local dev — rejects transactions outright; in that case
-// we fall back to running the same steps without a session rather than
-// hard-failing every write in development.
-async function withOptionalTransaction(work) {
-  const session = await mongoose.startSession();
-  try {
-    let result;
-    await session.withTransaction(async () => {
-      result = await work(session);
-    });
-    return result;
-  } catch (err) {
-    if (err.code === 20 || /Transaction numbers/.test(err.message || '')) {
-      return work(undefined);
-    }
-    throw err;
-  } finally {
-    session.endSession();
-  }
-}
-
-// Applies a gross payment against a member's pending fines, oldest first,
-// until either the fines are exhausted or the amount runs out. Returns the
-// net amount to credit as the contribution plus how much was deducted; the
-// caller records the resulting settlements against `contribution._id` once
-// the contribution document exists.
-async function allocateFinePayment(memberId, grossAmount, session) {
-  const pendingFines = await Fine.find({ memberId, deleted: false, remaining: { $gt: 0 } })
-    .sort({ date: 1 })
-    .session(session);
-
-  let remainingPayment = grossAmount;
-  const allocations = [];
-  for (const fine of pendingFines) {
-    if (remainingPayment <= 0) break;
-    const applied = Math.min(remainingPayment, fine.remaining);
-    allocations.push({ fine, applied });
-    remainingPayment -= applied;
-  }
-
-  const fineDeducted = grossAmount - remainingPayment;
-  return { netAmount: remainingPayment, fineDeducted, allocations };
-}
-
-async function recordFineSettlements(allocations, contributionId, session) {
-  for (const { fine, applied } of allocations) {
-    fine.remaining -= applied;
-    fine.settlements.push({ contributionId, amount: applied, date: new Date() });
-    await fine.save({ session });
-  }
-}
-
-// Undoes whatever a contribution's fine deduction did — used when that
-// contribution is deleted, so a void doesn't leave a fine marked "paid" by
-// money that no longer exists on the ledger.
-async function reverseFineSettlements(contributionId, session) {
-  const fines = await Fine.find({ 'settlements.contributionId': contributionId, deleted: false }).session(
-    session
-  );
-  for (const fine of fines) {
-    let restored = 0;
-    const kept = fine.settlements.filter((s) => {
-      if (String(s.contributionId) === String(contributionId)) {
-        restored += s.amount;
-        return false;
-      }
-      return true;
-    });
-    if (restored > 0) {
-      fine.remaining += restored;
-      fine.settlements = kept;
-      await fine.save({ session });
-    }
-  }
-}
 
 // Shared validation for create/update. Returns an error message or null.
 function validateFields({ amount, date, method }, { partial = false } = {}) {
@@ -180,13 +110,19 @@ async function createContribution(req, res, next) {
     }
 
     let contribution;
+    // Paying fines out of a contribution is the group's own policy and it is off
+    // unless somebody has turned it on (Settings.autoSettleFines). Off, the books
+    // behave exactly as they did before: the payment is contribution in full.
+    const settings = await getOrCreateSettings();
+    const autoSettleFines = settings.autoSettleFines === true;
     try {
       contribution = await withOptionalTransaction(async (session) => {
         // Group-fund money (e.g. Chai) belongs to the group, not the
         // individual — it must never be redirected to settle a personal fine.
-        const { netAmount, fineDeducted, allocations } = type.isGroupFund
-          ? { netAmount: Number(amount), fineDeducted: 0, allocations: [] }
-          : await allocateFinePayment(member._id, Number(amount), session);
+        const { netAmount, fineDeducted, allocations } =
+          type.isGroupFund || !autoSettleFines
+            ? { netAmount: Number(amount), fineDeducted: 0, allocations: [] }
+            : await allocateFinePayment(member._id, Number(amount), session);
 
         const [created] = await Contribution.create(
           [
@@ -276,6 +212,11 @@ async function bulkCreateContributions(req, res, next) {
       Member.find({ _id: { $in: memberIds } }),
       ContributionType.find({ _id: { $in: typeIds } }),
     ]);
+    // Resolved once for the whole batch: whether a row pays down the member's
+    // pending fines first is the group's policy and it is off by default
+    // (Settings.autoSettleFines).
+    const settings = await getOrCreateSettings();
+    const autoSettleFines = settings.autoSettleFines === true;
     const memberMap = new Map(members.map((m) => [String(m._id), m]));
     const typeMap = new Map(types.map((t) => [String(t._id), t]));
 
@@ -330,9 +271,10 @@ async function bulkCreateContributions(req, res, next) {
         }
 
         const contribution = await withOptionalTransaction(async (session) => {
-          const { netAmount, fineDeducted, allocations } = type.isGroupFund
-            ? { netAmount: amount, fineDeducted: 0, allocations: [] }
-            : await allocateFinePayment(member._id, amount, session);
+          const { netAmount, fineDeducted, allocations } =
+            type.isGroupFund || !autoSettleFines
+              ? { netAmount: amount, fineDeducted: 0, allocations: [] }
+              : await allocateFinePayment(member._id, amount, session);
 
           const [created] = await Contribution.create(
             [

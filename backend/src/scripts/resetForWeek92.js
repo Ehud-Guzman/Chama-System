@@ -23,11 +23,14 @@
  *     node src/scripts/resetForWeek92.js --confirm-reset
  *
  *   Extra switches:
- *     --remove-artifacts  also delete the two pseudo-members an old import
- *                         script created ("Opening Balances …" — group totals
- *                         stored as if they were people)
- *     --clear-audit       also empty the audit trail. Kept by default: after a
- *                         wipe it is the only record of what the wipe removed.
+ *     --remove-artifacts        also delete the two pseudo-members an old import
+ *                               script created ("Opening Balances …" — group totals
+ *                               stored as if they were people)
+ *     --clear-audit             also empty the audit trail. Kept by default: after a
+ *                               wipe it is the only record of what the wipe removed.
+ *                               Needs --i-know-what-this-does as well — the reset
+ *                               writes its own entry afterwards, so an emptied trail
+ *                               still says what happened.
  */
 require('dotenv').config();
 
@@ -50,7 +53,8 @@ const { suggestedOpeningBalances } = require('../utils/suggestedBalances');
 
 const CONFIRMED = process.argv.includes('--confirm-reset');
 const REMOVE_ARTIFACTS = process.argv.includes('--remove-artifacts');
-const CLEAR_AUDIT = process.argv.includes('--clear-audit');
+const CLEAR_AUDIT =
+  process.argv.includes('--clear-audit') && process.argv.includes('--i-know-what-this-does');
 
 // The pseudo-members an old import created to hold group-level totals. Matched
 // by name so a real member can never be caught by this, whatever else changes.

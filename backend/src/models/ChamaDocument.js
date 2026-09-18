@@ -6,7 +6,7 @@ const { Schema, model } = require('mongoose');
 // on the next deploy (and would not survive a backup/restore either).
 const ChamaDocumentSchema = new Schema(
   {
-    title: { type: String, required: true, trim: true },
+    title: { type: String, required: true, trim: true, maxlength: 200 },
     // A free slug rather than an enum: the group maintains its own headings (see
     // models/DocumentCategory.js), so a category can be added without a deploy.
     category: { type: String, default: 'other', trim: true, lowercase: true },
@@ -14,7 +14,7 @@ const ChamaDocumentSchema = new Schema(
     // document still shows a sensible label if that category is later renamed or
     // removed — a filing that happened cannot be un-labelled.
     categoryLabel: { type: String, default: '', trim: true },
-    description: { type: String, default: '' },
+    description: { type: String, default: '', maxlength: 1000 },
     // Every document is published to members by default — that is the whole
     // point of the vault — but an admin can withhold one from the public list.
     visibleToMembers: { type: Boolean, default: true },
@@ -29,5 +29,9 @@ const ChamaDocumentSchema = new Schema(
   },
   { timestamps: true }
 );
+
+// The vault list: undeleted documents, newest first.
+ChamaDocumentSchema.index({ deleted: 1, createdAt: -1 });
+ChamaDocumentSchema.index({ deleted: 1, visibleToMembers: 1, createdAt: -1 });
 
 module.exports = model('ChamaDocument', ChamaDocumentSchema);

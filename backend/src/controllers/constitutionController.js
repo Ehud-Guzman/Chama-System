@@ -1,23 +1,41 @@
-const { constitutionMeta, constitutionChapters } = require('../data/constitution');
 const ConstitutionDecision = require('../models/ConstitutionDecision');
 const { findActiveMemberByNationalId } = require('../utils/publicAccess');
+const { loadConstitution } = require('../utils/constitutionData');
 
-const TOTAL_CHAPTERS = constitutionChapters.length;
-const CHAPTER_BY_NUMBER = new Map(constitutionChapters.map((c) => [c.number, c]));
+// The chapter list is a row in the database now (see utils/constitutionData), so
+// the total and the number→chapter map are derived from the loaded text per
+// request instead of being frozen into module state at import time. The load is
+// cached for a minute, so this is not a query per page view.
+async function chapterIndex() {
+  const { meta, chapters, source } = await loadConstitution();
+  return {
+    meta,
+    chapters,
+    source,
+    total: chapters.length,
+    byNumber: new Map(chapters.map((c) => [c.number, c])),
+  };
+}
 
 // Every decision one member has taken, as the shape both sides of the wire use:
 // the member's own reading page and the office's copy of it on his profile.
+// The total comes from the same place the text does, so a constitution that grew
+// a chapter overnight cannot make a member's progress read over 100%.
 async function decisionsForMember(memberId) {
-  const rows = await ConstitutionDecision.find({ memberId }).sort({ chapterNumber: 1 }).lean();
+  const [{ total }, rows] = await Promise.all([
+    chapterIndex(),
+    ConstitutionDecision.find({ memberId }).sort({ chapterNumber: 1 }).lean(),
+  ]);
   const approved = rows.filter((r) => r.decision === 'approved').length;
   const rejected = rows.length - approved;
+  const decided = Math.min(rows.length, total);
 
   return {
-    total: TOTAL_CHAPTERS,
-    decided: rows.length,
+    total,
+    decided,
     approved,
     rejected,
-    pending: Math.max(0, TOTAL_CHAPTERS - rows.length),
+    pending: Math.max(0, total - decided),
     decisions: rows.map((row) => ({
       chapterNumber: row.chapterNumber,
       chapterTitle: row.chapterTitle || '',
@@ -27,6 +45,7 @@ async function decisionsForMember(memberId) {
     })),
   };
 }
+
 
 // GET /api/public/constitution?nationalId= — MEMBERS ONLY.
 //
@@ -47,13 +66,14 @@ async function publicConstitution(req, res, next) {
     const gate = await findActiveMemberByNationalId(req.query.nationalId);
     if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
     const member = gate.member;
+    const { meta, chapters } = await chapterIndex();
 
     // Never let a shared device or a proxy cache a document unlocked by an ID —
     // the same rule the document vault follows.
     res.setHeader('Cache-Control', 'no-store');
     res.json({
-      meta: constitutionMeta,
-      chapters: constitutionChapters,
+      meta,
+      chapters,
       summary: await decisionsForMember(member._id),
     });
   } catch (err) {
@@ -77,7 +97,8 @@ async function publicConstitutionDecision(req, res, next) {
     const member = gate.member;
 
     const chapterNumber = Number(req.body?.chapterNumber);
-    const chapter = CHAPTER_BY_NUMBER.get(chapterNumber);
+    const { meta, byNumber } = await chapterIndex();
+    const chapter = byNumber.get(chapterNumber);
     if (!chapter) {
       return res.status(400).json({ message: 'That chapter does not exist' });
     }
@@ -111,7 +132,7 @@ async function publicConstitutionDecision(req, res, next) {
         chapterTitle: chapter.title,
         decision,
         reason,
-        edition: constitutionMeta.eyebrow || '',
+        edition: meta.eyebrow || '',
         decidedAt: new Date(),
       });
     } catch (err) {

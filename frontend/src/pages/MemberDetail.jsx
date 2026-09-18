@@ -10,6 +10,7 @@ import ConfirmDialog from '../components/shared/ConfirmDialog';
 import ErrorState from '../components/shared/ErrorState';
 import ResignDialog from '../components/members/ResignDialog';
 import IssueFineForm from '../components/members/IssueFineForm';
+import SettleFineForm from '../components/members/SettleFineForm';
 import MessageMemberPanel from '../components/members/MessageMemberPanel';
 import FinesPanel from '../components/shared/FinesPanel';
 import WeeklyScheduleTable from '../components/shared/WeeklyScheduleTable';
@@ -45,6 +46,7 @@ export default function MemberDetail() {
   const [confirmingResign, setConfirmingResign] = useState(false);
   const [issuingFine, setIssuingFine] = useState(false);
   const [voidingFine, setVoidingFine] = useState(null);
+  const [settlingFine, setSettlingFine] = useState(null);
   const [busy, setBusy] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState('');
@@ -680,8 +682,20 @@ async function exportStatementExcel() {
                 }}
                 onCancel={() => setIssuingFine(false)}
               />
+            ) : settlingFine ? (
+              // Settling inline, the same way a fine is issued: the money was paid
+              // here and now, and the balance he still owes is the one thing the
+              // treasurer needs in front of him while typing.
+              <SettleFineForm
+                fine={settlingFine}
+                onSettled={() => {
+                  setSettlingFine(null);
+                  load();
+                }}
+                onCancel={() => setSettlingFine(null)}
+              />
             ) : (
-              <FinesPanel fines={fines} onVoid={setVoidingFine} />
+              <FinesPanel fines={fines} onVoid={setVoidingFine} onSettle={setSettlingFine} />
             )}
           </div>
 

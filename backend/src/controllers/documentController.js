@@ -65,12 +65,20 @@ function asciiFileName(name) {
 }
 
 function streamFile(res, doc, asAttachment) {
-  res.setHeader('Content-Type', doc.mimeType || 'application/octet-stream');
+  const mime = String(doc.mimeType || 'application/octet-stream').toLowerCase();
+
+  // A PDF or a photo of a title deed is meant to be looked at. Everything else —
+  // a Word file, a spreadsheet, and above all anything that renders as markup —
+  // is handed over as a download, because "the browser displays whatever the
+  // uploader claimed this is" is how a file becomes a page on our own origin.
+  const inlineSafe = mime === 'application/pdf' || mime.startsWith('image/');
+  const disposition = asAttachment || !inlineSafe ? 'attachment' : 'inline';
+
+  res.setHeader('Content-Type', mime);
   res.setHeader('Content-Length', doc.data.length);
-  res.setHeader(
-    'Content-Disposition',
-    `${asAttachment ? 'attachment' : 'inline'}; filename="${asciiFileName(doc.fileName)}"`
-  );
+  res.setHeader('Content-Disposition', `${disposition}; filename="${asciiFileName(doc.fileName)}"`);
+  // Belt and braces with helmet's nosniff: a stored type is never re-interpreted.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   // Never let a shared device or a proxy cache a document unlocked by a phone number.
   res.setHeader('Cache-Control', 'no-store');
   res.end(doc.data);

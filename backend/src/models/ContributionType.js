@@ -1,15 +1,16 @@
 const { Schema, model } = require('mongoose');
+const { moneySetter, MONEY_MIN, MONEY_MAX } = require('../utils/money');
 
 const ContributionTypeSchema = new Schema(
   {
-    name: { type: String, required: true, trim: true, unique: true },
-    description: { type: String, default: '' },
+    name: { type: String, required: true, trim: true, unique: true, maxlength: 80 },
+    description: { type: String, default: '', maxlength: 500 },
     active: { type: Boolean, default: true }, // soft-delete flag, same pattern as Member
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     // Fixed recurring due (e.g. the 1,400 weekly contribution, the 100 Chai fee),
     // driving the per-week schedule the whole cycle is scored against.
     isWeekly: { type: Boolean, default: false },
-    weeklyAmount: { type: Number, default: 0 },
+    weeklyAmount: { type: Number, default: 0, set: moneySetter, min: MONEY_MIN, max: MONEY_MAX },
     // Marks a fund (e.g. Chai) whose balance = contributions minus logged expenses.
     tracksExpenses: { type: Boolean, default: false },
     // Marks a shared/group fund (e.g. Chai) — money collected under this type
@@ -25,10 +26,10 @@ isRecoverable: { type: Boolean, default: false },
     // carry-in a member gets in `openingBalance`, entered on the go-live screen.
     // The Tea Fund's float, registration money collected before this ledger, and
     // so on. A fund's balance is this, plus what comes in, minus what goes out.
-    openingBalance: { type: Number, default: 0 },
+    openingBalance: { type: Number, default: 0, set: moneySetter, min: MONEY_MIN, max: MONEY_MAX },
     // Where the carried-in figure came from (the paper book's column, a bank
     // line, …), so a figure nobody can account for is visible as unexplained.
-    openingBalanceNote: { type: String, default: '' },
+    openingBalanceNote: { type: String, default: '', maxlength: 240 },
   },
   
   { timestamps: true }

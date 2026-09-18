@@ -44,6 +44,16 @@ function getTransporter() {
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
       : undefined,
+    // Reuse connections: a batch of reminders is a handful of messages in a row,
+    // and a fresh TLS handshake per member is seconds of the request's budget.
+    pool: true,
+    maxConnections: 3,
+    // Every send has a ceiling. Without these, an SMTP host that accepts the
+    // connection and then goes quiet holds the request open until the proxy times
+    // it out — and the treasurer never learns which members were emailed.
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 30000,
   });
   return transporter;
 }

@@ -126,4 +126,13 @@ async function destroyImage(publicId) {
   }
 }
 
-module.exports = { isCloudinaryConfigured, uploadMemberPhoto, uploadGroupLogo, destroyImage };
+module.exports = {
+  isCloudinaryConfigured,
+  uploadMemberPhoto,
+  uploadGroupLogo,
+  destroyImage,
+  // Exported so a caller that removes an asset by a publicId it was handed
+  // (uploadController.removePhoto) can check the asset is one of ours first.
+  MEMBER_FOLDER: FOLDER,
+  LOGO_FOLDER,
+};

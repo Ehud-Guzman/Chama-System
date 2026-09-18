@@ -1,6 +1,5 @@
 const { getOrCreateSettings, invalidateSettings } = require('../utils/settings');
 const { logAudit, snapshot } = require('../utils/auditLogger');
-const { fridayOf, parseEatDate } = require('../utils/weekCycle');
 const { syncLedgerTypeAmounts } = require('../utils/ledgerTypes');
 const { destroyImage } = require('../utils/cloudinary');
 
@@ -38,6 +37,7 @@ async function updateSettings(req, res, next) {
       chaiAmount,
       cycleStartWeek,
       weekAnchorDate,
+      autoSettleFines,
     } = req.body || {};
     if (chamaName !== undefined) {
       if (!String(chamaName).trim()) {
@@ -92,35 +92,41 @@ async function updateSettings(req, res, next) {
       settings.logoUrl = String(logoUrl || '').trim();
       settings.logoPublicId = String(logoPublicId || '').trim();
     }
-    // The week-cycle figures are governance numbers (constitution §7.1, §7.2).
-    // The ledger screen has its own setup form for them; they are accepted here
-    // too so a client holding the settings form never has to know two shapes.
-    if (weeklyAmount !== undefined) {
-      const n = Number(weeklyAmount);
-      if (!Number.isFinite(n) || n <= 0) {
-        return res.status(400).json({ message: 'Weekly amount must be greater than zero' });
-      }
-      settings.weeklyAmount = n;
+    // The week-cycle figures — the weekly amount, the tea, the start week and the
+    // anchor date — are deliberately *not* settable here.
+    //
+    // They are governance numbers (constitution §7.1, §7.2) and they are guarded
+    // where they belong: PATCH /api/ledger/setup reads the whole sheet before
+    // writing any of it, refuses a save that would cut the members' total by a
+    // quarter or more until the caller confirms, and audits what it wrote. Accepting
+    // the same fields on this endpoint meant one request could renumber every week
+    // already on the ledger, silently, with none of that protection — and the
+    // settings form does not send them anyway.
+    const cycleFields = { weeklyAmount, chaiAmount, cycleStartWeek, weekAnchorDate };
+    const posted = Object.entries(cycleFields).find(
+      ([, value]) => value !== undefined && value !== null
+    );
+    if (posted) {
+      return res.status(400).json({
+        message:
+          'Weekly amount, tea, start week and the week anchor are set on Finance → Setup, where a change that would move every balance is confirmed before it is saved.',
+        field: posted[0],
+      });
     }
-    if (chaiAmount !== undefined) {
-      const n = Number(chaiAmount);
-      if (!Number.isFinite(n) || n < 0) {
-        return res.status(400).json({ message: 'Tea amount cannot be negative' });
+    // Whether a payment pays down pending fines before it counts as contribution.
+    // Off by default, and deliberately *not* part of the settings form: it changes
+    // what the books say about money, so it is set deliberately (super admin, one
+    // field), not by whatever a page happens to send.
+    if (autoSettleFines !== undefined) {
+      if (req.user.role !== 'super_admin') {
+        return res
+          .status(403)
+          .json({ message: 'Only the super admin can change how payments are applied to fines.' });
       }
-      settings.chaiAmount = n;
-    }
-    if (cycleStartWeek !== undefined) {
-      const n = parseInt(cycleStartWeek, 10);
-      if (!Number.isInteger(n) || n < 1) {
-        return res.status(400).json({ message: 'Start week must be a whole number of at least 1' });
+      if (typeof autoSettleFines !== 'boolean') {
+        return res.status(400).json({ message: 'autoSettleFines must be true or false' });
       }
-      settings.cycleStartWeek = n;
-    }
-    if (weekAnchorDate !== undefined && weekAnchorDate !== null && weekAnchorDate !== '') {
-      // Read as an EAT calendar date and normalised to its Friday, so a value
-      // round-tripped from a client can never shift the anchor by a day (and
-      // therefore every week number with it).
-      settings.weekAnchorDate = fridayOf(parseEatDate(weekAnchorDate));
+      settings.autoSettleFines = autoSettleFines;
     }
     if (weeklyTrackingStartDate !== undefined) {
       if (weeklyTrackingStartDate === null || weeklyTrackingStartDate === '') {

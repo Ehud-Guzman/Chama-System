@@ -1,6 +1,7 @@
 const Minute = require('../models/Minute');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { findActiveMemberByNationalId } = require('../utils/publicAccess');
+const { sanitizeMinuteHtml } = require('../utils/sanitizeHtml');
 
 // A minute's body is only sent when someone actually opens it — the list
 // carries a stripped preview instead. Minutes run to pages of rich text, and the
@@ -70,7 +71,10 @@ async function createMinute(req, res, next) {
     const minute = await Minute.create({
       title: String(title).trim(),
       date: date ? new Date(date) : new Date(),
-      content: String(content || ''),
+      // Cleaned against the editor's own schema before storage: the API is what
+      // every client talks to, so it cannot rely on the one editor that happens to
+      // be in the admin app to keep scripts out of a member-visible page.
+      content: sanitizeMinuteHtml(content),
       visibleToMembers: visibleToMembers === undefined ? true : Boolean(visibleToMembers),
       createdBy: req.user._id,
     });
@@ -105,7 +109,7 @@ async function updateMinute(req, res, next) {
       if (Number.isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid date' });
       minute.date = d;
     }
-    if (content !== undefined) minute.content = String(content);
+    if (content !== undefined) minute.content = sanitizeMinuteHtml(content);
     if (visibleToMembers !== undefined) minute.visibleToMembers = Boolean(visibleToMembers);
     minute.updatedBy = req.user._id;
 

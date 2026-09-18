@@ -33,4 +33,8 @@ const AuditLogSchema = new Schema(
   { timestamps: true }
 );
 
+// The audit screen pages through this newest-first, so the sort has to come off an
+// index rather than an in-memory sort of a collection that only ever grows.
+AuditLogSchema.index({ createdAt: -1 });
+
 module.exports = model('AuditLog', AuditLogSchema);

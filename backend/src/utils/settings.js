@@ -21,7 +21,7 @@ function invalidateSettings() {
   cachedAt = 0;
 }
 
-// There is only ever one Settings document. Create it with defaults on first read.
+// There is only ever one Settings document, created with defaults on first read.
 //
 // The week anchor is pinned here — once, on the first read — rather than being
 // derived from the clock every time. A derived anchor would always describe "the
@@ -29,13 +29,44 @@ function invalidateSettings() {
 // pinning it means week 92 really is the week the system went live and week 93
 // starts on its own the following Friday, same as the old per-member schedule
 // advanced without anyone pressing anything.
+//
+// The document is identified by `key: 'main'` now rather than by "the only row
+// there is": two concurrent first requests (or two instances during a deploy)
+// could each create a row, and then the figures every balance is computed from
+// would depend on which row answered.
 async function getOrCreateSettings({ force = false } = {}) {
   if (!force && cached && Date.now() - cachedAt < CACHE_MS) return cached;
 
-  let settings = await Settings.findOne();
+  let settings = await Settings.findOne({ key: 'main' });
+
   if (!settings) {
-    settings = await Settings.create({});
+    // A database that predates the key: adopt its row instead of adding a second.
+    const legacy = await Settings.findOne({
+      $or: [{ key: { $exists: false } }, { key: null }, { key: '' }],
+    }).sort({ createdAt: 1 });
+    if (legacy) {
+      legacy.key = 'main';
+      try {
+        await legacy.save();
+        settings = legacy;
+      } catch (err) {
+        // Another instance adopted it first, or a row now exists with the key.
+        settings = err.code === 11000 ? await Settings.findOne({ key: 'main' }) : null;
+        if (!settings) throw err;
+      }
+    }
   }
+
+  if (!settings) {
+    try {
+      settings = await Settings.create({ key: 'main' });
+    } catch (err) {
+      // Lost the race to create it: read the winner's row.
+      if (err.code === 11000) settings = await Settings.findOne({ key: 'main' });
+      else throw err;
+    }
+  }
+
   if (!settings.weekAnchorDate) {
     settings = await Settings.findByIdAndUpdate(
       settings._id,

@@ -9,9 +9,16 @@ const {
   resetAdminPassword,
 } = require('../controllers/authController');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { loginLimiter, passwordChangeLimiter } = require('../middleware/rateLimiter');
+const {
+  loginLimiter,
+  loginSprayLimiter,
+  passwordChangeLimiter,
+} = require('../middleware/rateLimiter');
 
-router.post('/login', loginLimiter, login);
+// The spray limiter runs first: it caps total attempts from one connection, so a
+// script working through a list of addresses runs out even though each address has
+// its own budget.
+router.post('/login', loginSprayLimiter, loginLimiter, login);
 router.get('/me', requireAuth, me);
 router.patch('/me/password', requireAuth, passwordChangeLimiter, changeOwnPassword);
 router.get('/admins', requireAuth, requireRole('super_admin', 'admin'), listAdmins);

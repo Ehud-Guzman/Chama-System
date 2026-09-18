@@ -1,4 +1,12 @@
-const { uploadMemberPhoto, uploadGroupLogo, isCloudinaryConfigured, destroyImage } = require('../utils/cloudinary');
+const {
+  uploadMemberPhoto,
+  uploadGroupLogo,
+  isCloudinaryConfigured,
+  destroyImage,
+  MEMBER_FOLDER,
+  LOGO_FOLDER,
+} = require('../utils/cloudinary');
+const { logAudit } = require('../utils/auditLogger');
 
 // POST /api/uploads/member-photo — ADMIN/treasurer, multipart (field: `file`).
 // The browser uploads here rather than straight to Cloudinary so the API secret
@@ -50,9 +58,30 @@ async function removePhoto(req, res, next) {
     if (!publicId) {
       return res.status(400).json({ message: 'No photo to remove' });
     }
+
+    // Scoped to this app's own folders. The id arrives in the request, and without
+    // this check any admin could delete *any* asset in the Cloudinary account by
+    // passing its publicId — the group's logo, or another member's photo.
+    const id = String(publicId);
+    const owned = [MEMBER_FOLDER, LOGO_FOLDER].some((prefix) => id.startsWith(`${prefix}/`));
+    if (!owned) {
+      return res.status(403).json({ message: 'That image does not belong to this app.' });
+    }
+
     // Best-effort: a failed destroy must never block the request. The orphaned
     // image gets cleaned up on the next successful re-upload.
-    await destroyImage(publicId).catch(() => {});
+    await destroyImage(id).catch(() => {});
+
+    await logAudit({
+      action: 'delete',
+      entityType: 'Member',
+      // This route clears an image, not a member — the caller patches the member
+      // record itself — so the trail names the asset that went.
+      entityId: req.user._id,
+      performedBy: req.user._id,
+      before: { removedPhotoPublicId: id },
+    });
+
     res.json({ ok: true });
   } catch (err) {
     next(err);

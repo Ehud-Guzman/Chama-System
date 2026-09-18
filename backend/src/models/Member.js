@@ -1,4 +1,5 @@
 const { Schema, model } = require('mongoose');
+const { moneySetter, MONEY_MIN, MONEY_MAX } = require('../utils/money');
 
 // One of a member's emergency contacts. Embedded (never its own collection)
 // because it only ever belongs to one member and is always read together with
@@ -81,12 +82,11 @@ const MemberSchema = new Schema(
     // documents and the constitution by typing this number
     // (utils/nationalId.js normalises it, utils/publicAccess.js checks it).
     //
-    // No unique index: the column also carries notes that are not numbers, and
-    // several members can legitimately be blank. One ID is still meant to belong
-    // to one member, so create/edit/import refuse a duplicate and the gate
-    // answers 409 rather than showing the wrong passbook when one slips through.
-    // The plain index below is what the gate's exact-match query rides on.
-    nationalId: { type: String, default: '', trim: true, index: true },
+    // The index is declared at the bottom of this file: a *partial unique* index
+    // over non-empty values, so one ID really can only belong to one member even
+    // when two requests arrive together, while the notes ("not yet issued") that
+    // share this column stay unconstrained.
+    nationalId: { type: String, default: '', trim: true },
     physicalAddress: { type: String, default: '', trim: true },
     // Spouse, children, parents and in-laws, as the form's family section asks.
     family: { type: FamilySchema, default: () => ({}) },
@@ -97,7 +97,7 @@ const MemberSchema = new Schema(
     // collecting an email is to use it. Off for a member who asks us to stop.
     emailNotifications: { type: Boolean, default: true },
     regNumber: { type: String, unique: true, sparse: true },
-    notes: { type: String, default: '' },
+    notes: { type: String, default: '', maxlength: 2000 },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     active: { type: Boolean, default: true },
     // Anchor for this member's own weekly-contribution schedule (week 1 starts here).
@@ -106,7 +106,15 @@ const MemberSchema = new Schema(
     // (verified per member at the audit). Everything the cycle computes sits on
     // top of it, which is how a member's "money" starts where the old sheet
     // left him instead of restarting at zero.
-    openingBalance: { type: Number, default: 0 },
+    // Rounded to two decimal places on every write (utils/money) so a figure that
+    // has been through a division cannot drift.
+    openingBalance: {
+      type: Number,
+      default: 0,
+      set: moneySetter,
+      min: MONEY_MIN,
+      max: MONEY_MAX,
+    },
     // Free text for where that figure came from (e.g. "audit 19-Aug-2026").
     openingBalanceNote: { type: String, default: '' },
     resignedAt: { type: Date, default: null },
@@ -114,5 +122,22 @@ const MemberSchema = new Schema(
   },
   { timestamps: true }
 );
+
+// One ID, one member — enforced by the database rather than only by the
+// read-then-write check in the controller (two concurrent creates could both pass
+// that and store the same number, after which the gate has to refuse both).
+// `partialFilterExpression` leaves the blank values and the free-text notes
+// ("not yet issued") out of it; the gate's exact-match lookup rides this index.
+MemberSchema.index(
+  { nationalId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { nationalId: { $type: 'string', $gt: '' } },
+    name: 'nationalId_unique_nonempty',
+  }
+);
+
+// The member list: active rows, sorted by name.
+MemberSchema.index({ active: 1, name: 1 });
 
 module.exports = model('Member', MemberSchema);

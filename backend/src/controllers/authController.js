@@ -1,7 +1,15 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { logAudit } = require('../utils/auditLogger');
+const { logEvent, logLoginFailure } = require('../middleware/requestLogger');
+
+// A hash of a string nobody knows, so a sign-in for an address that has no account
+// costs the same time as one for an address that does. Without it the "no such
+// user" path returns in a millisecond and the "wrong password" path takes eighty,
+// which is a free oracle for which addresses hold accounts.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync(crypto.randomBytes(24).toString('hex'), 10);
 
 function toDTO(user) {
   return { id: user._id, name: user.name, email: user.email, role: user.role, active: user.active };
@@ -31,13 +39,28 @@ async function login(req, res, next) {
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required' });
     }
-    const user = await User.findOne({ email: String(email).toLowerCase().trim() }).select('+password');
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    const address = String(email).toLowerCase().trim();
+    const user = await User.findOne({ email: address }).select('+password');
+
+    // Compared against *something* either way, so the response time does not say
+    // whether the address exists.
+    const matches = await bcrypt.compare(String(password), user?.password || DUMMY_PASSWORD_HASH);
+
+    if (!user || !matches) {
+      logLoginFailure({
+        email: address,
+        ip: req.ip,
+        rid: req.id,
+        reason: user ? 'wrong_password' : 'no_such_account',
+      });
       return res.status(401).json({ message: 'Invalid email or password' });
     }
     if (!user.active) {
+      logLoginFailure({ email: address, ip: req.ip, rid: req.id, reason: 'deactivated' });
       return res.status(401).json({ message: 'This account has been deactivated' });
     }
+
+    logEvent('login_ok', { rid: req.id, userId: String(user._id), role: user.role });
     res.json({ token: signToken(user), user: toDTO(user) });
   } catch (err) {
     next(err);
@@ -65,6 +88,9 @@ async function changeOwnPassword(req, res, next) {
       return res.status(401).json({ message: 'Current password is incorrect' });
     }
     user.password = await bcrypt.hash(String(newPassword), 10);
+    // Ends every other session for this account: any token issued before now is
+    // refused by requireAuth (see middleware/auth).
+    user.passwordChangedAt = new Date();
     await user.save();
     await logAudit({
       action: 'update',
@@ -182,6 +208,9 @@ async function resetAdminPassword(req, res, next) {
     }
 
     target.password = await bcrypt.hash(String(password), 10);
+    // The reset ends the account's existing sessions too — that is usually the
+    // whole point of resetting a password somebody else may know.
+    target.passwordChangedAt = new Date();
     await target.save();
     await logAudit({
       action: 'update',

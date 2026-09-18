@@ -1,0 +1,68 @@
+# Continuous integration.
+#
+# Three things are checked on every push, in this order of importance:
+#
+#   1. Member data must not be in the repository. This is the check that would have
+#      caught the spreadsheets (see the README, "Member data in this repository").
+#   2. The test suite passes — the week engine, money arithmetic, upload screening,
+#      the members' gate's credentials, and the API's own behaviour.
+#   3. The frontend builds.
+#
+# No secrets are needed: nothing here talks to MongoDB, Cloudinary or SMTP.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend (data check, tests, audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Member data must not be tracked
+        run: node scripts/checkNoDataFiles.mjs
+
+      - name: Tests
+        run: npm test
+
+      - name: Dependencies (runtime)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+
+  frontend:
+    name: Frontend (build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build

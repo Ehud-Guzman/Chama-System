@@ -10,8 +10,12 @@ const { isMailConfigured, sendMail, buildReminderEmail } = require('../utils/mai
 const { logAudit } = require('../utils/auditLogger');
 
 // One request should never try to email the whole group and then time out — the
-// page selects a handful at a time.
-const MAX_RECIPIENTS = 200;
+// page selects a handful at a time, and the sends happen inside this request. Fifty
+// is roughly a minute of SMTP at three connections, which is as long as an HTTP
+// request here can honestly be expected to take; a larger selection is refused with
+// a message asking for batches (the alternative — sending in the background — needs
+// a job store and a way to tell the treasurer how it went).
+const MAX_RECIPIENTS = 50;
 
 // Works out exactly what a set of members still owes: unpaid weekly
 // contribution weeks and unpaid fines. This is the same maths the member's own

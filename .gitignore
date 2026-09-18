@@ -13,6 +13,11 @@ Thumbs.db
 # number is the credential for the gated documents and minutes. Both have been
 # removed from the repo and archived outside it. The rules stay as a guard so a
 # copy restored from that archive can never be committed by accident.
+#
+# NOTE: removing a file from HEAD does not remove it from history. These two are
+# still reachable in old commits — see the "Member data in this repository"
+# section of the README for the purge that is required, and for why the repository
+# must stay private until it has run.
 backend/src/scripts/importHarambeeContributions.js
 backend/src/scripts/findWrongAmounts.js
 
@@ -23,3 +28,14 @@ backend/data/reset-backup-*.json
 backend/data/opening-balances-*.json
 # ...and for the row-level copy the clearing scripts take.
 backend/data/contributions-cleared-*.json
+
+# Any spreadsheet or export under backend/ is member data, whatever it is called.
+# The rules above were too narrow once: a file named `ledger_weeks_62_84_template.xlsx`
+# and another named `test.xlsx` both carried real names and amounts, and neither
+# matched a pattern, so both were committed. A "template" from the office is not a
+# template until somebody has emptied it.
+backend/data/
+backend/*.xlsx
+backend/*.xls
+backend/*.csv
+

@@ -579,8 +579,14 @@ async function auditLog(req, res, next) {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
 
+    // Only the fields this screen prints. The stored `before`/`after` are full
+    // document snapshots — a member's whole record, including his national ID, his
+    // family and his next of kin — and shipping a hundred of those to a client to
+    // render one amount next to a name is both slow and a needless second copy of
+    // the register.
     const [entries, total] = await Promise.all([
       AuditLog.find()
+        .select('action entityType entityId performedBy createdAt after.amount after.name before.amount before.name')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
