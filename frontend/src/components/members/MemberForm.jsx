@@ -46,6 +46,56 @@ function kinFrom(value) {
   return list.length ? list : [blankKin('Spouse')];
 }
 
+// The family section of the admission form, in the shape the server reads back.
+// One blank row for a child so the fieldset never looks broken — the server drops
+// empty names, so an untouched row imports as "no children on file".
+function familyFrom(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const children = Array.isArray(source.children) ? source.children.filter((c) => c !== '') : [];
+  return {
+    spouseName: source.spouseName || '',
+    children: children.length ? children : [''],
+    fatherName: source.fatherName || '',
+    motherName: source.motherName || '',
+    fatherInLawName: source.fatherInLawName || '',
+    motherInLawName: source.motherInLawName || '',
+  };
+}
+
+// The three office bearers on the form's "for official use only" block. Always all
+// three rows, in the order the paper prints them, so an unsigned admission is
+// visibly incomplete rather than silently absent.
+const APPROVAL_ROLES = [
+  { role: 'chairperson', label: 'Chairperson' },
+  { role: 'secretary', label: 'Secretary' },
+  { role: 'treasurer', label: 'Treasurer' },
+];
+
+function approvalsFrom(value) {
+  const list = Array.isArray(value) ? value : [];
+  return APPROVAL_ROLES.map(({ role, label }) => {
+    const match = list.find((entry) => entry?.role === role);
+    return { role, label, name: match?.name || '', signedAt: toDateInput(match?.signedAt) };
+  });
+}
+
+// Whether anything in the family block has actually been filled in. The blank child
+// row the form always shows does not count.
+function hasFamilyContent(input) {
+  const source = input && typeof input === 'object' ? input : {};
+  const children = Array.isArray(source.children)
+    ? source.children.filter((child) => String(child || '').trim())
+    : [];
+  return Boolean(
+    String(source.spouseName || '').trim() ||
+      String(source.fatherName || '').trim() ||
+      String(source.motherName || '').trim() ||
+      String(source.fatherInLawName || '').trim() ||
+      String(source.motherInLawName || '').trim() ||
+      children.length
+  );
+}
+
 // Create/edit member form, rendered inside a modal sheet.
 export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
   const [form, setForm] = useState({
@@ -59,6 +109,20 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
     photoPublicId: initial?.photoPublicId || '',
     emailNotifications: initial?.emailNotifications !== false,
     nextOfKin: kinFrom(initial?.nextOfKin),
+    // The rest of the admission form. All optional — most of the register was
+    // entered from a name and a phone number long before the form existed.
+    dateOfBirth: toDateInput(initial?.dateOfBirth),
+    nationalId: initial?.nationalId || '',
+    physicalAddress: initial?.physicalAddress || '',
+    family: familyFrom(initial?.family),
+    commitment: {
+      agreed: Boolean(initial?.commitment?.agreed),
+      // Dated from the moment it is ticked, but the office can back-date it to the
+      // day the paper form was actually signed.
+      agreedAt: toDateInput(initial?.commitment?.agreedAt) || todayISO(),
+      signedBy: initial?.commitment?.signedBy || '',
+    },
+    approvals: approvalsFrom(initial?.approvals),
   });
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState('');
@@ -90,6 +154,47 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
         : prev.nextOfKin.filter((_, i) => i !== index),
     }));
 
+  const setFamily = (field) => (e) =>
+    setForm((prev) => ({ ...prev, family: { ...prev.family, [field]: e.target.value } }));
+
+  const setChild = (index) => (e) =>
+    setForm((prev) => ({
+      ...prev,
+      family: {
+        ...prev.family,
+        children: prev.family.children.map((child, i) => (i === index ? e.target.value : child)),
+      },
+    }));
+
+  const addChild = () =>
+    setForm((prev) => ({ ...prev, family: { ...prev.family, children: [...prev.family.children, ''] } }));
+
+  const removeChild = (index) =>
+    setForm((prev) => ({
+      ...prev,
+      family: {
+        ...prev.family,
+        // Same reasoning as the contacts list: one blank row is what "no children"
+        // looks like, so never leave the fieldset empty.
+        children:
+          prev.family.children.length === 1
+            ? ['']
+            : prev.family.children.filter((_, i) => i !== index),
+      },
+    }));
+
+  const setCommitment = (field) => (e) =>
+    setForm((prev) => ({ ...prev, commitment: { ...prev.commitment, [field]: e.target.value } }));
+
+  // One office bearer's signature, by position — all three rows are sent on save.
+  const setApproval = (index, field) => (e) =>
+    setForm((prev) => ({
+      ...prev,
+      approvals: prev.approvals.map((approval, i) =>
+        i === index ? { ...approval, [field]: e.target.value } : approval
+      ),
+    }));
+
   // The photo is uploaded as soon as it's picked rather than on submit: saving
   // the member then stays a single JSON request carrying the resulting URL, and
   // the admin sees the actual cropped image before committing to it.
@@ -119,6 +224,14 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
     setPhotoError('');
     setForm((prev) => ({ ...prev, photoUrl: '', photoPublicId: '' }));
   }
+
+  // The two admission blocks start open only for a member whose paperwork is already
+  // in: an untouched record keeps the form short, and the office fills it in over
+  // weeks as the sheets come back from the desk.
+  const familyOnFile = hasFamilyContent(form.family);
+  const familyOpen = hasFamilyContent(initial?.family);
+  const admissionComplete = form.approvals.every((approval) => approval.name.trim() !== '');
+  const admissionOpen = Boolean(initial?.commitment?.agreed) || Boolean(initial?.approvals?.length);
 
   return (
     <div
@@ -273,6 +386,52 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
             Anchors their weekly contribution schedule — week 1 starts here.
           </p>
         </div>
+
+        {/* The admission form's personal section. Optional here for the same reason
+            it is optional on the paper: a member is often entered before his copy
+            comes back from the desk. The profile shows what is still missing. */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="m-dob" className="mb-1 block text-sm font-medium">
+              Date of birth <span className="font-normal text-muted">(optional)</span>
+            </label>
+            <input
+              id="m-dob"
+              type="date"
+              max={todayISO()}
+              value={form.dateOfBirth}
+              onChange={set('dateOfBirth')}
+              className="h-12 w-full rounded-xl border border-rule px-3 text-sm"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="m-national-id" className="mb-1 block text-sm font-medium">
+              National ID / passport <span className="font-normal text-muted">(optional)</span>
+            </label>
+            <input
+              id="m-national-id"
+              type="text"
+              value={form.nationalId}
+              onChange={set('nationalId')}
+              className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="m-address" className="mb-1 block text-sm font-medium">
+            Physical address <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <input
+            id="m-address"
+            type="text"
+            placeholder="Estate, town"
+            value={form.physicalAddress}
+            onChange={set('physicalAddress')}
+            className="h-12 w-full rounded-xl border border-rule px-4 text-sm"
+          />
+        </div>
         <div>
           <label htmlFor="m-notes" className="mb-1 block text-sm font-medium">
             Notes <span className="font-normal text-muted">(optional)</span>
@@ -410,6 +569,247 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
             </button>
           </div>
         </fieldset>
+
+        {/* The admission form's family section. Collapsed unless there is something
+            in it: on a phone this form is already long, and a member can sit in the
+            register for months with nothing but a name and a number. */}
+        <details className="rounded-xl border border-rule p-3" defaultOpen={familyOpen}>
+          <summary className="cursor-pointer px-1 text-xs font-semibold uppercase tracking-widest text-muted">
+            Family <span className="font-normal normal-case tracking-normal">
+              {familyOnFile ? '(on file)' : '(optional)'}
+            </span>
+          </summary>
+
+          <p className="mt-2 text-xs text-muted">
+            Spouse, children, parents and in-laws — as written on the admission form.
+          </p>
+
+          <div className="mt-3 space-y-3">
+            <div>
+              <label htmlFor="m-spouse" className="mb-1 block text-sm font-medium">
+                Spouse's name
+              </label>
+              <input
+                id="m-spouse"
+                type="text"
+                value={form.family.spouseName}
+                onChange={setFamily('spouseName')}
+                className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
+              />
+            </div>
+
+            <fieldset>
+              <legend className="mb-1 text-sm font-medium">Children</legend>
+              <ul className="space-y-2">
+                {form.family.children.map((child, index) => (
+                  <li key={index} className="flex items-center gap-2">
+                    <label htmlFor={`m-child-${index}`} className="sr-only">
+                      Child {index + 1}
+                    </label>
+                    <input
+                      id={`m-child-${index}`}
+                      type="text"
+                      placeholder={`Child ${index + 1}`}
+                      value={child}
+                      onChange={setChild(index)}
+                      className="h-11 min-w-0 flex-1 rounded-xl border border-rule px-3 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeChild(index)}
+                      className="min-h-11 shrink-0 rounded-lg px-2 text-xs font-medium text-alert"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                type="button"
+                onClick={addChild}
+                className="mt-2 min-h-11 rounded-lg border border-rule bg-surface px-3 text-xs font-medium text-primary"
+              >
+                + Another child
+              </button>
+            </fieldset>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="m-father" className="mb-1 block text-sm font-medium">
+                  Father's name
+                </label>
+                <input
+                  id="m-father"
+                  type="text"
+                  value={form.family.fatherName}
+                  onChange={setFamily('fatherName')}
+                  className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="m-mother" className="mb-1 block text-sm font-medium">
+                  Mother's name
+                </label>
+                <input
+                  id="m-mother"
+                  type="text"
+                  value={form.family.motherName}
+                  onChange={setFamily('motherName')}
+                  className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="m-father-in-law" className="mb-1 block text-sm font-medium">
+                  Father-in-law's name
+                </label>
+                <input
+                  id="m-father-in-law"
+                  type="text"
+                  value={form.family.fatherInLawName}
+                  onChange={setFamily('fatherInLawName')}
+                  className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="m-mother-in-law" className="mb-1 block text-sm font-medium">
+                  Mother-in-law's name
+                </label>
+                <input
+                  id="m-mother-in-law"
+                  type="text"
+                  value={form.family.motherInLawName}
+                  onChange={setFamily('motherInLawName')}
+                  className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        </details>
+
+        {/* The form's declaration and its "for official use only" block: the member's
+            acceptance of the constitution, then the three office bearers who admitted
+            him. Kept together because they are one act of paperwork. */}
+        <details className="rounded-xl border border-rule p-3" defaultOpen={admissionOpen}>
+          <summary className="cursor-pointer px-1 text-xs font-semibold uppercase tracking-widest text-muted">
+            Declaration &amp; approvals <span className="font-normal normal-case tracking-normal">
+              {admissionComplete ? '(complete)' : '(pending)'}
+            </span>
+          </summary>
+
+          <div className="mt-3 space-y-3">
+            <label className="flex items-start gap-2 rounded-xl border border-rule px-3 py-3 text-sm">
+              <input
+                type="checkbox"
+                checked={form.commitment.agreed}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    commitment: {
+                      ...prev.commitment,
+                      agreed: e.target.checked,
+                      // Stamped the first time it is ticked, so the date it happened
+                      // survives later edits that never touch the box.
+                      agreedAt: prev.commitment.agreedAt || todayISO(),
+                    },
+                  }))
+                }
+                className="mt-0.5 h-4 w-4"
+              />
+              <span>
+                Member has read the constitution and accepts the weekly commitment
+                <span className="block text-xs text-muted">
+                  The group's constitution and by-laws, and the weekly contribution agreed by members.
+                </span>
+              </span>
+            </label>
+
+            {form.commitment.agreed && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="m-signed-by" className="mb-1 block text-sm font-medium">
+                    Signed by
+                  </label>
+                  <input
+                    id="m-signed-by"
+                    type="text"
+                    placeholder="Name as signed"
+                    value={form.commitment.signedBy}
+                    onChange={setCommitment('signedBy')}
+                    className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="m-signed-date" className="mb-1 block text-sm font-medium">
+                    Date signed
+                  </label>
+                  <input
+                    id="m-signed-date"
+                    type="date"
+                    max={todayISO()}
+                    value={form.commitment.agreedAt}
+                    onChange={setCommitment('agreedAt')}
+                    className="h-11 w-full rounded-xl border border-rule px-3 text-sm"
+                  />
+                </div>
+              </div>
+            )}
+
+            <fieldset>
+              <legend className="text-sm font-medium">
+                For official use — membership approved by
+              </legend>
+              <p className="mt-1 text-xs text-muted">
+                Type the names the three office bearers signed with. A name left without a
+                date is recorded as today.
+              </p>
+
+              <ul className="mt-2 space-y-3">
+                {form.approvals.map((approval, index) => (
+                  <li key={approval.role} className="rounded-xl border border-rule bg-page p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      {approval.label}
+                    </p>
+
+                    <div className="mt-1 grid gap-2 sm:grid-cols-2">
+                      <div>
+                        <label htmlFor={`m-approval-name-${approval.role}`} className="sr-only">
+                          {approval.label} name
+                        </label>
+                        <input
+                          id={`m-approval-name-${approval.role}`}
+                          type="text"
+                          placeholder="Name"
+                          value={approval.name}
+                          onChange={setApproval(index, 'name')}
+                          className="h-11 w-full rounded-xl border border-rule px-3 text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor={`m-approval-date-${approval.role}`} className="sr-only">
+                          {approval.label} date signed
+                        </label>
+                        <input
+                          id={`m-approval-date-${approval.role}`}
+                          type="date"
+                          max={todayISO()}
+                          value={approval.signedAt}
+                          onChange={setApproval(index, 'signedAt')}
+                          className="h-11 w-full rounded-xl border border-rule px-3 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
+          </div>
+        </details>
 
         <label className="flex items-start gap-2 rounded-xl border border-rule px-4 py-3 text-sm">
           <input

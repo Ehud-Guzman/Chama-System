@@ -15,6 +15,46 @@ const NextOfKinSchema = new Schema(
   { _id: false }
 );
 
+// The family a member names on the admission form. Embedded, like the next-of-kin
+// contacts, because it only ever belongs to one member and is always read with him.
+const FamilySchema = new Schema(
+  {
+    spouseName: { type: String, default: '', trim: true },
+    // Names only — the form has four ruled lines for children, but a family is not
+    // four, so this is a list.
+    children: { type: [String], default: [] },
+    fatherName: { type: String, default: '', trim: true },
+    motherName: { type: String, default: '', trim: true },
+    fatherInLawName: { type: String, default: '', trim: true },
+    motherInLawName: { type: String, default: '', trim: true },
+  },
+  { _id: false }
+);
+
+// The applicant's declaration at the foot of the admission form: he has read the
+// constitution and accepts the weekly commitment.
+const CommitmentSchema = new Schema(
+  {
+    agreed: { type: Boolean, default: false },
+    agreedAt: { type: Date, default: null },
+    // The name he signed under, as the paper form has a line for it. The date is
+    // the record — "signed" with no date is not a record of anything.
+    signedBy: { type: String, default: '', trim: true },
+  },
+  { _id: false }
+);
+
+// One office bearer's signature on the admission, from the form's "for official
+// use only" block: name plus the date he signed.
+const ApprovalSchema = new Schema(
+  {
+    role: { type: String, enum: ['chairperson', 'secretary', 'treasurer'], required: true },
+    name: { type: String, default: '', trim: true },
+    signedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const MemberSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -32,6 +72,18 @@ const MemberSchema = new Schema(
     // utils/nextOfKin.nextOfKinList(), which accepts both shapes, so no migration
     // was needed.
     nextOfKin: { type: [NextOfKinSchema], default: [] },
+    // --- The rest of the admission form --------------------------------------
+    // Personal details it asks for beyond name and phone. All optional: the
+    // register already holds members whose paper form never had them filled in.
+    dateOfBirth: { type: Date, default: null },
+    // Kenyan ID, passport, or "not yet issued" — free text on purpose.
+    nationalId: { type: String, default: '', trim: true },
+    physicalAddress: { type: String, default: '', trim: true },
+    // Spouse, children, parents and in-laws, as the form's family section asks.
+    family: { type: FamilySchema, default: () => ({}) },
+    commitment: { type: CommitmentSchema, default: () => ({}) },
+    // Chairperson, secretary, treasurer — "membership approved by" on the form.
+    approvals: { type: [ApprovalSchema], default: [] },
     // Late-contribution and fine reminder emails. On by default: the point of
     // collecting an email is to use it. Off for a member who asks us to stop.
     emailNotifications: { type: Boolean, default: true },

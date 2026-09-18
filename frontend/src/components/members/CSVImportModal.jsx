@@ -66,8 +66,10 @@ export default function CSVImportModal({ onClose, onImported }) {
       <div ref={containerRef} className="max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-xl bg-surface p-5 shadow-xl">
         <h2 className="text-base font-semibold">Import members</h2>
         <p className="mt-1 text-xs text-muted">
-          Columns: <span className="amount">name, phone, regNumber, notes</span> — regNumber and
-          notes are optional. Duplicate phone numbers are skipped, never overwritten.
+          Required: <span className="amount">name, phone</span>. Optional:{' '}
+          <span className="amount">email, regNumber, notes</span> and the admission-form columns —
+          date of birth, national ID, address, spouse, children, parents, emergency contact. The
+          template below names them exactly. Duplicate phone numbers are skipped, never overwritten.
         </p>
         <button
           type="button"

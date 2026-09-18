@@ -16,6 +16,19 @@ import Loader from '../components/shared/Loader';
 import MemberAvatar from '../components/members/MemberAvatar';
 import { takeWarmJson } from '../services/prefetch';
 
+// One label/value pair in the profile's admission blocks. Renders nothing when
+// there is no value, so a half-filled record shows only what is actually known
+// rather than a column of blanks.
+function Detail({ label, value }) {
+  if (!value) return null;
+  return (
+    <div>
+      <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</dt>
+      <dd className="text-sm">{value}</dd>
+    </div>
+  );
+}
+
 export default function MemberDetail() {
   const { id } = useParams();
   const toast = useToast();
@@ -278,6 +291,23 @@ async function exportStatementExcel() {
       ? [member.nextOfKin]
       : [];
   const hasKin = kin.length > 0;
+
+  // The admission form's own fields, as the server normalises them: the family
+  // block is always the same shape, and `admission` says which of the three office
+  // bearers have signed.
+  const family = member.family || {};
+  const children = Array.isArray(family.children)
+    ? family.children.filter((child) => String(child || '').trim())
+    : [];
+  const hasFamily =
+    Boolean(family.spouseName || family.fatherName || family.motherName || family.fatherInLawName || family.motherInLawName) ||
+    children.length > 0;
+  const hasPersonal = Boolean(member.dateOfBirth || member.nationalId || member.physicalAddress);
+  const approvals = Array.isArray(member.approvals) ? member.approvals : [];
+  const admission = member.admission || { complete: false, missing: [] };
+  const declaration = member.commitment?.agreed
+    ? `${member.commitment.signedBy || 'Signed'} · ${shortDate(member.commitment.agreedAt)}`
+    : 'Not recorded yet';
   const constitutionDecided = constitution?.decided || 0;
   const constitutionTotal = constitution?.total || 0;
   const approvedPct = constitutionTotal ? (constitution.approved / constitutionTotal) * 100 : 0;
@@ -381,6 +411,79 @@ async function exportStatementExcel() {
           ) : (
             <p className="mt-1 text-xs text-muted">
               Not recorded yet — add a spouse, the children or the in-laws via Edit.
+            </p>
+          )}
+        </div>
+
+        {/* The rest of the admission form, in the order the paper asks it. Each block
+            is only as long as what is known: a member entered from a name and a
+            number shows the prompt to fill him in, not a column of blanks. */}
+        <div className="mt-3 border-t border-rule pt-3">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            Personal details
+          </p>
+          {hasPersonal ? (
+            <dl className="mt-1 grid gap-2 sm:grid-cols-3">
+              <Detail label="Date of birth" value={member.dateOfBirth ? shortDate(member.dateOfBirth) : ''} />
+              <Detail label="National ID / passport" value={member.nationalId} />
+              <Detail label="Physical address" value={member.physicalAddress} />
+            </dl>
+          ) : (
+            <p className="mt-1 text-xs text-muted">
+              Date of birth, ID number and address not recorded — add them via Edit.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-3 border-t border-rule pt-3">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">Family</p>
+          {hasFamily ? (
+            <dl className="mt-1 grid gap-2 sm:grid-cols-2">
+              <Detail label="Spouse" value={family.spouseName} />
+              <Detail label="Children" value={children.join(', ')} />
+              <Detail label="Father" value={family.fatherName} />
+              <Detail label="Mother" value={family.motherName} />
+              <Detail label="Father-in-law" value={family.fatherInLawName} />
+              <Detail label="Mother-in-law" value={family.motherInLawName} />
+            </dl>
+          ) : (
+            <p className="mt-1 text-xs text-muted">
+              No family recorded — add a spouse, the children or the parents via Edit.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-3 border-t border-rule pt-3">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            Admission
+          </p>
+          <dl className="mt-1 grid gap-2 sm:grid-cols-2">
+            <Detail label="Declaration" value={declaration} />
+            <Detail
+              label="Approved by"
+              value={
+                approvals.length > 0
+                  ? approvals
+                      .map((approval) => `${approval.name} (${approval.role})`)
+                      .join(', ')
+                  : ''
+              }
+            />
+          </dl>
+          {approvals.length > 0 && (
+            <ul className="mt-1 space-y-1">
+              {approvals.map((approval) => (
+                <li key={approval.role} className="text-xs text-muted">
+                  <span className="font-medium capitalize">{approval.role}</span> · {approval.name} ·{' '}
+                  {shortDate(approval.signedAt)}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!admission.complete && (
+            <p className="mt-1 text-xs text-muted">
+              Pending{admission.missing?.length ? ` — waiting on the ${admission.missing.join(', ')}` : ''}.
+              {' '}Record the signatures via Edit.
             </p>
           )}
         </div>

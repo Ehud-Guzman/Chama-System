@@ -19,11 +19,39 @@ const { sendWorkbook } = require('../utils/xlsxExport');
 const { cleanEmail, isValidEmail } = require('../utils/mailer');
 const { destroyImage } = require('../utils/cloudinary');
 const { nextOfKinList, nextOfKinListError } = require('../utils/nextOfKin');
+const {
+  APPROVAL_ROLES,
+  APPROVAL_LABELS,
+  cleanText,
+  cleanFamily,
+  normaliseFamily,
+  cleanDateOfBirth,
+  cleanCommitment,
+  cleanApprovals,
+  admissionStatus,
+} = require('../utils/memberDetails');
 const { decisionsForMember } = require('./constitutionController');
 
 // Next of kin lives in utils/nextOfKin: the list, the legacy single-contact
 // shape and the per-entry validation are shared with everything else that reads
 // or writes a member's emergency contacts.
+
+// The membership admission form's fields, cleaned in one place and validated once
+// so creating a member and editing one can never store different shapes. A field
+// the caller did not send comes back as `undefined`, which is how the update path
+// knows to leave what is already on the record alone.
+function detailsFromBody(body) {
+  const dob = cleanDateOfBirth(body.dateOfBirth);
+  if (dob.error) return { error: dob.error };
+  return {
+    dateOfBirth: dob.value,
+    nationalId: cleanText(body.nationalId, 40),
+    physicalAddress: cleanText(body.physicalAddress, 240),
+    family: cleanFamily(body.family),
+    commitment: cleanCommitment(body.commitment),
+    approvals: cleanApprovals(body.approvals),
+  };
+}
 
 // Shared by both the admin member view and the public passbook: pending/settled
 // fines for a member, and the week-by-week due schedule for every weekly fund,
@@ -298,7 +326,16 @@ async function getMember(req, res, next) {
       // nextOfKin is normalised on the way out: records created before the list
       // existed still hold a single contact, and every reader (the form, the
       // profile, the passbook) expects a list.
-      member: { ...member, nextOfKin: nextOfKinList(member.nextOfKin) },
+      member: {
+        ...member,
+        nextOfKin: nextOfKinList(member.nextOfKin),
+        // The admission form's fields in the shape the profile screen expects, even
+        // for members added before the form existed.
+        family: normaliseFamily(member.family),
+        commitment: member.commitment || { agreed: false, agreedAt: null, signedBy: '' },
+        approvals: member.approvals || [],
+        admission: admissionStatus(member),
+      },
       contributions,
       totalContributed,
       byType,
@@ -346,6 +383,9 @@ async function createMember(req, res, next) {
     const kinError = nextOfKinListError(kin);
     if (kinError) return res.status(400).json({ message: kinError });
 
+    const details = detailsFromBody(req.body || {});
+    if (details.error) return res.status(400).json({ message: details.error });
+
     const doc = {
       name: String(name).trim(),
       phone: normalized,
@@ -353,6 +393,12 @@ async function createMember(req, res, next) {
       photoUrl: String(photoUrl || '').trim(),
       photoPublicId: String(photoPublicId || '').trim(),
       nextOfKin: kin,
+      dateOfBirth: details.dateOfBirth ?? null,
+      nationalId: details.nationalId,
+      physicalAddress: details.physicalAddress,
+      family: details.family,
+      commitment: details.commitment,
+      approvals: details.approvals,
       emailNotifications: emailNotifications === undefined ? true : Boolean(emailNotifications),
       notes: String(notes || '').trim(),
       createdBy: req.user._id,
@@ -446,6 +492,17 @@ async function updateMember(req, res, next) {
       if (kinError) return res.status(400).json({ message: kinError });
       member.nextOfKin = kin;
     }
+
+    // The admission form's fields. Each is only touched when the caller sent it, so
+    // saving the notes box does not wipe a date of birth nobody repeated.
+    const details = detailsFromBody(req.body || {});
+    if (details.error) return res.status(400).json({ message: details.error });
+    if (details.dateOfBirth !== undefined) member.dateOfBirth = details.dateOfBirth;
+    if (req.body.nationalId !== undefined) member.nationalId = details.nationalId;
+    if (req.body.physicalAddress !== undefined) member.physicalAddress = details.physicalAddress;
+    if (req.body.family !== undefined) member.family = details.family;
+    if (req.body.commitment !== undefined) member.commitment = details.commitment;
+    if (req.body.approvals !== undefined) member.approvals = details.approvals;
 
     // A replaced photo takes its Cloudinary asset with it. The old publicId is
     // only remembered here and destroyed after a successful save, so a failed
@@ -558,7 +615,8 @@ async function importMembers(req, res, next) {
     let skipped = 0;
     const errors = [];
 
-    for (const { rowNumber, name, phone, email, regNumber, notes } of rows) {
+    for (const row of rows) {
+      const { rowNumber, name, phone, email, regNumber, notes } = row;
       if (!name) {
         skipped++;
         errors.push({ row: rowNumber, reason: 'Missing name' });
@@ -582,6 +640,35 @@ async function importMembers(req, res, next) {
         errors.push({ row: rowNumber, reason: `Duplicate phone ${normalized} — already registered` });
         continue;
       }
+      // A birth date in the sheet has to be a real date — imported silently wrong it
+      // would sit on the profile for ever. Blank is fine: the sheet simply does not
+      // carry that column.
+      const dob = cleanDateOfBirth(row.dateOfBirth);
+      if (dob.error) {
+        skipped++;
+        errors.push({ row: rowNumber, reason: `Invalid date of birth "${row.dateOfBirth}"` });
+        continue;
+      }
+      // The form's emergency contact. A contact named with no way to reach anybody is
+      // rejected by the same rule the admin form applies, rather than being dropped
+      // silently — the point of the field is that it works in an emergency.
+      const kin = nextOfKinList(
+        row.emergencyName || row.emergencyPhone || row.emergencyRelationship
+          ? [
+              {
+                name: row.emergencyName,
+                relationship: row.emergencyRelationship,
+                phone: row.emergencyPhone,
+              },
+            ]
+          : []
+      );
+      const kinError = nextOfKinListError(kin);
+      if (kinError) {
+        skipped++;
+        errors.push({ row: rowNumber, reason: kinError });
+        continue;
+      }
       try {
         const member = await Member.create({
           name,
@@ -589,6 +676,21 @@ async function importMembers(req, res, next) {
           email: rowEmail,
           regNumber: regNumber || (await nextRegNumber()),
           notes: notes || '',
+          // The admission form's own columns, when the sheet has them. The
+          // declaration and the three signatures are not importable — those are the
+          // people, not the spreadsheet.
+          dateOfBirth: dob.value ?? null,
+          nationalId: cleanText(row.nationalId, 40),
+          physicalAddress: cleanText(row.physicalAddress, 240),
+          family: cleanFamily({
+            spouseName: row.spouseName,
+            children: row.children,
+            fatherName: row.fatherName,
+            motherName: row.motherName,
+            fatherInLawName: row.fatherInLawName,
+            motherInLawName: row.motherInLawName,
+          }),
+          nextOfKin: kin,
           createdBy: req.user._id,
         });
         await logAudit({
@@ -614,21 +716,83 @@ async function importMembers(req, res, next) {
   }
 }
 
+// The admission form's own columns, in the order the form asks for them, with the
+// heading the import parser recognises. One table for the full export and the blank
+// import template, so a template can never offer a heading the parser does not read.
+// A date goes in as plain text: SheetJS would otherwise write a serial number whose
+// date format the office has to fix by hand before the file reads properly.
+const FORM_EXPORT_COLUMNS = [
+  ['Date of birth', (m) => isoDay(m.dateOfBirth)],
+  ['National ID', (m) => m.nationalId || ''],
+  ['Physical address', (m) => m.physicalAddress || ''],
+  ['Spouse', (m) => normaliseFamily(m.family).spouseName],
+  ['Children', (m) => normaliseFamily(m.family).children.join('; ')],
+  ['Father', (m) => normaliseFamily(m.family).fatherName],
+  ['Mother', (m) => normaliseFamily(m.family).motherName],
+  ['Father-in-law', (m) => normaliseFamily(m.family).fatherInLawName],
+  ['Mother-in-law', (m) => normaliseFamily(m.family).motherInLawName],
+  // The form's emergency contact, flattened the same way — several contacts are
+  // joined so the row stays one row.
+  ['Emergency contact', (m) => nextOfKinList(m.nextOfKin).map((k) => k.name).join('; ')],
+  ['Emergency relationship', (m) => nextOfKinList(m.nextOfKin).map((k) => k.relationship).join('; ')],
+  ['Emergency phone', (m) => nextOfKinList(m.nextOfKin).map((k) => k.phone).join('; ')],
+];
+
+// Both sides of the form the office signs by hand. Kept as columns so a member's
+// paperwork can be audited from the export without opening each profile.
+const SIGNATURE_EXPORT_COLUMNS = [
+  ['Declaration signed by', (m) => (m.commitment?.agreed ? m.commitment.signedBy || 'yes' : '')],
+  ['Declaration date', (m) => isoDay(m.commitment?.agreedAt)],
+  ...APPROVAL_ROLES.map((role) => [approvalLabel(role), (m) => approvalName(m, role)]),
+  ...APPROVAL_ROLES.map((role) => [`${approvalLabel(role)} date`, (m) => approvalDay(m, role)]),
+];
+
+function isoDay(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+function approvalLabel(role) {
+  return APPROVAL_LABELS[role] || role;
+}
+
+function approvalName(member, role) {
+  const match = (member.approvals || []).find((a) => a.role === role);
+  return match ? match.name : '';
+}
+
+function approvalDay(member, role) {
+  const match = (member.approvals || []).find((a) => a.role === role);
+  return match ? isoDay(match.signedAt) : '';
+}
+
 // GET /api/members/import-template — blank .xlsx with the exact columns
 // importMembers reads, plus one filled example row so the format is obvious.
 async function importTemplate(req, res, next) {
   try {
-    const sheetRows = [
-      {
-        name: 'Jane Wanjiru',
-        phone: '0712345678',
-        email: 'jane@example.com',
-        regNumber: '',
-        notes: 'Optional note',
-      },
-      { name: '', phone: '', email: '', regNumber: '', notes: '' },
-    ];
-    sendWorkbook(res, 'members-import-template.xlsx', [{ name: 'Members', rows: sheetRows }]);
+    const blank = Object.fromEntries(
+      [['name', ''], ['phone', ''], ['email', ''], ['regNumber', ''], ...FORM_EXPORT_COLUMNS.map(([h]) => [h, '']), ['notes', '']]
+    );
+    const example = {
+      ...blank,
+      name: 'Jane Wanjiru',
+      phone: '0712345678',
+      email: 'jane@example.com',
+      regNumber: '',
+      'Date of birth': '1990-04-17',
+      'National ID': '12345678',
+      'Physical address': 'Kiambu',
+      Spouse: 'Peter Wanjiru',
+      Children: 'Ann; Brian',
+      Father: 'James Wanjiru',
+      Mother: 'Mary Wanjiru',
+      'Emergency contact': 'Peter Wanjiru',
+      'Emergency relationship': 'Spouse',
+      'Emergency phone': '0722000111',
+      notes: 'Optional note',
+    };
+    sendWorkbook(res, 'members-import-template.xlsx', [{ name: 'Members', rows: [example, blank] }]);
   } catch (err) {
     next(err);
   }
@@ -651,6 +815,11 @@ async function exportMembers(req, res, next) {
       Phone: m.phone,
       Email: m.email || '',
       'Reg number': m.regNumber || '',
+      // Everything the membership admission form asks for, then what the register
+      // itself knows — so one export answers both "who is this member" and "what has
+      // he paid".
+      ...Object.fromEntries(FORM_EXPORT_COLUMNS.map(([header, read]) => [header, read(m)])),
+      ...Object.fromEntries(SIGNATURE_EXPORT_COLUMNS.map(([header, read]) => [header, read(m)])),
       'Total contributed': sumMap.get(String(m._id)) || 0,
       Status: m.active ? 'active' : 'inactive',
       Notes: m.notes || '',
