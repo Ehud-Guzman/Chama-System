@@ -69,25 +69,28 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   so requiring the week's 1,400 would report the whole group as being behind on the day the cycle
   started and take a week's tea off a balance that was checked without one. Week 92 therefore
   expects nothing and costs nothing — the totals keyed in for it are the members' money for that
-  week, its chai already deducted — and the deductions begin with the week after it, **from that
-  week's first day**: week 93's 1,400 and 100 are what the group collects on the coming Thursday,
-  and they count from the Friday the week starts, which is what "expected by now" and the week's
-  behind figure are read from. Per member:
-  `required so far = weeklyAmount × weeks scored` (0 through week 92, 1,400 in week 93, 2,800 in 94,
-  …), and `his money = openingBalance + what he has paid since the cycle opened − required − tea`.
-  Paying above the 1,400 pushes his money up instead of being swallowed; a week with nothing paid
-  takes 1,400 back off it — the "expected total deducted from his money" the members already work to,
-  which is the accumulated credit/arrears of constitution §7.5. **Tea is automatic**: `chaiAmount`
-  is deducted from every member for every scored week of the cycle whether or not anybody logged
-  anything, it needs no entry, it can never be in arrears, and it is shown per member so each can
-  see the total he has put into the Group's Tea Fund. That mirrors the paper ledger's
-  "Previous + Weekly + Extra − Chai = Member Total". A closed NILL week is flagged for the §7.5
-  KES 50 fine but never charged automatically — a fine has to be issued with its week and reason.
-  The baseline week is labelled as the opening week everywhere it appears — the week strip, the
-  week table, the passbook's schedule and the weekly reconciliation — and it is excluded from the
-  "weeks expected" figure on the performance report, so it can never be counted against anybody. The
-  rule lives in one place, `scoredWeeks()` in `weekCycle.js`, so the ledger, the funds, the public
-  page and the performance report cannot drift apart on it.
+  week, its chai already deducted — and a week after it is scored the day *after* its Thursday, not
+  while it is still running: the group collects a week's money on that Thursday, so counting it
+  earlier would charge the open book for money nobody has been asked for yet. A sheet keyed in on a
+  Friday therefore reads exactly as keyed, and from the Friday after the first collection that week
+  counts. Per member:
+  `required so far = weeklyAmount × the weeks that have closed` (0 while week 93 is running, 1,400
+  from the day after it closes, 2,800 the week after, …), and
+  `his money = openingBalance + what he has paid since the cycle opened − required − tea`.
+  Paying above the 1,400 pushes his money up instead of being swallowed; a closed week with nothing
+  paid takes 1,400 back off it — the "expected total deducted from his money" the members already
+  work to, which is the accumulated credit/arrears of constitution §7.5. **Tea is automatic**:
+  `chaiAmount` is deducted from every member for every closed scored week of the cycle whether or
+  not anybody logged anything, it needs no entry, it can never be in arrears, and it is shown per
+  member so each can see the total he has put into the Group's Tea Fund. That mirrors the paper
+  ledger's "Previous + Weekly + Extra − Chai = Member Total". A closed NILL week is flagged for the
+  §7.5 KES 50 fine but never charged automatically — a fine has to be issued with its week and
+  reason. The baseline week is labelled as the opening week everywhere it appears — the week strip,
+  the week table, the passbook's schedule and the weekly reconciliation — and it is excluded from
+  the "weeks expected" figure on the performance report, along with the week still running, so
+  neither can ever be counted against anybody. The rule lives in one place, `scoredWeeks()` in
+  `weekCycle.js`, so the ledger, the funds, the public page and the performance report cannot drift
+  apart on it.
 - **Speed, and how it is kept:** the cost of a page here is *round trips to the database*, so the
   app counts them. Settings is held in-process for 30 seconds rather than re-read by nearly every
   request; one member's ledger is three round trips; the member list and each member's ledger are

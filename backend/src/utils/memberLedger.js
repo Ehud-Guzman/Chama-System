@@ -4,25 +4,25 @@ const { weekNumberForDate, weekRange, currentWeekNumber, scoredWeeks } = require
 //
 // The rule, as agreed with the treasurer:
 //
-//   required so far = weeklyAmount × the weeks scored since the opening week
-//                     (0 through week 92, 1,400 in week 93, 2,800 in 94, …)
+//   required so far = weeklyAmount × the weeks that have closed since the opening
+//                     week (0 while a week is still running, 1,400 the day after its
+//                     Thursday passes, 2,800 the week after, …)
 //   his money       = openingBalance + what he has paid since the cycle opened
 //                     − required − tea
 //   tea             = totalled on its own (§7.2) but still comes *out* of his
 //                     money, exactly as the paper ledger's
 //                     "Previous + Weekly + Extra − Chai = Member Total" did
 //
-// A week is scored from its first day, so the money the group collects on its
-// Thursday is already the expectation the member's money is measured against —
-// §7.5's "expected total deducted from his money". A week nobody pays shows as
-// behind from the day after its Thursday passes.
+// A week is scored once it has closed, not while it is running: the group collects
+// a week's money on its Thursday, so the 1,400 and the tea are counted from the day
+// after. That is what leaves an empty book reading zero and a keyed-in total reading
+// exactly as keyed until that first collection lands — and why a week nobody pays
+// shows as behind only once its Thursday is behind us.
 //
 // The opening week — week 92, the week the books opened — is the **baseline** and
-// is never scored. The totals keyed in for it are the members' money *with the tea
-// already deducted*, verified against the paper ledger, so billing 1,400 and 100
-// more for that week would report the whole group behind on the day the cycle
-// started, off a balance that was checked without them. Deductions begin with the
-// week after it: week 93.
+// is never scored either. The totals keyed in for it are the members' money for
+// that week, chai already deducted, verified against the paper ledger, so counting
+// it again would bill a week that was already settled.
 //
 // "What he has paid" is the weekly contribution plus anything extra, so paying
 // above 1,400 in a week pushes his money up instead of being swallowed. A scored
@@ -40,8 +40,9 @@ const { weekNumberForDate, weekRange, currentWeekNumber, scoredWeeks } = require
 function computeMemberLedger({ member, contributions, config, now = Date.now() }) {
   const currentWeek = currentWeekNumber(config, now);
   const elapsed = currentWeek - config.cycleStartWeek + 1;
-  // Weeks that carry an expectation: none in the opening week (week 92), one in
-  // week 93 from its first day, two in week 94, and so on. See the rule at the top.
+  // Weeks that carry an expectation: none of the opening week (92) and none of the
+  // week still running — one the day after that week's Thursday passes, two the
+  // week after, and so on. See the rule at the top.
   const weeksScored = scoredWeeks(config, now);
   const required = config.weeklyAmount * weeksScored;
   // Tea is automatic: every member is charged the week's tea for every scored week
