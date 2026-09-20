@@ -42,7 +42,7 @@ function buildFineReport({ member, fines, voidedFines = [], scopeLabel }) {
       settled: amount - remaining,
       remaining,
       outstanding: remaining > 0,
-      status: remaining > 0 ? 'Outstanding' : 'Cleared',
+      status: remaining > 0 ? 'Still owed' : 'Paid off',
       issuedBy: fine.issuedBy?.name || '',
       settlements,
     };
@@ -385,7 +385,7 @@ function mapFine(fine) {
     settled: amount - remaining,
     remaining,
     outstanding: remaining > 0,
-    status: remaining > 0 ? 'Outstanding' : 'Cleared',
+    status: remaining > 0 ? 'Still owed' : 'Paid off',
     issuedBy: fine.issuedBy?.name || '',
     memberId: fine.memberId?._id ? String(fine.memberId._id) : String(fine.memberId || ''),
     memberName: fine.memberId?.name || 'Unknown',

@@ -349,22 +349,22 @@ export default function Reports() {
                   contribution row can show it, so a total built from rows alone
                   reads as if the group had never collected anything. */}
               <p className="amount mt-1 text-sm text-muted">
-                {money(summary.carriedIn)} brought forward from the paper ledger +{" "}
-                {money(summary.collected)} collected since
+                ({money(summary.carriedIn)} carried in from the paper ledger +{" "}
+                {money(summary.collected)} paid in since)
               </p>
               <p className="amount mt-1 text-sm text-muted">
-                {money(summary.thisWeekTotal)} this week
+                {money(summary.thisWeekTotal)} paid in this week
               </p>
 
               {summary.totalExpenses > 0 && (
                 <p className="amount mt-1 text-sm text-alert">
-                  − {money(summary.totalExpenses)} spent from tracked funds
+                  − {money(summary.totalExpenses)} spent out of the funds
                 </p>
               )}
               <p className="amount mt-1 text-lg font-semibold">
                 {money(summary.netBalance)}{" "}
                 <span className="text-xs font-normal text-muted">
-                  net balance
+                  held by the group now (everything in, less everything spent)
                 </span>
               </p>
 
@@ -526,7 +526,7 @@ export default function Reports() {
                   {money(summary.fines.outstanding)}
                 </p>
                 <p className="amount text-[11px] text-muted">
-                  {summary.fines.pendingCount} of {summary.fines.count} not cleared
+                  ({summary.fines.pendingCount} of {summary.fines.count} fines not cleared)
                 </p>
               </div>
 
@@ -537,7 +537,9 @@ export default function Reports() {
                 <p className="amount mt-0.5 truncate text-lg font-bold">
                   {money(summary.fines.issued)}
                 </p>
-                <p className="amount text-[11px] text-muted">{summary.fines.count} fines</p>
+                <p className="amount text-[11px] text-muted">
+                  ({summary.fines.count} fines raised in total)
+                </p>
               </div>
 
               <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
@@ -548,7 +550,7 @@ export default function Reports() {
                   {money(summary.fines.cleared)}
                 </p>
                 <p className="amount text-[11px] text-muted">
-                  {summary.fines.clearedCount} cleared
+                  ({summary.fines.clearedCount} fines cleared)
                 </p>
               </div>
 
@@ -559,7 +561,7 @@ export default function Reports() {
                 <p className="amount mt-0.5 truncate text-lg font-bold">
                   {money(summary.fines.collected)}
                 </p>
-                <p className="text-[11px] text-muted">kept out of contributions</p>
+                <p className="text-[11px] text-muted">(kept out of contributions)</p>
               </div>
             </div>
 
@@ -603,9 +605,9 @@ export default function Reports() {
                     </span>
                   </div>
                   <p className="amount mt-0.5 text-[11px] text-muted">
-                    {money(fund.carriedIn)} carried in + {money(fund.collected)} collected
+                    ({money(fund.carriedIn)} carried in + {money(fund.collected)} paid in
                     {fund.derived > 0 ? ` + ${money(fund.derived)} automatic tea` : ""}
-                    {fund.spent > 0 ? ` − ${money(fund.spent)} spent` : ""}
+                    {fund.spent > 0 ? ` − ${money(fund.spent)} spent` : ""})
                   </p>
                 </li>
               ))}
@@ -802,7 +804,7 @@ export default function Reports() {
                   {money(performanceTotals.totalContributed)}
                 </p>
                 <p className="amount text-[11px] text-muted">
-                  incl. {money(performanceTotals.carriedIn)} carried forward
+                  (incl. {money(performanceTotals.carriedIn)} carried in)
                 </p>
               </div>
 
@@ -816,7 +818,8 @@ export default function Reports() {
                     : `${performanceTotals.averageConsistency}%`}
                 </p>
                 <p className="amount text-[11px] text-muted">
-                  {performanceTotals.weeksPaid} of {performanceTotals.weeksExpected} weeks paid
+                  ({performanceTotals.weeksPaid} of {performanceTotals.weeksExpected} weeks paid in
+                  full)
                 </p>
               </div>
 
@@ -828,8 +831,8 @@ export default function Reports() {
                   {performanceTotals.fullyPaidMembers}
                 </p>
                 <p className="amount text-[11px] text-muted">
-                  of {performanceTotals.members} at 100% · {performanceTotals.membersBehind} below
-                  80%
+                  (of {performanceTotals.members} members paying every closed week ·{" "}
+                  {performanceTotals.membersBehind} behind)
                 </p>
               </div>
 
@@ -844,7 +847,7 @@ export default function Reports() {
                 >
                   {money(performanceTotals.pendingFines)}
                 </p>
-                <p className="text-[11px] text-muted">across everyone below</p>
+                <p className="text-[11px] text-muted">(owed by the members listed below)</p>
               </div>
             </div>
           )}
@@ -880,7 +883,9 @@ export default function Reports() {
                     <p className="amount mt-0.5 truncate text-lg font-bold text-primary">
                       {money(monthTotals.personal)}
                     </p>
-                    <p className="text-[11px] text-muted">all months</p>
+                    <p className="text-[11px] text-muted">
+                      (what the members themselves paid in, all months)
+                    </p>
                   </div>
 
                   <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
@@ -890,7 +895,7 @@ export default function Reports() {
                     <p className="amount mt-0.5 truncate text-lg font-bold">
                       {money(monthTotals.groupFund)}
                     </p>
-                    <p className="text-[11px] text-muted">tea and other funds</p>
+                    <p className="text-[11px] text-muted">(tea and the group's other funds)</p>
                   </div>
 
                   <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
@@ -901,7 +906,7 @@ export default function Reports() {
                       {money(monthTotals.all)}
                     </p>
                     <p className="amount text-[11px] text-muted">
-                      {monthTotals.count} rows logged
+                      (members and funds together, {monthTotals.count} entries)
                     </p>
                   </div>
 
@@ -912,7 +917,7 @@ export default function Reports() {
                     <p className="amount mt-0.5 text-lg font-bold">
                       {monthTotals.contributingMembers}
                     </p>
-                    <p className="text-[11px] text-muted">at least once</p>
+                    <p className="text-[11px] text-muted">(paid in at least once, any month)</p>
                   </div>
                 </div>
               )}
@@ -949,9 +954,9 @@ export default function Reports() {
                         </p>
                       </div>
                       <p className="amount mt-0.5 text-xs text-muted">
-                        {money(m.personalTotal)} personal ·{" "}
-                        {money(m.groupFundTotal)} group funds ·{" "}
-                        {m.memberCount} {m.memberCount === 1 ? "member" : "members"}
+                        ({money(m.personalTotal)} from members ·{" "}
+                        {money(m.groupFundTotal)} from funds · {m.memberCount}{" "}
+                        {m.memberCount === 1 ? "member" : "members"} paid in)
                       </p>
                       {/* On a phone the month list has to stay a list, so the
                           funds stay behind this tap. A wide screen has the room
@@ -1046,11 +1051,11 @@ export default function Reports() {
                             figure the week is judged on, kept apart from the tea
                             every member is charged automatically. */}
                         <span className="amount w-full text-xs text-muted sm:w-auto">
-                          Members {money(w.memberTotal)}
+                          Paid in by members {money(w.memberTotal)}
                           {!w.isBaseline && w.memberEligibleCount > 0 && (
                             <span>
                               {" "}
-                              · {w.memberPaidCount}/{w.memberEligibleCount} paid in full
+                              ({w.memberPaidCount} of {w.memberEligibleCount} paid in full)
                             </span>
                           )}
                         </span>
@@ -1145,7 +1150,8 @@ export default function Reports() {
                                             : "text-primary"
                                         }`}
                                       >
-                                        {money(m.paid)} · {m.status}
+                                        {money(m.paid)} ·{" "}
+                                        {m.status === "partial" ? "partly paid" : "nothing paid"}
                                       </span>
                                     </li>
                                   ))}

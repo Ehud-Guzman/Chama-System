@@ -389,13 +389,13 @@ export default function DisciplinaryFines() {
                     {record.summary.count}
                   </dd>
                   <dd className="amount text-xs text-muted">
-                    {money(record.summary.issued)} issued
+                    ({money(record.summary.issued)} raised in fines)
                   </dd>
                 </div>
 
                 <div className="min-w-0 bg-surface px-4 py-3">
                   <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-                    Outstanding
+                    Still owed
                   </dt>
                   <dd
                     className={`amount mt-0.5 break-words text-sm font-bold ${
@@ -405,19 +405,19 @@ export default function DisciplinaryFines() {
                     {money(record.summary.outstanding)}
                   </dd>
                   <dd className="amount text-xs text-muted">
-                    {record.summary.pendingCount} not cleared
+                    ({record.summary.pendingCount} fines not cleared)
                   </dd>
                 </div>
 
                 <div className="min-w-0 bg-surface px-4 py-3">
                   <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-                    Cleared
+                    Paid off
                   </dt>
                   <dd className="amount mt-0.5 break-words text-sm font-bold text-accent">
                     {money(record.summary.cleared)}
                   </dd>
                   <dd className="amount text-xs text-muted">
-                    {record.summary.clearedCount} paid off
+                    ({record.summary.clearedCount} fines paid off)
                   </dd>
                 </div>
               </dl>

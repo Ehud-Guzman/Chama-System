@@ -28,13 +28,14 @@ export default function GroupOverview({ overview }) {
     value={money(overview.totalContributed)}
     hint={
       overview.carriedIn > 0
-        ? `${money(overview.carriedIn)} carried forward · ${money(overview.collected)} since the books opened`
+        ? `(${money(overview.carriedIn)} carried in + ${money(overview.collected)} paid in since the books opened)`
         : undefined
     }
   />
   <StatTile
     label="Cash held now"
     value={money(overview.netBalance)}
+    hint="(total raised − money spent out of the funds)"
     accent
   />
 </div>

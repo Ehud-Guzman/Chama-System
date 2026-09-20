@@ -224,6 +224,18 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   lists are complements, so between them they account for every eligible member, and both are cut
   from the same `personalPaid` on each member's own ledger row — which is what makes the names add
   up to the figure above them (`backend/test/memberLedger.test.js`).
+- **Every money label says what it means.** The paper ledger's shorthand is not what a new
+  treasurer knows, so each figure carries its own explanation in brackets, and the same words are
+  used for the same thing on every screen — the dashboard and finance list (which set the pattern,
+  `frontend/src/components/ledger/MemberLedgerList.jsx`), the member's page, the passbook, the
+  reports and the PDF/Excel statements (`backend/src/utils/memberStatement.js`):
+  - **money held by member** — carried in + paid in − due so far − tea
+  - **carried in at week 92** — what the paper ledger held when these books opened
+  - **paid in since week 92** — contributions logged on this ledger
+  - **due so far** — the weekly amount × the weeks that have closed
+  - **owed** — closed weeks still unpaid (never a week still running: its Thursday is to come)
+  - **tea** — deducted automatically, the weekly tea × the weeks that have closed
+  - **settled** — every closed week paid, by payment or by earlier extra saved
 - **One-time opening balances:** `/admin/finance/setup` is where each member's current total is
   keyed in at go-live. Every member is listed with his ledger figure already filled in as a
   suggestion, any of them can be typed over, and one save applies the lot. That is the only manual

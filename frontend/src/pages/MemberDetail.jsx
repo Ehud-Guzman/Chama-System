@@ -368,20 +368,26 @@ async function exportStatementExcel() {
           </div>
           <div className="shrink-0 text-right">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-              Held by member
+              Money held by member
             </p>
             <p className="amount text-xl font-bold text-accent">
               {money(ledger ? ledger.money : totalContributed)}
             </p>
+            <p className="mt-0.5 text-[11px] leading-4 text-muted">
+              (carried in + paid in − due so far − tea)
+            </p>
             {ledger && (
               <p className="amount mt-1 text-xs text-muted">
-                {money(ledger.openingBalance)} brought forward at week {ledger.cycleStartWeek} ·{' '}
-                {money(ledger.paid)} paid since
+                {money(ledger.openingBalance)} carried in at week {ledger.cycleStartWeek} ·{' '}
+                {money(ledger.paid)} paid in since
               </p>
             )}
             {ledger && ledger.arrears > 0 && (
               <p className="amount mt-1 text-xs font-semibold text-alert">
-                {money(ledger.arrears)} behind
+                {money(ledger.arrears)} owed
+                {ledger.weeksBehind > 0
+                  ? ` (${ledger.weeksBehind} week${ledger.weeksBehind === 1 ? '' : 's'} behind)`
+                  : ''}
               </p>
             )}
           </div>

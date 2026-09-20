@@ -23,11 +23,11 @@ import {
 // `action` is where a page adds its own button next to it.
 const SORTS = [
   { value: 'name', label: 'Name' },
-  { value: 'arrears', label: 'Most behind' },
-  { value: 'money', label: 'Most money' },
+  { value: 'arrears', label: 'Most owed' },
+  { value: 'money', label: 'Most money held' },
 ];
 
-function Stat({ label, value, accent, alert }) {
+function Stat({ label, value, hint, accent, alert }) {
   return (
     <div className="rounded-xl border border-rule bg-surface p-4">
       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{label}</p>
@@ -38,6 +38,10 @@ function Stat({ label, value, accent, alert }) {
       >
         {value}
       </p>
+      {/* Every money label in this app carries its own explanation in brackets:
+          the terms the paper ledger used are not the terms a new treasurer knows,
+          and a figure nobody can define is a figure nobody checks. */}
+      {hint && <p className="amount mt-1 text-[11px] leading-4 text-muted">{hint}</p>}
     </div>
   );
 }
@@ -46,11 +50,11 @@ function StatusPill({ member, baselineWeek }) {
   if (member.arrears > 0) {
     const weeks =
       member.weeksBehind > 0
-        ? ` · ${member.weeksBehind} week${member.weeksBehind === 1 ? '' : 's'}`
+        ? ` (${member.weeksBehind} week${member.weeksBehind === 1 ? '' : 's'} behind)`
         : '';
     return (
       <span className="rounded-full bg-alert/10 px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-alert">
-        {money(member.arrears)} behind{weeks}
+        {money(member.arrears)} owed{weeks}
       </span>
     );
   }
@@ -65,7 +69,7 @@ function StatusPill({ member, baselineWeek }) {
   }
   return (
     <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-primary">
-      Settled
+      Settled (every closed week paid)
     </span>
   );
 }
@@ -191,7 +195,8 @@ export default function MemberLedgerList({
               </h1>
               <p className="mt-1 text-sm text-muted">
                 {shortDate(week.startDate)} → {shortDate(week.endDate)} · {money(week.weeklyAmount)} a
-                week per member · {money(week.chaiAmount)} tea
+                week each (the weekly contribution) · {money(week.chaiAmount)} tea (deducted
+                automatically every closed week)
               </p>
               {hint && <p className="mt-1 max-w-md text-xs leading-5 text-muted">{hint}</p>}
             </div>
@@ -200,13 +205,28 @@ export default function MemberLedgerList({
 
           {totals && (
             <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Stat label="Held by members" value={money(totals.money)} accent />
               <Stat
-                label={`Brought forward at week ${week.cycleStartWeek}`}
-                value={money(totals.openingBalance)}
+                label="Money held by members"
+                value={money(totals.money)}
+                hint="(what they carried in + have paid in − what is due − tea)"
+                accent
               />
-              <Stat label="Collected in total" value={money(totals.paid)} />
-              <Stat label="Behind in total" value={money(totals.arrears)} alert={totals.arrears > 0} />
+              <Stat
+                label={`Carried in at week ${week.cycleStartWeek}`}
+                value={money(totals.openingBalance)}
+                hint="(what the paper ledger held when these books opened)"
+              />
+              <Stat
+                label={`Paid in since week ${week.cycleStartWeek}`}
+                value={money(totals.paid)}
+                hint="(contributions logged on this ledger)"
+              />
+              <Stat
+                label="Owed by members"
+                value={money(totals.arrears)}
+                hint="(closed weeks still unpaid)"
+                alert={totals.arrears > 0}
+              />
             </section>
           )}
         </>
@@ -263,14 +283,17 @@ export default function MemberLedgerList({
                   </span>
                 </span>
                 <span className="shrink-0 text-right">
+                  <span className="block text-[11px] font-semibold uppercase tracking-widest text-muted">
+                    Money held
+                  </span>
                   <span className="amount block text-base font-bold">{money(m.money)}</span>
                   <span className="amount block text-xs text-muted">
                     {m.required > 0
-                      ? `${money(m.paid)} of ${money(m.required)}`
-                      : `${money(m.paid)} paid this cycle`}
+                      ? `${money(m.paid)} paid of ${money(m.required)} due (weeks that have closed)`
+                      : `${money(m.paid)} paid in (nothing due yet)`}
                   </span>
                   <span className="amount block text-xs text-muted">
-                    tea (auto) {money(m.chaiPaid)}
+                    tea {money(m.chaiPaid)} (deducted automatically)
                   </span>
                 </span>
                 <svg

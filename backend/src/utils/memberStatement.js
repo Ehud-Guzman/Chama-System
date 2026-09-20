@@ -100,40 +100,44 @@ function buildStatement(profile) {
 
   const figures = [
     {
-      label: 'Held by member',
+      label: 'Money held by member',
       value: ledger ? ledger.money : profile.totalContributed || 0,
       strong: true,
     },
     {
-      label: `Carried forward (week ${ledger ? ledger.cycleStartWeek : '—'})`,
+      label: `Carried in at week ${ledger ? ledger.cycleStartWeek : '—'}`,
       value: ledger ? ledger.openingBalance : 0,
     },
     {
-      label: 'Paid since the cycle opened',
+      label: 'Paid in since the books opened',
       value: ledger ? ledger.paid : profile.totalContributed || 0,
     },
     {
       // One deduction figure for a member's own copy: the weekly contribution and
       // what the Group deducts alongside it. The office's copy breaks the tea out.
-      label: 'Required so far',
+      label: 'Due so far (the weeks that have closed)',
       value: ledger ? (profile.teaFundIncluded ? ledger.required : ledger.required + ledger.tea) : 0,
     },
   ];
 
   if (ledger && profile.teaFundIncluded) {
-    figures.push({ label: 'Tea (automatic, Group fund)', value: ledger.tea });
+    figures.push({ label: 'Tea (deducted automatically, Group fund)', value: ledger.tea });
   }
 
   figures.push(
     {
-      label: 'Behind by',
+      label: 'Owed (closed weeks still unpaid)',
       value: ledger ? ledger.arrears : 0,
       alert: Boolean(ledger && ledger.arrears > 0),
     },
-    { label: 'Credit carried forward', value: ledger ? ledger.credit : 0 },
+    { label: 'Extra saved (paid more than was due)', value: ledger ? ledger.credit : 0 },
     { label: 'Contributions logged', value: profile.contributionsCount || contributions.length },
     { label: 'Paid in the rows below', value: profile.totalContributed || 0 },
-    { label: 'Fines owed now', value: fines.totalOwed || 0, alert: Number(fines.totalOwed) > 0 },
+    {
+      label: 'Fines owed now (kept out of the figures above)',
+      value: fines.totalOwed || 0,
+      alert: Number(fines.totalOwed) > 0,
+    },
     { label: 'Fines cleared', value: profile.finesSettledCount || 0 },
     { label: 'Member since', value: shortDate(profile.joinDate) },
     { label: 'Statement generated', value: shortDate(new Date()) }

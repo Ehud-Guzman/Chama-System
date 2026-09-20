@@ -358,14 +358,14 @@ export default function FinanceSetup() {
       <section className="grid gap-3 rounded-xl border border-rule bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Field
           id="cycleStartWeek"
-          label="Week number now"
+          label="Week number now (the group's shared count)"
           value={settings.cycleStartWeek}
           onChange={(v) => setSettings({ ...settings, cycleStartWeek: v })}
           disabled={locked}
         />
         <Field
           id="weeklyAmount"
-          label="Required each week"
+          label="Required each week (the weekly contribution)"
           value={settings.weeklyAmount}
           onChange={(v) => setSettings({ ...settings, weeklyAmount: v })}
           money
@@ -373,7 +373,7 @@ export default function FinanceSetup() {
         />
         <Field
           id="chaiAmount"
-          label="Tea each week"
+          label="Tea each week (deducted automatically)"
           value={settings.chaiAmount}
           onChange={(v) => setSettings({ ...settings, chaiAmount: v })}
           money
@@ -381,7 +381,7 @@ export default function FinanceSetup() {
         />
         <div>
           <label htmlFor="weekAnchorDate" className="mb-1 block text-xs font-medium">
-            Friday that week starts
+            Friday that week starts (the week runs Friday → Thursday)
           </label>
           <input
             id="weekAnchorDate"
@@ -402,7 +402,9 @@ export default function FinanceSetup() {
       <section className="overflow-hidden rounded-xl border border-rule bg-surface">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rule px-4 py-3">
           <div>
-            <h2 className="text-sm font-bold">Opening balances</h2>
+            <h2 className="text-sm font-bold">
+              Opening balances (what each member held when these books opened)
+            </h2>
             <p className="mt-0.5 text-xs text-muted">
               What each member held on the paper ledger when this started. It is the base every
               later week is added to. Type figures as digits — 1400 and 1,400 both work — and a box

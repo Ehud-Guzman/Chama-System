@@ -109,18 +109,28 @@ export default function MemberChartModal({ member, onClose }) {
             <>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <Tile
-                  label="Member's own"
+                  label="Paid in his own name"
                   value={money(totals.personal)}
                   accent
                   hint={
-                    totals.carriedIn > 0 ? `+ ${money(totals.carriedIn)} carried in` : undefined
+                    totals.carriedIn > 0
+                      ? `(plus ${money(totals.carriedIn)} carried in)`
+                      : '(his weekly contributions and extras)'
                   }
                 />
-                <Tile label="Group funds (tea)" value={money(totals.groupFund)} />
+                <Tile
+                  label="Group funds (tea)"
+                  value={money(totals.groupFund)}
+                  hint="(collected from everyone each week)"
+                />
                 <Tile
                   label="Weeks paid"
                   value={`${weekly.weeksPaid}/${weekly.weeksExpected}`}
-                  hint={weekly.weeksPartial > 0 ? `+${weekly.weeksPartial} partial` : undefined}
+                  hint={
+                    weekly.weeksPartial > 0
+                      ? `(+${weekly.weeksPartial} partly paid)`
+                      : '(weeks closed so far)'
+                  }
                 />
                 <Tile
                   label="Consistency"

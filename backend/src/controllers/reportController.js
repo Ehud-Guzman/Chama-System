@@ -332,7 +332,7 @@ async function exportPerformance(req, res, next) {
         rows: [
           { Field: 'Members', Value: totals.members },
           { Field: 'Total contributed (all-time)', Value: totals.totalContributed },
-          { Field: 'Carried forward inside that', Value: totals.carriedIn },
+          { Field: 'Carried in inside that', Value: totals.carriedIn },
           { Field: 'Average consistency (%)', Value: totals.averageConsistency ?? '' },
           { Field: 'Members fully paid', Value: totals.fullyPaidMembers },
           { Field: 'Members below 80%', Value: totals.membersBehind },

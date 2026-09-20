@@ -25,7 +25,7 @@ const KINDS = [
   { value: 'expense', label: 'Expense', hint: 'Money spent from the Tea Fund' },
 ];
 
-function Stat({ label, value, accent, alert }) {
+function Stat({ label, value, hint, accent, alert }) {
   return (
     <div className="rounded-xl border border-rule bg-surface p-4">
       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{label}</p>
@@ -36,6 +36,9 @@ function Stat({ label, value, accent, alert }) {
       >
         {value}
       </p>
+      {/* The explanation in brackets: these are the group's own figures, and a
+          treasurer should be able to defend any one of them without a call. */}
+      {hint && <p className="amount mt-1 text-[11px] leading-4 text-muted">{hint}</p>}
     </div>
   );
 }
@@ -311,21 +314,42 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
       </header>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat label={`Brought forward at week ${data.week.cycleStartWeek}`} value={money(ledger.openingBalance)} />
-        <Stat label="His money" value={money(ledger.money)} accent />
-        <Stat label="Expected by now" value={money(ledger.required)} />
         <Stat
-          label={owed ? 'Behind' : 'Extra saved'}
+          label={`Carried in at week ${data.week.cycleStartWeek}`}
+          value={money(ledger.openingBalance)}
+          hint="(what the paper ledger held for him when these books opened)"
+        />
+        <Stat
+          label="Money he holds"
+          value={money(ledger.money)}
+          hint="(carried in + paid in − due so far − tea)"
+          accent
+        />
+        <Stat
+          label="Due so far"
+          value={money(ledger.required)}
+          hint={`(${money(ledger.weeklyAmount)} × the ${ledger.chai.weeks} week${
+            ledger.chai.weeks === 1 ? '' : 's'
+          } that have closed)`}
+        />
+        <Stat
+          label={owed ? 'Owed' : 'Extra saved'}
           value={money(owed ? ledger.arrears : ledger.credit)}
+          hint={owed ? '(closed weeks still unpaid)' : '(paid more than was due so far)'}
           alert={owed}
         />
-        <Stat label={`Tea (auto) — ${ledger.chai.weeks} week${ledger.chai.weeks === 1 ? '' : 's'}`} value={money(ledger.chai.due)} />
+        <Stat
+          label={`Tea — ${ledger.chai.weeks} week${ledger.chai.weeks === 1 ? '' : 's'}`}
+          value={money(ledger.chai.due)}
+          hint={`(deducted automatically, ${money(ledger.chai.perWeek)} a week)`}
+        />
       </section>
 
       <p className="rounded-xl border border-rule bg-canvas px-4 py-3 text-xs leading-5 text-muted">
-        {money(ledger.openingBalance)} brought forward + {money(ledger.paid)} paid since week 92 −{' '}
-        {money(ledger.required)} required − {money(ledger.chai.due)} tea ={' '}
-        <span className="amount font-semibold">{money(ledger.money)}</span>. Tea is{' '}
+        {money(ledger.openingBalance)} carried in at week {data.week.cycleStartWeek} +{' '}
+        {money(ledger.paid)} paid in since then −{' '}
+        {money(ledger.required)} due so far − {money(ledger.chai.due)} tea ={' '}
+        <span className="amount font-semibold">{money(ledger.money)}</span> held for him. Tea is{' '}
         {money(ledger.chai.perWeek)} a week, deducted automatically from every member and paid into the
         Group’s Tea Fund — nobody owes it and nobody pays arrears on it.
         {ledger.nillWeeksDueFine.length > 0 &&
@@ -382,20 +406,20 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                 Logging against week {selectedWeek.weekNumber} ({shortDate(selectedWeek.startDate)} →{' '}
                 {shortDate(selectedWeek.endDate)})
                 {selectedWeek.isBaseline
-                  ? ` — the opening week. Nothing was required of it, because his money for it is the ${money(
+                  ? ` — the opening week. Nothing was due for it, because his money for it is the ${money(
                       ledger.openingBalance
-                    )} he brought forward; the week's ${money(
+                    )} he carried in; the week's ${money(
                       ledger.weeklyAmount
-                    )} is still collected, and it stands as credit against week ${
+                    )} is still collected, and it stands as extra saved against week ${
                       selectedWeek.weekNumber + 1
                     }.`
                   : selectedWeek.isCurrent
                     ? ` — the week running now. Its ${money(
                         ledger.weeklyAmount
-                      )} is counted the day after it closes, so logging it here is what settles it.`
+                      )} is only counted the day after it closes, so logging it here is what settles it.`
                     : selectedWeek.settled
-                      ? ' — already settled, so anything logged now counts as extra credit.'
-                      : ` — ${money(weekDue)} still due on the ${money(ledger.weeklyAmount)}.`}
+                      ? ' — already settled, so anything logged now counts as extra saved.'
+                      : ` — ${money(weekDue)} of the ${money(ledger.weeklyAmount)} still due.`}
               </p>
             )}
             {data.history?.length > 0 && (
@@ -415,7 +439,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
               className="min-h-11 w-full rounded-lg border border-alert/40 bg-alert/5 px-3 text-xs font-semibold text-alert"
             >
               He is {ledger.weeksBehind} week{ledger.weeksBehind === 1 ? '' : 's'} behind ({' '}
-              {money(ledger.arrears)}) — log it all and catch him up
+              {money(ledger.arrears)} owed) — log it all and catch him up
             </button>
           )}
 
@@ -593,9 +617,9 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                 <thead className="border-b border-rule bg-canvas">
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Week</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Paid</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Paid in</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Status</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Tea</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Tea (auto)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -620,8 +644,14 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                                   : 'bg-canvas text-muted'
                           }`}
                         >
-                          {w.isBaseline ? 'opening' : w.status}
-                          {w.coveredByCredit ? ' (credit)' : ''}
+                          {w.isBaseline
+                            ? 'opening'
+                            : w.status === 'paid'
+                              ? 'paid in full'
+                              : w.status === 'partial'
+                                ? 'partly paid'
+                                : 'nothing paid'}
+                          {w.coveredByCredit ? ' (covered by earlier extra)' : ''}
                         </span>
                       </td>
                       <td className="amount px-3 py-2 text-muted">
@@ -655,10 +685,10 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                             <td className="px-3 py-2">
                               {collected ? (
                                 <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest text-primary">
-                                  Collected
+                                  paid in
                                 </span>
                               ) : (
-                                <span className="text-xs">Carried forward</span>
+                                <span className="text-xs">counted in his carried-in money</span>
                               )}
                             </td>
                             <td className="amount px-3 py-2">

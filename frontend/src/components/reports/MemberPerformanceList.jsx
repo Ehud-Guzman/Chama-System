@@ -146,7 +146,7 @@ export default function MemberPerformanceList({ members, onOpenChart }) {
                       line the figure looks invented. */}
                   {m.carriedIn > 0 && (
                     <p className="text-xs font-normal text-muted">
-                      incl. {money(m.carriedIn)} carried forward
+                      incl. {money(m.carriedIn)} carried in
                     </p>
                   )}
                 </td>

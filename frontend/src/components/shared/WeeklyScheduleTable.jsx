@@ -1,7 +1,12 @@
 import { useMemo, useState } from 'react';
 import { money, shortDate } from '../../utils/format';
 
-const STATUS_LABELS = { paid: 'Paid', partial: 'Partial', unpaid: 'Unpaid', baseline: 'Opening week' };
+const STATUS_LABELS = {
+  paid: 'Paid in full',
+  partial: 'Partly paid',
+  unpaid: 'Nothing paid',
+  baseline: 'Opening week',
+};
 const STATUS_CLASSES = {
   paid: 'text-accent',
   partial: 'text-primary',
@@ -64,7 +69,7 @@ function ScheduleSection({ schedule: s }) {
         <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
           <span>Wk</span>
           <span>Dates</span>
-          <span className="text-right">Paid</span>
+          <span className="text-right">Paid in</span>
           <span className="text-right">Status</span>
         </div>
         <ul>
@@ -92,7 +97,9 @@ function ScheduleSection({ schedule: s }) {
               {w.isBaseline ? (
                 <span className="text-right text-xs font-semibold text-muted">Opening week</span>
               ) : s.automatic ? (
-                <span className="text-right text-xs font-semibold text-muted">Auto</span>
+                <span className="text-right text-xs font-semibold text-muted">
+                  Auto (deducted)
+                </span>
               ) : (
                 <span className={`text-right text-xs font-semibold ${STATUS_CLASSES[w.status]}`}>
                   {STATUS_LABELS[w.status]}
@@ -123,7 +130,7 @@ function ScheduleSection({ schedule: s }) {
                     {w.paid > 0 ? money(w.paid) : '—'}
                   </span>
                   <span className="text-right text-xs">
-                    {w.paid > 0 ? 'Collected' : 'Carried forward'}
+                    {w.paid > 0 ? 'Paid in that week' : 'Counted in his carried-in money'}
                   </span>
                 </li>
               ))}

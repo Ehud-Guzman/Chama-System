@@ -132,11 +132,14 @@ export default function PassbookCard({
           {result.ledger && (
             <div>
               <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-                Brought forward (week {result.ledger.cycleStartWeek})
+                Carried in at week {result.ledger.cycleStartWeek}
               </dt>
               <dd className="amount mt-0.5 text-sm font-medium">
                 {money(result.ledger.openingBalance)}
               </dd>
+              <p className="mt-0.5 text-[11px] leading-4 text-muted">
+                (what he held when these books opened)
+              </p>
             </div>
           )}
 
@@ -168,6 +171,9 @@ export default function PassbookCard({
               Paid in his own name
             </dt>
             <dd className="amount mt-0.5 text-sm font-medium">{money(result.totalContributed)}</dd>
+            <p className="mt-0.5 text-[11px] leading-4 text-muted">
+              (what the rows against him add up to)
+            </p>
           </div>
 
           <div>
@@ -181,6 +187,9 @@ export default function PassbookCard({
             >
               {money(result.fines?.totalOwed || 0)}
             </dd>
+            <p className="mt-0.5 text-[11px] leading-4 text-muted">
+              (owed to the group, kept out of the figures above)
+            </p>
           </div>
 
           <div>
@@ -373,27 +382,27 @@ export default function PassbookCard({
           }
         >
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-            {result.ledger ? `Held by member · week ${result.ledger.currentWeek}` : 'Held by member'}
+            {result.ledger ? `Money held · week ${result.ledger.currentWeek}` : 'Money held'}
           </p>
           <p className="amount mt-1 text-3xl font-bold text-primary">
             {money(result.ledger ? result.ledger.money : result.totalContributed)}
           </p>
           {result.ledger && (
             <p className="amount mt-1 text-sm text-muted">
-              {money(result.ledger.openingBalance)} brought forward + {money(result.ledger.paid)}{' '}
-              paid since week {result.ledger.cycleStartWeek} −{' '}
+              {money(result.ledger.openingBalance)} carried in + {money(result.ledger.paid)}{' '}
+              paid in since week {result.ledger.cycleStartWeek} −{' '}
               {/* One deduction figure, not two: the weekly contribution and the
-                  group's weekly fund deduction are what "required" means each
+                  group's weekly fund deduction are what "due so far" means each
                   week, and the member's record no longer lists the fund itself. */}
-              {money(result.ledger.required + result.ledger.tea)} required
-              (weekly contribution and fund deductions)
+              {money(result.ledger.required + result.ledger.tea)} due so far
+              (weekly contributions and tea)
             </p>
           )}
           {result.ledger?.arrears > 0 && (
             <p className="amount mt-1 text-sm font-medium text-alert">
-              {money(result.ledger.arrears)} behind
+              {money(result.ledger.arrears)} owed
               {result.ledger.weeksBehind > 0
-                ? ` · ${result.ledger.weeksBehind} week${result.ledger.weeksBehind === 1 ? '' : 's'}`
+                ? ` (${result.ledger.weeksBehind} week${result.ledger.weeksBehind === 1 ? '' : 's'} behind)`
                 : ''}
             </p>
           )}

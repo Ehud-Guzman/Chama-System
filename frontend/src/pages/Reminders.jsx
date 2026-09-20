@@ -130,26 +130,32 @@ export default function Reminders() {
       {data && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div className="rounded-xl border border-rule bg-surface px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">Owing</p>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+              Owing
+            </p>
             <p className="amount mt-1 text-xl font-bold">{data.owingCount}</p>
+            <p className="text-[11px] text-muted">(behind on contributions or fines)</p>
           </div>
           <div className="rounded-xl border border-rule bg-surface px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Emailable
             </p>
             <p className="amount mt-1 text-xl font-bold">{data.reachableCount}</p>
+            <p className="text-[11px] text-muted">(has an address, reminders on)</p>
           </div>
           <div className="rounded-xl border border-rule bg-surface px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               No email
             </p>
             <p className="amount mt-1 text-xl font-bold">{data.missingEmailCount}</p>
+            <p className="text-[11px] text-muted">(nothing on file, or switched off)</p>
           </div>
           <div className="rounded-xl border border-rule bg-surface px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Selected
             </p>
             <p className="amount mt-1 text-xl font-bold">{selected.size}</p>
+            <p className="text-[11px] text-muted">(will get the email)</p>
           </div>
         </div>
       )}
@@ -324,8 +330,9 @@ export default function Reminders() {
                     </span>
                   </span>
 
-                  <span className="amount mt-3 shrink-0 text-sm font-semibold text-alert">
+                  <span className="amount mt-3 shrink-0 text-right text-sm font-semibold text-alert">
                     {money(m.total)}
+                    <span className="block text-[11px] font-normal text-muted">owed in total</span>
                   </span>
                 </label>
               </li>
