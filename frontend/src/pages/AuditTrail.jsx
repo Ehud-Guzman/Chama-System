@@ -52,17 +52,68 @@ const EMPTY_FILTERS = {
 
 // One flag on an entry: red when it is the shape of money or access moving, amber
 // when it is a note. The words come from the server, which is also what reads the
-// snapshots the flags are derived from.
+// snapshots the flags are derived from. Small, because a row carries several.
 function FlagChip({ flag }) {
   const serious = flag.severity === "high";
   return (
     <li
-      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+      className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-4 ${
         serious ? "bg-alert/10 text-alert" : "bg-accent/10 text-accent"
       }`}
     >
       {flag.label}
     </li>
+  );
+}
+
+// The pager, in the list card's own header as well as under it. Reading a page and
+// then scrolling to the foot to ask for the next one is the whole cost of paging
+// through a trail, and it is paid twice when the controls only exist at the bottom.
+// Rows per page is here for the same reason: the reader knows whether he is skimming
+// or auditing.
+function Pager({ page, pages, total, from, to, perPage, onPage, onPerPage }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      <p className="amount text-xs text-muted">
+        {total === 0 ? "Nothing to show" : `Showing ${from}–${to} of ${total}`}
+      </p>
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-1 text-xs text-muted">
+          <span className="hidden sm:inline">Rows</span>
+          <select
+            aria-label="Rows per page"
+            value={perPage}
+            onChange={(e) => onPerPage(Number(e.target.value))}
+            className="h-9 rounded-lg border border-rule bg-canvas px-2 text-xs"
+          >
+            {[25, 50, 100, 200].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={() => onPage(page - 1)}
+          disabled={page <= 1}
+          className="min-h-9 rounded-lg border border-rule px-3 text-xs font-medium text-primary disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <span className="amount shrink-0 text-xs text-muted">
+          {page} / {Math.max(1, pages)}
+        </span>
+        <button
+          type="button"
+          onClick={() => onPage(page + 1)}
+          disabled={page >= pages}
+          className="min-h-9 rounded-lg border border-rule px-3 text-xs font-medium text-primary disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -87,21 +138,23 @@ export default function AuditTrail() {
   const toast = useToast();
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [unusual, setUnusual] = useState(false);
+  const [perPage, setPerPage] = useState(50);
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  // One object for the request: filters, the unusual switch and the page. Kept in
-  // one place so the export sends exactly what the screen is showing.
+  // One object for the request: filters, the unusual switch, the page and how many
+  // rows it holds. Kept in one place so the export sends exactly what the screen is
+  // showing.
   const params = useMemo(() => {
-    const out = { page, limit: 50 };
+    const out = { page, limit: perPage };
     for (const [key, value] of Object.entries(filters)) {
       if (value) out[key] = value;
     }
     if (unusual) out.unusual = 1;
     return out;
-  }, [filters, unusual, page]);
+  }, [filters, unusual, page, perPage]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,6 +190,10 @@ export default function AuditTrail() {
 
   const filtered =
     Object.values(filters).some(Boolean) || unusual;
+
+  // How many of the folded-away filters are doing something, so the fold can say so
+  // rather than hiding an active filter behind a closed summary.
+  const moreCount = ["action", "entity", "by", "from", "to"].filter((key) => filters[key]).length;
 
   async function exportTrail() {
     try {
@@ -255,8 +312,11 @@ export default function AuditTrail() {
           ))}
         </div>
 
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="sm:col-span-2 lg:col-span-1">
+        {/* Search and the unusual switch stay out; the rest folds away. A filter
+            panel spread over two rows costs its scrolling on every visit, to answer
+            a question most visits do not ask. */}
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1">
             <label htmlFor="audit-q" className="mb-1 block text-xs font-medium">
               Who or what
             </label>
@@ -270,90 +330,7 @@ export default function AuditTrail() {
             />
           </div>
 
-          <div>
-            <label htmlFor="audit-action" className="mb-1 block text-xs font-medium">
-              Action
-            </label>
-            <select
-              id="audit-action"
-              value={filters.action}
-              onChange={(e) => change({ action: e.target.value })}
-              className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-            >
-              <option value="">Any action</option>
-              {options.actions.map((a) => (
-                <option key={a} value={a}>
-                  {ACTION_LABELS[a] || a}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="audit-entity" className="mb-1 block text-xs font-medium">
-              Record type
-            </label>
-            <select
-              id="audit-entity"
-              value={filters.entity}
-              onChange={(e) => change({ entity: e.target.value })}
-              className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-            >
-              <option value="">Any record</option>
-              {options.entities.map((t) => (
-                <option key={t} value={t}>
-                  {entityLabel(t)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="audit-by" className="mb-1 block text-xs font-medium">
-              Who did it
-            </label>
-            <select
-              id="audit-by"
-              value={filters.by}
-              onChange={(e) => change({ by: e.target.value })}
-              className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-            >
-              <option value="">Anyone</option>
-              {options.users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="audit-from" className="mb-1 block text-xs font-medium">
-              From
-            </label>
-            <input
-              id="audit-from"
-              type="date"
-              value={filters.from}
-              onChange={(e) => change({ from: e.target.value })}
-              className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="audit-to" className="mb-1 block text-xs font-medium">
-              To
-            </label>
-            <input
-              id="audit-to"
-              type="date"
-              value={filters.to}
-              onChange={(e) => change({ to: e.target.value })}
-              className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-            />
-          </div>
-
-          <div className="flex items-end gap-2">
+          <div className="flex shrink-0 gap-2">
             <button
               type="button"
               onClick={() => {
@@ -361,7 +338,7 @@ export default function AuditTrail() {
                 setPage(1);
               }}
               aria-pressed={unusual}
-              className={`min-h-11 flex-1 rounded-lg border px-3 text-sm font-semibold ${
+              className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${
                 unusual ? "border-alert bg-alert/10 text-alert" : "border-rule text-muted"
               }`}
             >
@@ -378,9 +355,117 @@ export default function AuditTrail() {
             )}
           </div>
         </div>
+
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs font-medium text-primary">
+            More filters
+            {moreCount > 0 ? ` · ${moreCount} on` : ""}
+          </summary>
+
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <label htmlFor="audit-action" className="mb-1 block text-xs font-medium">
+                Action
+              </label>
+              <select
+                id="audit-action"
+                value={filters.action}
+                onChange={(e) => change({ action: e.target.value })}
+                className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+              >
+                <option value="">Any action</option>
+                {options.actions.map((a) => (
+                  <option key={a} value={a}>
+                    {ACTION_LABELS[a] || a}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="audit-entity" className="mb-1 block text-xs font-medium">
+                Record type
+              </label>
+              <select
+                id="audit-entity"
+                value={filters.entity}
+                onChange={(e) => change({ entity: e.target.value })}
+                className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+              >
+                <option value="">Any record</option>
+                {options.entities.map((t) => (
+                  <option key={t} value={t}>
+                    {entityLabel(t)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="audit-by" className="mb-1 block text-xs font-medium">
+                Who did it
+              </label>
+              <select
+                id="audit-by"
+                value={filters.by}
+                onChange={(e) => change({ by: e.target.value })}
+                className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+              >
+                <option value="">Anyone</option>
+                {options.users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="audit-from" className="mb-1 block text-xs font-medium">
+                From
+              </label>
+              <input
+                id="audit-from"
+                type="date"
+                value={filters.from}
+                onChange={(e) => change({ from: e.target.value })}
+                className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="audit-to" className="mb-1 block text-xs font-medium">
+                To
+              </label>
+              <input
+                id="audit-to"
+                type="date"
+                value={filters.to}
+                onChange={(e) => change({ to: e.target.value })}
+                className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+              />
+            </div>
+          </div>
+        </details>
       </section>
 
       <section className="overflow-hidden rounded-xl border border-rule bg-surface">
+        <div className="border-b border-rule px-4 py-2">
+          <Pager
+            page={data?.page || 1}
+            pages={data?.pages || 1}
+            total={data?.total || 0}
+            from={data && data.total > 0 ? (data.page - 1) * data.limit + 1 : 0}
+            to={data ? Math.min(data.page * data.limit, data.total) : 0}
+            perPage={perPage}
+            onPage={setPage}
+            onPerPage={(n) => {
+              setPerPage(n);
+              setPage(1);
+            }}
+          />
+        </div>
+
         {entries.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-muted">
             {unusual || filtered
@@ -389,64 +474,61 @@ export default function AuditTrail() {
           </p>
         ) : (
           <ul className="divide-y divide-rule">
+            {/* One line per entry, not a card: the trail is read by scanning for the
+                row that looks wrong, and three stacked lines per entry turned fifty
+                of them into two thousand pixels of scrolling. */}
             {entries.map((e) => (
-              <li key={e._id} className="px-4 py-3">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <p className="min-w-0 text-sm">
+              <li key={e._id} className="px-4 py-2">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span className="min-w-0 text-sm">
                     <span className="font-semibold">{e.performedBy?.name || "Unknown"}</span>{" "}
                     <span className="text-muted">
                       {ACTION_LABELS[e.action] || e.action} {entityLabel(e.entityType)}
                     </span>
-                  </p>
-                  <p className="amount shrink-0 text-xs text-muted">{shortDateTime(e.createdAt)}</p>
-                </div>
+                  </span>
 
-                {e.summary && (
-                  <p className="amount mt-0.5 break-words text-xs text-muted">{e.summary}</p>
-                )}
+                  {e.summary && <span className="amount text-xs text-muted">· {e.summary}</span>}
 
-                <ul className="mt-1.5 flex flex-wrap items-center gap-1">
                   {e.flags.map((flag) => (
                     <FlagChip key={flag.key} flag={flag} />
                   ))}
-                  {/* The category is only worth printing when the reader is looking
-                      at everything at once; filtered to Money, four hundred "Money"
-                      chips are noise. */}
-                  {!filters.category && (
-                    <li className="rounded-full bg-canvas px-2 py-0.5 text-[11px] text-muted">
+
+                  {/* The category is only worth printing when the reader is looking at
+                      everything at once; filtered to Money, four hundred "Money" chips
+                      are noise. */}
+                  {!filters.category && e.flags.length === 0 && (
+                    <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[11px] leading-4 text-muted">
                       {CATEGORY_LABELS[e.category] || e.category}
-                    </li>
+                    </span>
                   )}
-                </ul>
+
+                  <span className="amount ml-auto shrink-0 pl-2 text-[11px] text-muted">
+                    {shortDateTime(e.createdAt)}
+                  </span>
+                </div>
               </li>
             ))}
           </ul>
         )}
-      </section>
 
-      {data && data.pages > 1 && (
-        <nav className="flex items-center justify-between" aria-label="Audit pages">
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={data.page === 1}
-            className="min-h-11 rounded-lg px-3 text-sm font-medium text-primary disabled:opacity-40"
-          >
-            Previous
-          </button>
-          <span className="amount text-xs text-muted">
-            Page {data.page} of {data.pages}
-          </span>
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.min(data.pages, p + 1))}
-            disabled={data.page === data.pages}
-            className="min-h-11 rounded-lg px-3 text-sm font-medium text-primary disabled:opacity-40"
-          >
-            Next
-          </button>
-        </nav>
-      )}
+        {data && data.pages > 1 && (
+          <div className="border-t border-rule px-4 py-2">
+            <Pager
+              page={data.page}
+              pages={data.pages}
+              total={data.total}
+              from={(data.page - 1) * data.limit + 1}
+              to={Math.min(data.page * data.limit, data.total)}
+              perPage={perPage}
+              onPage={setPage}
+              onPerPage={(n) => {
+                setPerPage(n);
+                setPage(1);
+              }}
+            />
+          </div>
+        )}
+      </section>
     </div>
   );
 }
