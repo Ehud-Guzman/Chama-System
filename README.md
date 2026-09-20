@@ -216,6 +216,14 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   against him, while the stamped total underneath ("Held by member") is what he actually holds.
   The PDF and Excel statements lead with that same figure and print the four numbers it is made
   of.
+- **The weekly reconciliation names both sides of a week:** the drill-down behind each week
+  (`/admin/reports` → Weekly reconciliation) lists the members who still owe their weekly minimum,
+  and under it the members who paid, each with what he put in ("Who paid in full (2)"). The second
+  list is not decoration: a week with two payers and thirty non-payers otherwise shows Ksh 9,000
+  collected on the fund line with every name beneath it reading zero — money from nobody. The two
+  lists are complements, so between them they account for every eligible member, and both are cut
+  from the same `personalPaid` on each member's own ledger row — which is what makes the names add
+  up to the figure above them (`backend/test/memberLedger.test.js`).
 - **One-time opening balances:** `/admin/finance/setup` is where each member's current total is
   keyed in at go-live. Every member is listed with his ledger figure already filled in as a
   suggestion, any of them can be typed over, and one save applies the lot. That is the only manual

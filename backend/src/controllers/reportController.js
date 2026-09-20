@@ -631,6 +631,7 @@ async function exportWeekly(req, res, next) {
     }));
 
     const shortfallRows = [];
+    const paidRows = [];
     for (const w of weeks) {
       for (const t of w.types) {
         for (const m of t.shortfallMembers) {
@@ -640,6 +641,20 @@ async function exportWeekly(req, res, next) {
             Member: m.name,
             'Reg number': m.regNumber || '',
             Status: m.status,
+            Paid: m.paid,
+            Expected: t.weeklyAmount,
+          });
+        }
+        // The other half of the same week, so the workbook names both sides the
+        // way the screen does: a shortfall sheet on its own leaves a week's
+        // collected money unattributed — every name on it reads zero.
+        for (const m of t.paidMembers || []) {
+          paidRows.push({
+            Week: w.weekNumber,
+            Type: t.typeName,
+            Member: m.name,
+            'Reg number': m.regNumber || '',
+            Status: 'paid',
             Paid: m.paid,
             Expected: t.weeklyAmount,
           });
@@ -655,15 +670,18 @@ async function exportWeekly(req, res, next) {
         counts: [
           ['Weeks covered', weeks.length],
           ['Shortfall rows', shortfallRows.length],
+          ['Paid-in-full rows', paidRows.length],
         ],
         notes:
           'Expected versus actual, week by week, per fixed weekly fund. The opening week expects ' +
           'nothing (every member\u2019s money for it is already carried forward) and the week still ' +
           'running is not scored. A week is "short" when at least one eligible member still owes ' +
-          'their weekly minimum.',
+          'their weekly minimum; "Paid in full" names the members who met it, with what each of ' +
+          'them put in, so the two sheets together account for every eligible member.',
       }),
       { name: 'Weeks', rows: overviewRows },
       { name: 'Shortfalls', rows: shortfallRows },
+      { name: 'Paid in full', rows: paidRows },
     ]);
   } catch (err) {
     next(err);

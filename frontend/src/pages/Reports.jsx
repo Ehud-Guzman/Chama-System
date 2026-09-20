@@ -42,6 +42,26 @@ async function downloadFile(url, filename, toast) {
   }
 }
 
+// One month's funds, biggest first. Rendered twice on purpose: beside the
+// month's own figures on a wide screen — where the row's middle was empty space
+// doing nothing — and behind a tap on a phone, where a line per fund for every
+// month would bury the month list it belongs to.
+function MonthFunds({ byType }) {
+  return (
+    <ul className="space-y-0.5">
+      {byType.map((t) => (
+        <li
+          key={t.name}
+          className="flex items-baseline justify-between gap-3 text-xs text-muted"
+        >
+          <span className="min-w-0 truncate">{t.name}</span>
+          <span className="amount shrink-0">{money(t.total)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function Reports() {
   const toast = useToast();
   const [tab, setTab] = useState("summary"); // summary | weekly | performance | monthly | fines
@@ -60,6 +80,10 @@ export default function Reports() {
   const [chartMember, setChartMember] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  // The trend opens folded to a strip. It is context for the figures beneath it
+  // rather than the subject of the screen, and at full height it pushed the four
+  // numbers the office actually reads off the summary below the fold on a phone.
+  const [chartOpen, setChartOpen] = useState(false);
 
   const loadAudit = useCallback(async (page = 1) => {
     try {
@@ -259,22 +283,35 @@ export default function Reports() {
 
       {tab === "summary" && (
         <>
-          {/* The trend first: twelve weeks of what the members actually paid, so the
-              headline figures below have a shape behind them rather than being four
-              numbers with no history. */}
+          {/* The trend, folded small. Twelve weeks of what the members actually
+              paid, so the headline figures below have a shape behind them rather
+              than being four numbers with no history — but as a strip, not as the
+              first screenful. Opening it gives the same bars full height, and the
+              note that explains what they are. */}
           {trend && (
-            <section className="rounded-xl border border-rule bg-surface p-5">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
-                  Member contributions — last {trend.length} weeks
-                </h2>
-                <p className="amount text-xs text-muted">
-                  {money(trend.reduce((sum, w) => sum + w.memberTotal, 0))} over the period
-                </p>
+            <section className="rounded-xl border border-rule bg-surface p-4">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                <div className="min-w-0">
+                  <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
+                    Member contributions — last {trend.length} weeks
+                  </h2>
+                  <p className="amount mt-0.5 text-xs text-muted">
+                    {money(trend.reduce((sum, w) => sum + w.memberTotal, 0))} over the period
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setChartOpen((open) => !open)}
+                  aria-expanded={chartOpen}
+                  className="min-h-9 shrink-0 rounded-lg border border-rule px-3 text-xs font-semibold text-primary"
+                >
+                  {chartOpen ? "Hide chart" : "Expand chart"}
+                </button>
               </div>
 
-              <div className="mt-3">
+              <div className="mt-2">
                 <ContributionChart
+                  height={chartOpen ? 240 : 88}
                   points={trend.map((w) => ({
                     label: w.label,
                     personal: w.memberTotal,
@@ -287,11 +324,13 @@ export default function Reports() {
                 />
               </div>
 
-              <p className="mt-2 text-[11px] leading-5 text-muted">
-                Each bar is a week of the cycle: the dark part is what the members paid in,
-                the pale part the funds collected alongside them. Weeks that closed with
-                somebody still short are named week by week in the weekly reconciliation.
-              </p>
+              {chartOpen && (
+                <p className="mt-2 text-[11px] leading-5 text-muted">
+                  Each bar is a week of the cycle: the dark part is what the members paid in,
+                  the pale part the funds collected alongside them. Weeks that closed with
+                  somebody still short are named week by week in the weekly reconciliation.
+                </p>
+              )}
             </section>
           )}
 
@@ -901,33 +940,44 @@ export default function Reports() {
                   key={m.month}
                   className="border-b border-rule px-4 py-3 last:border-b-0"
                 >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="amount text-sm font-semibold">{m.month}</p>
-                    <p className="amount text-sm font-semibold text-primary">
-                      {money(m.total)}
-                    </p>
+                  <div className="md:grid md:grid-cols-2 md:items-start md:gap-6">
+                    <div>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="amount text-sm font-semibold">{m.month}</p>
+                        <p className="amount text-sm font-semibold text-primary">
+                          {money(m.total)}
+                        </p>
+                      </div>
+                      <p className="amount mt-0.5 text-xs text-muted">
+                        {money(m.personalTotal)} personal ·{" "}
+                        {money(m.groupFundTotal)} group funds ·{" "}
+                        {m.memberCount} {m.memberCount === 1 ? "member" : "members"}
+                      </p>
+                      {/* On a phone the month list has to stay a list, so the
+                          funds stay behind this tap. A wide screen has the room
+                          for them outright — see the column beside it. */}
+                      <details className="mt-1 md:hidden">
+                        <summary className="cursor-pointer text-xs font-medium text-primary">
+                          By type
+                        </summary>
+                        <div className="mt-1">
+                          <MonthFunds byType={m.byType} />
+                        </div>
+                      </details>
+                    </div>
+
+                    {/* The funds filled in, in what used to be the empty half of
+                        the row: the same list, on the screen that had the space
+                        for it, without a click. */}
+                    <div className="mt-2 hidden md:mt-0 md:block">
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+                        By type
+                      </p>
+                      <div className="mt-1">
+                        <MonthFunds byType={m.byType} />
+                      </div>
+                    </div>
                   </div>
-                  <p className="amount mt-0.5 text-xs text-muted">
-                    {money(m.personalTotal)} personal ·{" "}
-                    {money(m.groupFundTotal)} group funds ·{" "}
-                    {m.memberCount} {m.memberCount === 1 ? "member" : "members"}
-                  </p>
-                  <details className="mt-1">
-                    <summary className="cursor-pointer text-xs font-medium text-primary">
-                      By type
-                    </summary>
-                    <ul className="mt-1 space-y-0.5">
-                      {m.byType.map((t) => (
-                        <li
-                          key={t.name}
-                          className="flex justify-between text-xs text-muted"
-                        >
-                          <span>{t.name}</span>
-                          <span className="amount">{money(t.total)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
                 </li>
               ))}
             </ul>
@@ -952,9 +1002,12 @@ export default function Reports() {
                 on every week. The totals rarely match exactly on their own
                 — one member overpaying offsets another falling short — so a
                 week is only flagged{" "}
-                <span className="font-semibold text-alert">short</span> when one
-                or more eligible members still owe their weekly minimum. Tap a
-                week to see exactly who.
+                <span className="font-semibold text-alert">short</span> once it
+                has closed and one or more eligible members still owe their
+                weekly minimum. The week running now reads{" "}
+                <span className="font-semibold">in progress</span> with what has
+                come in so far, because nobody can be behind on a collection
+                night that has not happened yet. Tap a week to see exactly who.
               </p>
               <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
                 {weeks.map((w) => (
@@ -1004,13 +1057,27 @@ export default function Reports() {
                       </span>
                       <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span
-                          className={`text-xs font-semibold ${w.balanced ? "text-accent" : "text-alert"}`}
+                          className={`text-xs font-semibold ${
+                            w.isCurrent
+                              ? "text-muted"
+                              : w.balanced
+                                ? "text-accent"
+                                : "text-alert"
+                          }`}
                         >
+                          {/* The week running now is never "short": its Thursday
+                              is still to come. Calling it short on its own
+                              Friday made every week read like a failure the
+                              moment it opened — what belongs there is what has
+                              come in so far, which the figures beside this
+                              already state. */}
                           {w.isBaseline
                             ? "Nothing due"
-                            : w.balanced
-                              ? "All paid"
-                              : `${w.shortfallCount} short`}
+                            : w.isCurrent
+                              ? "In progress"
+                              : w.balanced
+                                ? "All paid"
+                                : `${w.shortfallCount} short`}
                         </span>
                         <span className="amount text-sm font-semibold">
                           {money(w.actualTotal)}
@@ -1087,6 +1154,41 @@ export default function Reports() {
                                 <p className="mt-1 text-xs text-muted">
                                   Every eligible member paid in full this week.
                                 </p>
+                              )}
+                              {/* The names behind the fund line above. Without
+                                  them a week with two payers and thirty
+                                  non-payers reads as money collected from
+                                  nobody: the roster above names only the thirty,
+                                  every one of them zero. Closed by default so a
+                                  fully-paid week stays a one-line week. Guarded,
+                                  because an API deployed before this field
+                                  existed simply has neither list. */}
+                              {t.paidMembers?.length > 0 && (
+                                <details className="mt-1">
+                                  <summary className="cursor-pointer text-xs font-medium text-primary">
+                                    Who paid in full ({t.paidMembers.length})
+                                  </summary>
+                                  <ul className="mt-1 space-y-0.5">
+                                    {t.paidMembers.map((m) => (
+                                      <li
+                                        key={m.memberId}
+                                        className="flex items-center justify-between text-xs"
+                                      >
+                                        <span className="text-muted">
+                                          {m.name}
+                                          {m.regNumber && (
+                                            <span className="amount ml-1 text-muted">
+                                              ({m.regNumber})
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span className="amount font-medium text-accent">
+                                          {money(m.paid)}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </details>
                               )}
                             </div>
                           ))}

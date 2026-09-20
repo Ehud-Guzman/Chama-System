@@ -98,6 +98,13 @@ async function computeWeeklyReconciliation() {
       let paidCount = 0;
       let contributingCount = 0;
       const shortfallMembers = [];
+      // The other half of the week, and the reason it is here: the shortfall
+      // roster answers "who still owes?", so on a week where a couple of members
+      // have paid in and the rest have not, it leaves the money on the fund line
+      // unexplained — Ksh 9,000 collected and every name underneath it reading
+      // zero. Naming the members who met their minimum, and what each of them
+      // put in, is what turns that line into two names.
+      const paidMembers = [];
 
       for (const { member, ledger } of ledgers) {
         const week = ledger.weeks.find((w) => w.weekNumber === weekNumber);
@@ -115,6 +122,17 @@ async function computeWeeklyReconciliation() {
             regNumber: member.regNumber || null,
             paid,
             status,
+          });
+        } else if (!fund.automatic) {
+          // An automatic fund (tea) is settled for every member whether or not
+          // anybody logged anything, so a list of its "payers" would be every
+          // name with the same 100 against it — it says nothing about who
+          // actually paid, which is the only question this list answers.
+          paidMembers.push({
+            memberId: member._id,
+            name: member.name,
+            regNumber: member.regNumber || null,
+            paid,
           });
         }
       }
@@ -139,6 +157,9 @@ async function computeWeeklyReconciliation() {
         // there is never an untracked tail to explain.
         untrackedAmount: 0,
         shortfallMembers: shortfallMembers.sort((a, b) => b.paid - a.paid),
+        // Biggest payer first, for the same reason the shortfall roster leads
+        // with the biggest debt: it is the name the treasurer looks for.
+        paidMembers: paidMembers.sort((a, b) => b.paid - a.paid),
       });
     }
 
