@@ -74,6 +74,28 @@ function StatusPill({ member, baselineWeek }) {
   );
 }
 
+// What a member's row says under his money. The bracket answers one question —
+// what is this money doing? — so it changes with his position rather than
+// restating the group's clock at him:
+//
+//   paid and nothing due yet   → it stands as extra saved for the weeks ahead
+//   paid more than is due      → the rest is extra saved
+//   paid, less than is due     → the closed weeks he has covered
+//   paid nothing, nothing due  → the state, with the rule that produces it
+//
+// "Nothing due yet" is not about him: no week of the cycle has closed, and a
+// week's money is only counted the day after its Thursday.
+function paidLine(m) {
+  if (m.required > 0) {
+    return m.paid > m.required
+      ? `${money(m.paid)} paid of ${money(m.required)} due (the rest is extra saved)`
+      : `${money(m.paid)} paid of ${money(m.required)} due (weeks that have closed)`;
+  }
+  return m.paid > 0
+    ? `${money(m.paid)} paid in (nothing due yet, so it stands as extra saved)`
+    : `${money(m.paid)} paid in (no week has closed yet, so nothing is due)`;
+}
+
 export default function MemberLedgerList({
   onLoaded,
   showHeader = false,
@@ -288,13 +310,7 @@ export default function MemberLedgerList({
                   </span>
                   <span className="amount block text-base font-bold">{money(m.money)}</span>
                   <span className="amount block text-xs text-muted">
-                    {/* "Nothing due yet" is a state, and it says why: no week of
-                        the cycle has closed, and a week's money is only counted
-                        the day after its Thursday. So the figure is what he has
-                        paid in, against nothing asked of him yet. */}
-                    {m.required > 0
-                      ? `${money(m.paid)} paid of ${money(m.required)} due (weeks that have closed)`
-                      : `${money(m.paid)} paid in (no week has closed yet, so nothing is due)`}
+                    {paidLine(m)}
                   </span>
                   <span className="amount block text-xs text-muted">
                     tea {money(m.chaiPaid)} (deducted automatically)
