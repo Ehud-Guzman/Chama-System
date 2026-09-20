@@ -270,6 +270,10 @@ function summariseMember(member, ledger) {
     weeksNill: ledger.weeksNill,
     weeksBehind: ledger.weeksBehind,
     weeksUnsettled: ledger.weeksUnsettled,
+    // How many weeks have closed — the engine's own count, passed through rather
+    // than re-derived by the client. While it is 0 nobody owes anything and nobody
+    // can have settled anything, which is what a member's row says out loud.
+    weeksScored: ledger.weeksScored,
     nillWeeksDueFine: ledger.nillWeeksDueFine,
   };
 }

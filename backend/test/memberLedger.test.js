@@ -14,7 +14,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { parseEatDate, resolveConfig } = require('../src/utils/weekCycle');
-const { computeMemberLedger } = require('../src/utils/memberLedger');
+const { computeMemberLedger, summariseMember } = require('../src/utils/memberLedger');
 
 // 2026-09-11 is the Friday week 92 opens on, which makes week 93 Fri 18 Sep →
 // Thu 24 Sep — the week these figures were read off the live books.
@@ -101,4 +101,23 @@ test('an overpayment stays on the week it was made in as credit', () => {
   assert.equal(weekOf(ledger, 93).personalPaid, 4000);
   assert.equal(ledger.paid, 4000);
   assert.equal(ledger.movement, 4000); // nothing scored yet, so no requirement to offset
+});
+
+test('the list projection carries the engine\'s own closed-week count', () => {
+  // The member list's pill reads this to know whether "settled" is a thing yet:
+  // while it is 0 no week has closed, so nobody owes and nobody has settled.
+  const member = { _id: 'm1', name: 'A Member', active: true };
+  assert.equal(summariseMember(member, ledgerFor([])).weeksScored, 0);
+  assert.equal(summariseMember(member, ledgerFor([weekly(4000)])).weeksScored, 0);
+
+  // The day after week 93's Thursday, one week has closed — the same moment
+  // every unpaid member becomes 1,400 behind.
+  const nextFriday = computeMemberLedger({
+    member: { openingBalance: 0 },
+    contributions: [],
+    config,
+    now: parseEatDate('2026-09-25'),
+  });
+  assert.equal(summariseMember(member, nextFriday).weeksScored, 1);
+  assert.equal(summariseMember(member, nextFriday).arrears, 1400);
 });

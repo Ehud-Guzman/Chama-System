@@ -67,6 +67,18 @@ function StatusPill({ member, baselineWeek }) {
       </span>
     );
   }
+  // No week of the cycle has closed yet, so there is nothing to be settled about:
+  // the member who has paid ahead and the one who has paid nothing carry the same
+  // pill, because neither owes. What his money is doing is the row's own line, not
+  // the pill's job. (Undefined from an older API reads as "settled", which is what
+  // this pill said before the count existed — the safe way to be wrong.)
+  if (member.weeksScored === 0) {
+    return (
+      <span className="rounded-full bg-canvas px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-muted">
+        Nothing due yet (no week has closed)
+      </span>
+    );
+  }
   return (
     <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-primary">
       Settled (every closed week paid)

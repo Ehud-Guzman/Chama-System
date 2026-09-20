@@ -236,6 +236,8 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   - **owed** — closed weeks still unpaid (never a week still running: its Thursday is to come)
   - **tea** — deducted automatically, the weekly tea × the weeks that have closed
   - **settled** — every closed week paid, by payment or by earlier extra saved
+  - **nothing due yet** — no week has closed, so nobody owes and nobody has settled anything; the
+    pill says this rather than "settled" while the first week is still running
 - **One-time opening balances:** `/admin/finance/setup` is where each member's current total is
   keyed in at go-live. Every member is listed with his ledger figure already filled in as a
   suggestion, any of them can be typed over, and one save applies the lot. That is the only manual
