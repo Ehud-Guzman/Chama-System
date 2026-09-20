@@ -195,7 +195,7 @@ export default function Reminders() {
           id="reminder-note"
           rows={2}
           maxLength={600}
-          placeholder="e.g. Please clear your balance before the meeting on Sunday."
+          placeholder="e.g. Please clear your balance before the meeting on Thursday."
           value={note}
           onChange={(e) => setNote(e.target.value)}
           className="mt-1 w-full rounded-lg border border-rule bg-page px-3 py-2 text-sm"
