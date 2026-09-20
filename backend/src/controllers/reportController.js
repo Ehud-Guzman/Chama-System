@@ -2,7 +2,6 @@ const Contribution = require('../models/Contribution');
 const Member = require('../models/Member');
 const ContributionType = require('../models/ContributionType');
 const Fine = require('../models/Fine');
-const AuditLog = require('../models/AuditLog');
 const { carriedInTotals } = require('../utils/carriedIn');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
@@ -13,6 +12,7 @@ const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { totalFinesCollected } = require('../utils/finesCollected');
 const { computeWeeklyReconciliation } = require('../utils/weeklyReconciliation');
+const { aboutSheet } = require('../utils/aboutSheet');
 const Expense = require('../models/Expense');
 
 // Shared by /performance and /performance/export: per active member, personal
@@ -516,24 +516,6 @@ async function exportMonthly(req, res, next) {
   }
 }
 
-// Every export says what it is, who asked for it and when, as its first sheet. A
-// workbook that turns up in a WhatsApp group a year later should be readable
-// without anyone having to remember which screen it came from — and a figure with
-// no stated scope is how two people end up arguing about the same report.
-function aboutSheet({ name, settings, req, counts = [], notes = '' }) {
-  return {
-    name: 'About this export',
-    rows: [
-      { Field: 'Chama', Value: settings?.chamaName || '' },
-      { Field: 'Report', Value: name },
-      ...counts.map(([Field, Value]) => ({ Field, Value })),
-      { Field: 'Generated on', Value: new Date() },
-      { Field: 'Prepared by', Value: req.user?.name || '' },
-      ...(notes ? [{ Field: 'What this counts', Value: notes }] : []),
-    ],
-  };
-}
-
 // GET /api/reports/export — all contributions with member names, .xlsx workbook
 async function exportContributions(req, res, next) {
   try {
@@ -568,34 +550,6 @@ async function exportContributions(req, res, next) {
       }),
       { name: 'Contributions', rows: sheetRows },
     ]);
-  } catch (err) {
-    next(err);
-  }
-}
-
-// GET /api/reports/audit-log?page=&limit=
-async function auditLog(req, res, next) {
-  try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
-
-    // Only the fields this screen prints. The stored `before`/`after` are full
-    // document snapshots — a member's whole record, including his national ID, his
-    // family and his next of kin — and shipping a hundred of those to a client to
-    // render one amount next to a name is both slow and a needless second copy of
-    // the register.
-    const [entries, total] = await Promise.all([
-      AuditLog.find()
-        .select('action entityType entityId performedBy createdAt after.amount after.name before.amount before.name')
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .populate('performedBy', 'name email')
-        .lean(),
-      AuditLog.countDocuments(),
-    ]);
-
-    res.json({ entries, total, page, pages: Math.ceil(total / limit) || 1 });
   } catch (err) {
     next(err);
   }
@@ -1044,7 +998,6 @@ async function memberReport(req, res, next) {
 module.exports = {
   summary,
   exportContributions,
-  auditLog,
   performance,
   exportPerformance,
   monthly,

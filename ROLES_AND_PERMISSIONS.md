@@ -198,4 +198,4 @@ dashboard.
 2. **Use Secretary for audit/verification** — Prevents accidental data changes
 3. **Rotate Disciplinary Officers** — Don't give one person permanent fine authority
 4. **Change passwords regularly** — Especially for accounts with Admin access
-5. **Review audit logs weekly** — Monitor who's doing what
+5. **Review audit logs weekly** — the trail has its own screen (`/admin/audit`): filter by Money, People, Records or Settings, read the flagged entries first, and export the view for a meeting. Monitor who's doing what

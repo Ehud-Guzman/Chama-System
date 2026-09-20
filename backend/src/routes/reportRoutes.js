@@ -2,7 +2,6 @@ const router = require('express').Router();
 const {
   summary,
   exportContributions,
-  auditLog,
   performance,
   exportPerformance,
   monthly,
@@ -20,7 +19,6 @@ router.use(requireAuth, requireRole('super_admin', 'admin', 'treasurer', 'secret
 
 router.get('/summary', summary);
 router.get('/export', exportContributions);
-router.get('/audit-log', auditLog);
 router.get('/performance', performance);
 router.get('/performance/export', exportPerformance);
 router.get('/monthly', monthly);

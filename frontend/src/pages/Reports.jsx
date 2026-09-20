@@ -4,7 +4,6 @@ import { useToast } from "../components/shared/Toast";
 import {
   money,
   shortDate,
-  shortDateTime,
   METHOD_LABELS,
 } from "../utils/format";
 import Loader from "../components/shared/Loader";
@@ -12,13 +11,6 @@ import ErrorState from "../components/shared/ErrorState";
 import MemberPerformanceList from "../components/reports/MemberPerformanceList";
 import MemberChartModal from "../components/reports/MemberChartModal";
 import ContributionChart from "../components/reports/ContributionChart";
-
-const ACTION_LABELS = {
-  create: "Created",
-  update: "Edited",
-  delete: "Deleted",
-  reset: "Reset",
-};
 
 // Month keys arrive as 'YYYY-MM' (the group's own calendar month). A fixed list
 // rather than a locale call: the same label on every device, in any language.
@@ -67,7 +59,6 @@ export default function Reports() {
   const [tab, setTab] = useState("summary"); // summary | weekly | performance | monthly | fines
   const [summary, setSummary] = useState(null);
   const [trend, setTrend] = useState(null);
-  const [audit, setAudit] = useState({ entries: [], page: 1, pages: 1 });
   const [performance, setPerformance] = useState(null);
   const [performanceTotals, setPerformanceTotals] = useState(null);
   const [months, setMonths] = useState(null);
@@ -85,26 +76,13 @@ export default function Reports() {
   // numbers the office actually reads off the summary below the fold on a phone.
   const [chartOpen, setChartOpen] = useState(false);
 
-  const loadAudit = useCallback(async (page = 1) => {
-    try {
-      const res = await api.get("/api/reports/audit-log", { params: { page } });
-      setAudit(res.data);
-    } catch {
-      // non-fatal
-    }
-  }, []);
-
   const loadSummary = useCallback(() => {
     setLoading(true);
     setLoadError('');
     // The summary and the year's trend are read together: the chart is the first
     // thing on the summary screen, and a summary that arrived without it would
     // leave a hole where the trend belongs.
-    return Promise.all([
-      api.get("/api/reports/summary"),
-      api.get("/api/reports/trend", { params: { weeks: 12 } }),
-      loadAudit(1),
-    ])
+    return Promise.all([api.get("/api/reports/summary"), api.get("/api/reports/trend", { params: { weeks: 12 } })])
       .then(([summaryRes, trendRes]) => {
         setSummary(summaryRes.data);
         setTrend(trendRes.data.weeks || []);
@@ -115,7 +93,7 @@ export default function Reports() {
         setLoadError(apiMessage(err, "Could not load the reports"));
       })
       .finally(() => setLoading(false));
-  }, [loadAudit]);
+  }, []);
 
   useEffect(() => {
     loadSummary();
@@ -334,7 +312,10 @@ export default function Reports() {
             </section>
           )}
 
-          <div className="mt-5 md:grid md:grid-cols-2 md:items-start md:gap-6">
+          {/* The figures width-wise: this was a two-column grid while the audit trail
+              sat in the second column. The trail has its own screen now, so the
+              summary takes the whole width rather than leaving half of it empty. */}
+          <div className="mt-5">
           {summary && (
             <section className="rounded-xl border border-rule bg-surface p-5">
               <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
@@ -432,78 +413,7 @@ export default function Reports() {
             </section>
           )}
 
-          <section className="mt-5 md:mt-0">
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-              Audit trail
-            </h2>
-            {audit.entries.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
-                No activity recorded yet.
-              </p>
-            ) : (
-              <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
-                {audit.entries.map((e) => (
-                  <li
-                    key={e._id}
-                    className="border-b border-rule px-4 py-3 last:border-b-0"
-                  >
-                    <p className="text-sm">
-                      <span className="font-semibold">
-                        {e.performedBy?.name || "Unknown"}
-                      </span>{" "}
-                      <span className="text-muted">
-                        {(ACTION_LABELS[e.action] || e.action).toLowerCase()} a{" "}
-                        {e.entityType.toLowerCase()}
-                      </span>
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {shortDateTime(e.createdAt)}
-                      {e.entityType === "Contribution" &&
-                        (e.after || e.before) && (
-                          <span className="amount">
-                            {" "}
-                            · {money((e.after || e.before).amount)}
-                          </span>
-                        )}
-                      {e.entityType === "Member" && (e.after || e.before) && (
-                        <span> · {(e.after || e.before).name}</span>
-                      )}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {audit.pages > 1 && (
-              <nav
-                className="mt-3 flex items-center justify-between"
-                aria-label="Audit pages"
-              >
-                <button
-                  type="button"
-                  onClick={() => loadAudit(Math.max(1, audit.page - 1))}
-                  disabled={audit.page === 1}
-                  className="min-h-11 rounded-lg px-3 text-sm font-medium text-primary disabled:opacity-40"
-                >
-                  Previous
-                </button>
-                <span className="amount text-xs text-muted">
-                  Page {audit.page} of {audit.pages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    loadAudit(Math.min(audit.pages, audit.page + 1))
-                  }
-                  disabled={audit.page === audit.pages}
-                  className="min-h-11 rounded-lg px-3 text-sm font-medium text-primary disabled:opacity-40"
-                >
-                  Next
-                </button>
-              </nav>
-            )}
-          </section>
-        </div>
+          </div>
 
         {/* The fines position and what each fund holds, under the totals they belong
             to: a committee reads "what came in" and then immediately asks what is

@@ -26,6 +26,7 @@ const Minutes = lazy(() => import('./pages/Minutes.jsx'));
 const Documents = lazy(() => import('./pages/Documents.jsx'));
 const Reminders = lazy(() => import('./pages/Reminders.jsx'));
 const DisciplinaryFines = lazy(() => import('./pages/DisciplinaryFines.jsx'));
+const AuditTrail = lazy(() => import('./pages/AuditTrail.jsx'));
 
 export default function App() {
   return (
@@ -140,6 +141,16 @@ export default function App() {
                 element={
                   <RoleGuard roles={['super_admin', 'admin', 'disciplinary']}>
                     <DisciplinaryFines />
+                  </RoleGuard>
+                }
+              />
+              {/* The audit trail is its own destination, not a panel under the
+                  reports. The guard is the set of roles the API lets read it. */}
+              <Route
+                path="/admin/audit"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer', 'secretary']}>
+                    <AuditTrail />
                   </RoleGuard>
                 }
               />

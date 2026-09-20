@@ -62,7 +62,7 @@ const documentRoutes = require('./routes/documentRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const backupRoutes = require('./routes/backupRoutes');
-
+const auditRoutes = require('./routes/auditRoutes');
 const app = express();
 
 // -----------------------------------------------------------------------------
@@ -256,6 +256,9 @@ app.use('/api/uploads', uploadRoutes);
 app.use('/api/notifications', notificationRoutes);
 
 app.use('/api/backup', backupRoutes);
+
+// The audit trail: who changed what, when, and which of it was out of the ordinary.
+app.use('/api/audit', auditRoutes);
 
 // -----------------------------------------------------------------------------
 // Error handling

@@ -145,7 +145,10 @@ set it to the deployed API URL.
   against a member, and there is no public link to it.
 - `/admin/login` — admin sign in
 - `/admin/dashboard` · `/admin/members` · `/admin/reports` · `/admin/minutes` ·
-  `/admin/reminders` · `/admin/documents` · `/admin/disciplinary` — protected
+  `/admin/reminders` · `/admin/documents` · `/admin/disciplinary` · `/admin/audit` — protected
+- `/admin/audit` — the audit trail: every change, filtered by category, who, when and what, with the
+  unusual entries flagged and an export of the view on screen. Its own destination because it is the
+  screen somebody opens when a figure needs explaining.
 - `/admin/finance` · `/admin/finance/setup` · `/admin/finance/:id` — the ledger: the member list,
   one member's page, and the go-live figures. This is the only place money is logged — the admin
   dashboard shows the same list, `/admin/log` redirects here, and the old weekly grid and
@@ -428,7 +431,7 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   backup (they live on Cloudinary) — the photo URL is, so a restore re-links them.
 - **Soft delete only:** members and contributions are never hard-deleted. Every
   create/edit/delete writes an audit log entry with full before/after snapshots
-  (Reports → Audit trail).
+  (Oversight → Audit trail, `/admin/audit`).
 - **CSV import:** columns `name, phone, regNumber (optional), nationalId (optional), notes
   (optional)`, plus the rest of the admission form when the sheet carries it. Duplicate
   phones are skipped and reported, never overwritten — and so is an ID another member already
@@ -559,11 +562,23 @@ inline.
 posted it. The editor cannot produce anything outside that allowlist, so a legitimate
 minute round-trips unchanged.
 
-**The audit trail.** Append-only, newest-first off an index, and the audit screen only
-receives the fields it prints — the stored snapshots contain whole member records
-(national ID, family, next of kin) and there is no reason to send those to a screen
-that renders one amount next to one name. `npm run audit:prune` is how the trail is
-trimmed to whatever retention the committee decides; the prune records itself.
+**The audit trail** (`/admin/audit`, its own destination — it was a panel under the reports). The
+trail is read when something needs explaining, by whoever has to explain it, so it is not buried
+under four cards of figures. Every entry arrives read by `utils/auditFlags.js`: put in one of four
+categories (money, people, records, settings), and flagged when it is worth a second look — an amount
+cut or raised, a contribution moved to another member or another fund, one re-dated, a member's phone
+number or ID or carried-in balance changed, an account's role changed, a group-wide operation like a
+ledger reset. A trail of four hundred ordinary edits says nothing without those flags, and a flag that
+fires on every save says nothing either, so the watched fields are listed per entity and a change is
+only reported where one of them moved. The screen filters by category, action, record type, who did
+it, a date range and free text, with an "Unusual only" view and an `.xlsx` export of exactly the view
+on screen (an "Unusual" sheet included). The API is `GET /api/audit` (+ `/api/audit/export`), append-only
+like the collection behind it, newest-first off the index, and **the screen still only receives what it
+prints** — the stored snapshots contain whole member records (national ID, family, next of kin), and
+they are read to work out the flags and never sent. The counts say what they counted: they cover the
+newest 2,000 matching entries rather than walking a collection that only ever grows.
+`npm run audit:prune` is how the trail is trimmed to whatever retention the committee decides; the
+prune records itself.
 
 **Backups.** `GET /api/backup` is super-admin only, streamed a collection at a time
 (the whole database with its document scans will not fit in memory twice on a small

@@ -51,7 +51,15 @@ export const WORKSPACE_GROUPS = [
       {
         to: '/admin/reports',
         label: 'Reports',
-        hint: 'Summaries, performance, audit trail',
+        hint: 'Summaries, performance, monthly, weekly',
+        roles: CLERK_ROLES,
+      },
+      {
+        // Its own destination rather than a panel under the reports: the trail is
+        // read when something needs explaining, by whoever has to explain it.
+        to: '/admin/audit',
+        label: 'Audit trail',
+        hint: 'Every change, with the odd ones flagged',
         roles: CLERK_ROLES,
       },
       {
