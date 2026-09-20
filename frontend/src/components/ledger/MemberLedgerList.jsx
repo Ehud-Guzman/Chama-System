@@ -288,9 +288,13 @@ export default function MemberLedgerList({
                   </span>
                   <span className="amount block text-base font-bold">{money(m.money)}</span>
                   <span className="amount block text-xs text-muted">
+                    {/* "Nothing due yet" is a state, and it says why: no week of
+                        the cycle has closed, and a week's money is only counted
+                        the day after its Thursday. So the figure is what he has
+                        paid in, against nothing asked of him yet. */}
                     {m.required > 0
                       ? `${money(m.paid)} paid of ${money(m.required)} due (weeks that have closed)`
-                      : `${money(m.paid)} paid in (nothing due yet)`}
+                      : `${money(m.paid)} paid in (no week has closed yet, so nothing is due)`}
                   </span>
                   <span className="amount block text-xs text-muted">
                     tea {money(m.chaiPaid)} (deducted automatically)
