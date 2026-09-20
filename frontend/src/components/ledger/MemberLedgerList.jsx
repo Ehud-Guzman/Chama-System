@@ -46,15 +46,23 @@ function Stat({ label, value, hint, accent, alert }) {
   );
 }
 
+// Every pill keeps its explanation for a screen with room for it and drops it on a
+// phone, where an uppercase pill with wide tracking is what pushes a member's name
+// off the row. The row's own line underneath carries the reason either way.
 function StatusPill({ member, baselineWeek }) {
+  const pill =
+    "inline-block max-w-full whitespace-normal rounded-full px-2 py-1 text-[11px] font-bold uppercase leading-4 tracking-widest";
+
   if (member.arrears > 0) {
-    const weeks =
-      member.weeksBehind > 0
-        ? ` (${member.weeksBehind} week${member.weeksBehind === 1 ? '' : 's'} behind)`
-        : '';
     return (
-      <span className="rounded-full bg-alert/10 px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-alert">
-        {money(member.arrears)} owed{weeks}
+      <span className={`${pill} bg-alert/10 text-alert`}>
+        {money(member.arrears)} owed
+        {member.weeksBehind > 0 && (
+          <span className="hidden sm:inline">
+            {" "}
+            ({member.weeksBehind} week{member.weeksBehind === 1 ? "" : "s"} behind)
+          </span>
+        )}
       </span>
     );
   }
@@ -62,8 +70,9 @@ function StatusPill({ member, baselineWeek }) {
   // balance he brought forward — so "settled" would be the wrong word for it.
   if (baselineWeek) {
     return (
-      <span className="rounded-full bg-canvas px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-muted">
-        Opening week · nothing due
+      <span className={`${pill} bg-canvas text-muted`}>
+        Opening week
+        <span className="hidden sm:inline"> · nothing due</span>
       </span>
     );
   }
@@ -74,14 +83,16 @@ function StatusPill({ member, baselineWeek }) {
   // this pill said before the count existed — the safe way to be wrong.)
   if (member.weeksScored === 0) {
     return (
-      <span className="rounded-full bg-canvas px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-muted">
-        Nothing due yet (no week has closed)
+      <span className={`${pill} bg-canvas text-muted`}>
+        Nothing due yet
+        <span className="hidden sm:inline"> (no week has closed)</span>
       </span>
     );
   }
   return (
-    <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-bold uppercase tracking-widest text-primary">
-      Settled (every closed week paid)
+    <span className={`${pill} bg-primary/10 text-primary`}>
+      Settled
+      <span className="hidden sm:inline"> (every closed week paid)</span>
     </span>
   );
 }
@@ -90,13 +101,13 @@ function StatusPill({ member, baselineWeek }) {
 // what is this money doing? — so it changes with his position rather than
 // restating the group's clock at him:
 //
-//   paid and nothing due yet   → it stands as extra saved for the weeks ahead
+//   paid and nothing due yet   → extra saved, waiting for the weeks to close
 //   paid more than is due      → the rest is extra saved
 //   paid, less than is due     → the closed weeks he has covered
 //   paid nothing, nothing due  → the state, with the rule that produces it
 //
-// "Nothing due yet" is not about him: no week of the cycle has closed, and a
-// week's money is only counted the day after its Thursday.
+// Kept short on purpose: these lines share a phone screen with a member's name, and
+// an explanation that wraps to four lines is its own kind of breakage.
 function paidLine(m) {
   if (m.required > 0) {
     return m.paid > m.required
@@ -104,8 +115,8 @@ function paidLine(m) {
       : `${money(m.paid)} paid of ${money(m.required)} due (weeks that have closed)`;
   }
   return m.paid > 0
-    ? `${money(m.paid)} paid in (nothing due yet, so it stands as extra saved)`
-    : `${money(m.paid)} paid in (no week has closed yet, so nothing is due)`;
+    ? `${money(m.paid)} paid in (extra saved — nothing due yet)`
+    : `${money(m.paid)} paid in (nothing due yet — no week has closed)`;
 }
 
 export default function MemberLedgerList({
@@ -305,41 +316,51 @@ export default function MemberLedgerList({
                 // tap completes; the whole screen stays put either way.
                 onPointerDown={() => prefetchMember(api, m._id)}
                 onClick={() => setOpenMember(m._id)}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas active:bg-canvas"
+                className="block w-full px-4 py-3 text-left transition-colors hover:bg-canvas active:bg-canvas"
               >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold">{m.name}</span>
-                  <span className="mt-0.5 block truncate text-xs text-muted">
-                    {[m.regNumber, m.phone].filter(Boolean).join(' · ')}
+                <span className="flex items-start gap-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{m.name}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted">
+                      {[m.regNumber, m.phone].filter(Boolean).join(' · ')}
+                    </span>
+                    <span className="mt-1 block">
+                      <StatusPill member={m} baselineWeek={isBaselineWeek} />
+                    </span>
                   </span>
-                  <span className="mt-1 block">
-                    <StatusPill member={m} baselineWeek={isBaselineWeek} />
+                  <span className="shrink-0 text-right">
+                    <span className="block text-[11px] font-semibold uppercase tracking-widest text-muted">
+                      Money held
+                    </span>
+                    <span className="amount block whitespace-nowrap text-base font-bold">
+                      {money(m.money)}
+                    </span>
                   </span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="mt-1.5 h-4 w-4 shrink-0 text-muted"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M9 6l6 6-6 6" />
+                  </svg>
                 </span>
-                <span className="shrink-0 text-right">
-                  <span className="block text-[11px] font-semibold uppercase tracking-widest text-muted">
-                    Money held
-                  </span>
-                  <span className="amount block text-base font-bold">{money(m.money)}</span>
-                  <span className="amount block text-xs text-muted">
-                    {paidLine(m)}
-                  </span>
-                  <span className="amount block text-xs text-muted">
-                    tea {money(m.chaiPaid)} (deducted automatically)
-                  </span>
+
+                {/* The two explanatory lines take the row's whole width rather than
+                    sitting in the column beside the figure. Squeezed into that
+                    column they are what pushed a phone's row past the screen edge —
+                    there is no room for a sentence next to a number on a 360px
+                    phone. */}
+                <span className="amount mt-1.5 block text-[11px] leading-4 text-muted">
+                  {paidLine(m)}
                 </span>
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4 shrink-0 text-muted"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M9 6l6 6-6 6" />
-                </svg>
+                <span className="amount block text-[11px] leading-4 text-muted">
+                  tea {money(m.chaiPaid)} (deducted automatically)
+                </span>
               </button>
             </li>
           ))}

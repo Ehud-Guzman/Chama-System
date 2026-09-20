@@ -344,7 +344,7 @@ async function exportStatementExcel() {
       <BackLink to="/admin/members">Members</BackLink>
 
       <section className="rounded-xl border border-rule bg-surface p-5">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-3">
           <div className="flex min-w-0 items-center gap-3">
             <MemberAvatar name={member.name} photoUrl={member.photoUrl} size="lg" />
             <div className="min-w-0">
@@ -366,7 +366,10 @@ async function exportStatementExcel() {
               {member.notes && <p className="mt-2 text-sm text-muted">{member.notes}</p>}
             </div>
           </div>
-          <div className="shrink-0 text-right">
+          {/* Full width under the name on a phone, beside it once there is room: the
+              lines this block carries are sentences, and a sentence in a narrow column
+              is what pushes a header past the screen edge. */}
+          <div className="w-full min-w-0 text-right sm:w-auto sm:shrink-0">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
               Money held by member
             </p>
