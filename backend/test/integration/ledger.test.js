@@ -274,6 +274,23 @@ test('a save that cuts the members total hard is refused until it is confirmed',
   assert.equal((await Member.findById(memberA._id).lean()).openingBalance, 10000);
 });
 
+test('before anything is downloaded, the panel says so', { skip }, async () => {
+  // The state the panel exists to make honest: nothing has ever been taken off this machine. It
+  // has to be distinguishable from "a backup was written", because those are the two things the
+  // screen has to tell apart — a file on the host is not a copy in somebody's hands.
+  const { status, body } = await json(await api('GET', '/api/backup/status'));
+
+  assert.equal(status, 200);
+  assert.equal(body.lastDownload, null, 'nothing has been downloaded in this suite yet');
+
+  // What the host has is reported rather than assumed: the flag is the env var the nightly job
+  // itself reads, and a directory that does not exist answers 0 instead of failing the screen.
+  assert.equal(body.onHost.persistent, Boolean(process.env.BACKUP_DIR));
+  assert.equal(typeof body.onHost.count, 'number');
+  assert.equal(typeof body.onHost.directory, 'string');
+  assert.ok(body.onHost.retention > 0);
+});
+
 test('a backup restores into another database with dates and ids intact', { skip }, async () => {
   const backupRes = await fetch(`${base}/api/backup`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -342,6 +359,21 @@ test('a backup restores into another database with dates and ids intact', { skip
     await restoredConn.close();
     fs.unlinkSync(file);
   }
+});
+
+test('the download above is what the panel now reports', { skip }, async () => {
+  // The record comes from the audit trail, which already wrote itself when the backup was
+  // downloaded a moment ago — so the panel's answer is the same fact the audit screen shows,
+  // not a second bookkeeping of its own that could drift from it.
+  const { status, body } = await json(await api('GET', '/api/backup/status'));
+
+  assert.equal(status, 200);
+  assert.ok(body.lastDownload, 'the download should have been recorded');
+  assert.equal(body.lastDownload.by, 'Rehearsal Admin');
+  // The full backup, not the slim one: `slim` would mean a file that cannot restore, and the
+  // panel says so rather than counting it as a copy.
+  assert.equal(body.lastDownload.slim, false);
+  assert.ok(!Number.isNaN(Date.parse(body.lastDownload.at)), 'the date should be readable');
 });
 
 

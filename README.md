@@ -631,6 +631,15 @@ writes it, and refusing the live database unless it is told twice. The full file
 database as it stands, password hashes included, because that is what makes it
 restorable: treat it the way the register itself is treated.
 
+`GET /api/backup/status` is what the Backup panel prints around the button, and it exists to keep
+two things apart that both look like "we have a backup": when a copy last left the machine, and
+what is merely sitting on the host. The first is read from the audit trail, so it is the same fact
+the audit screen shows rather than a second record that could drift from it; the second reports the
+files in the backup directory, the newest of them, and **whether `BACKUP_DIR` is configured** —
+which is the straight answer to "will last night's file still exist after a deploy?". A download
+that has never happened reads **Never**, not a blank, because "nothing has ever been taken off this
+machine" is exactly the state that needs saying out loud.
+
 **Observability.** One JSON line per request on stdout (`rid`, method, path, status,
 duration, account, address) and `X-Request-Id` on every response. A 5xx logs the
 message, the route and the account; failed sign-ins log the address attempted (not the
@@ -751,7 +760,11 @@ real rehearsal of the schedule rather than a second implementation of it.
 gitignored — and on a host with an ephemeral disk (Render, Railway) it does **not** survive a
 deploy. Point it at a mounted volume, or copy the directory off the host. A backup that lives
 only on the machine it is backing up is not a backup, and the job records the directory it wrote
-to so the question is answerable.
+to so the question is answerable. The Backup panel answers it on screen as well, so nobody has to
+read an environment variable to find out whether last night's file is somewhere that survives:
+it names the directory, and says plainly when the files are on the app's own disk. Relying on the
+download button instead is a legitimate choice — a copy in an official's hands is better than a
+file on an ephemeral disk — which is why the panel reports when the last one was taken.
 
 **The ledger works with no signal.** `frontend/src/services/offlineQueue.js` keeps a ledger entry
 that failed for a network reason and sends it when the signal returns, and
