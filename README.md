@@ -86,7 +86,6 @@ npm run test:integration    # the rehearsal: the money paths, the audit chain an
                             # jobs, against a real MongoDB (below)
 npm run check:data          # refuses to pass if any spreadsheet or dump is tracked
 npm run check:national-ids  # read-only: two members sharing a national ID
-npm run verify:figures      # read-only: does the live database agree with the new rules
 npm run verify:audit        # read-only: has anybody edited the audit trail (see below)
 npm audit --omit=dev        # dependency advisories
 ```
@@ -126,25 +125,41 @@ money dated before the cycle opens is credited to the opening week.
 
 | Script | What it does |
 | --- | --- |
-| `npm run verify:figures` | **Read-only.** Reports anything already stored that disagrees with the rules the API now enforces on write (money needing rounding, out-of-range or non-numeric amounts, text over a new cap, duplicate national IDs, more than one Settings row) and prints the books' totals to compare against after a deploy. No writes, and indexes are not built |
 | `npm run restore:backup -- <file.json>` | Puts a downloaded backup back into a database. Dry run without `--confirm-write`; upserts by `_id` unless `--replace`; refuses the live database unless `--replace-live` as well. Restore into a scratch database (`--target=…`) before you ever need it |
 | `npm run test:integration` | The rehearsal: the money paths and a backup round trip against a scratch MongoDB (see Checks and tests) |
 | `npm run seed:constitution -- --confirm-write` | Copies the constitution into the database (then the file can leave git). `--from=/path` seeds from a copy kept outside the repository |
 | `npm run check:national-ids` | Reports duplicate/blank/free-text IDs. Exit code 1 on duplicates — a unique index cannot build while two members share a number, and the gate refuses both |
 | `npm run audit:prune -- --days=730 --confirm-write` | Trims the audit trail to a retention window. Dry run without `--confirm-write`; the prune itself is recorded in what remains |
-| `npm run reset:week92` · `balances:restore` · `ledger:clear-contributions` · `ledger:collect-week` | The destructive ones. All dry-run by default, all back up to `backend/data/` (gitignored), all write a `System` audit entry naming the operator (`--by=<email>`, or the earliest super admin) |
+| `npm run balances:restore` · `ledger:clear-contributions` | The destructive ones that remain. Both dry-run by default, both back up to `backend/data/` (gitignored), both write a `System` audit entry naming the operator (`--by=<email>`, or the earliest super admin) |
 
-Two spreadsheet importers for the paper books — `ledger:import` and `ledger:import-incremental` —
-were written for the one-off historical import. **`ledger:import-incremental` was removed on
-2026-09-21**: the import it was built for is done, the cycle now opens at Week 92 with each member's
-verified balance carried in as `openingBalance`, and the script carried its own set of
-spreadsheet-to-ledger rules — how welfare becomes a liability, how a fines column is treated — which
-no longer describe how the books work. A tool that can only be wrong now, that nobody has run for
-months and that writes to the **live** database, is how a ledger ends up with a second set of books.
-`ledger:import` is the same tool under another name (its own header still points at the deleted
-file), and is waiting on the same decision. To put historical figures back now: set opening balances
-from the ledger setup screen or `npm run balances:restore`, or restore a whole database with
-`npm run restore:backup`.
+**The go-live scripts are gone, because the go-live happened.** Five commands were removed on
+2026-09-21, once the Week-92 reset was behind us and the books had opened:
+
+  * `ledger:import` and `ledger:import-incremental` — the two spreadsheet importers of the paper
+    books. They read an Excel file and wrote ledger entries straight into the **live** database, each
+    with its own rules for turning a row into member totals, welfare liabilities and fines. Those
+    rules describe the pre-reset books, so what is left is a tool that can only be wrong — and one
+    nobody had run for months, which is how a ledger ends up with a second set of books.
+  * `ledger:template` — the sheet those two read. It was hard-coded to weeks 61–86
+    (`START_WEEK`/`END_WEEK`/`END_DATE` = 2026-08-06), which the reset replaced, and it is the script
+    that generated `ledger_weeks_61_86_template.xlsx` — one of the files the privacy section records
+    as having been exposed and purged.
+  * `reset:week92` — the go-live wipe itself, named for the week it was performed in. See its own
+    note below.
+  * `ledger:collect-week` — posting Week 91 in one batch, described in its own header as the case it
+    existed for. The app does that from the ledger setup screen, so the command-line copy was a second
+    way to do a job that has a screen.
+  * `verify:figures` — **this one never existed.** The README documented it as a read-only check for
+    figures stored against the old rules, and `package.json` pointed at
+    `scripts/verifyMoneyFigures.js`, which has never been in this repository (no commit has ever
+    contained it). A command that fails when somebody reaches for it after a bad deploy is worse than
+    one that was never offered, so both the entry and its paragraph are gone. What it promised is
+    mostly covered elsewhere: `check:national-ids` for duplicated IDs, `test/money.test.js` and
+    `test/models.test.js` for the rounding and range rules.
+
+To put historical figures back now: set opening balances from the ledger setup screen or
+`npm run balances:restore`, or restore a whole database with `npm run restore:backup`. Git history
+holds every one of these scripts if the rules are ever wanted for reference.
 
 A fine can be cleared in two ways: automatically (a logged payment pays down pending
 fines oldest-first, on both the ledger's own log endpoint and `/api/contributions`),
@@ -369,29 +384,29 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   week 1** (from 13 Dec 2024), each one running Friday to Thursday exactly as the paper ledger
   numbered them; the weeks before the cycle opened are marked "carried forward" and never scored,
   because their money is already inside the member's `openingBalance`.
-- **The Week-92 reset** (`npm run reset:week92 --prefix backend`, dry run by default;
-  `--confirm-reset` applies it) rolls every member's ledger balance into `openingBalance`, clears
-  contributions, expenses, fines, fine types, contribution types and pledges, and reseeds the
-  three ledger types. It writes a full backup to `backend/data/reset-backup-*.json` first (that
-  file is gitignored — same reason the old import scripts are: it carries real names, phones and
-  balances), leaves an audit entry behind, and keeps members, accounts, minutes, documents and
-  Settings untouched. `--remove-artifacts` also deletes the pseudo-members an old import created
-  ("Opening Balances …", group totals stored as if they were people); `--clear-audit` empties the
-  audit trail as well.
+- **The Week-92 reset** was the go-live wipe, and it has been performed: it rolled every member's
+  ledger balance into `openingBalance`, cleared contributions, expenses, fines, fine types,
+  contribution types and pledges, and reseeded the three ledger types, leaving members, accounts,
+  minutes, documents and Settings untouched. It backed up every collection it was about to touch to
+  `backend/data/reset-backup-*.json` first (gitignored — that file carries real names, phones and
+  balances) and left a `System` audit entry naming whoever ran it. **The script has since been
+  removed** (see the note on the go-live scripts above): a wipe named after a week that has passed is
+  not a tool, it is a loaded gun in a drawer. What remains of it is the narrow half —
+  `npm run ledger:clear-contributions`, where the contribution rows go and nothing else moves.
 - **Putting a balance back** (`npm run balances:restore --prefix backend`, dry run by default) is the
   undo for that screen: it reads the before/after snapshots the audit trail kept of each member and
   prints what every balance is now against what it would become. `--confirm-write` applies it after
   copying the members to `backend/data/opening-balances-*.json`, and the write is itself audit-logged,
   so a wrong undo is recoverable too.
-- **The week-91 batch from the command line** (`npm run ledger:collect-week --prefix backend`, dry run by
-  default) is the same write as the go-live screen's bulk entry, for when the API is not deployed: it
-  posts the week's 1,400 contribution and 100 tea for every active member, dated on the Thursday that
-  week closed, skipping anyone who already has a row that week and anyone the batch already posted
-  (`week91-<memberId>-weekly` / `-chai`). `--week=`, `--weekly=`, `--chai=`, `--method=` and `--note=`
-  change what it posts, and `--undo --confirm-write` takes the whole batch back out — the same rows the
-  screen's Undo removes. Post it while `Week number now` is **92**, not 91: a week that ended before the
-  cycle opened is history (its tea is deducted and added to the Tea Fund), whereas the cycle's own
-  opening week is the baseline and carries no tea at all.
+- **The week-91 batch** — the paper ledger's last week, where every member paid the week's 1,400 and
+  the 100 tea — was posted in one go rather than 64 rows by hand, and the app still does it from the
+  ledger setup screen: `POST /api/ledger/collect-week` posts the week's 1,400 and tea for every active
+  member, dated on the Thursday that week closed, skipping anyone who already has a row that week and
+  anyone the batch already posted, and `DELETE /api/ledger/collect-week?weekNumber=91` soft-deletes the
+  batch again (the trail stays). The command-line copy of it was removed with the other go-live
+  scripts. One distinction worth keeping if it is ever posted again: do it while `Week number now` is
+  **92**, not 91 — a week that ended before the cycle opened is history (its tea is deducted and added
+  to the Tea Fund), whereas the cycle's own opening week is the baseline and carries no tea at all.
 - **Phone normalization:** `+2547…`, `2547…`, `07…` all resolve to one stored format
   (`07XXXXXXXX`) — enforced on member create/edit and CSV import. The phone is how the office
   reaches a member; it is no longer the key to his record (see the ID below).

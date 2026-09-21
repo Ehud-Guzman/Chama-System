@@ -13,7 +13,6 @@
     "test:integration": "node scripts/runIntegration.mjs",
     "restore:backup": "node src/scripts/restoreBackup.js",
     "check:data": "node scripts/checkNoDataFiles.mjs",
-    "verify:figures": "node scripts/verifyMoneyFigures.js",
     "check:national-ids": "node src/scripts/verifyNationalIds.js",
     "audit:prune": "node src/scripts/pruneAuditLog.js",
     "verify:audit": "node src/scripts/verifyAuditChain.js",
@@ -22,12 +21,8 @@
     "job:reminders": "node src/scripts/runJob.js reminder-sweep",
     "seed:constitution": "node src/scripts/seedConstitution.js",
     "seed:super-admin": "node src/scripts/seedSuperAdmin.js",
-    "reset:week92": "node src/scripts/resetForWeek92.js",
     "balances:restore": "node src/scripts/restoreOpeningBalances.js",
-    "ledger:collect-week": "node src/scripts/postWeekCollection.js",
-    "ledger:clear-contributions": "node src/scripts/clearContributions.js",
-    "ledger:template": "node src/scripts/createLedgerTemplate.js",
-    "ledger:import": "node src/scripts/importLedgerFromSpreadsheet.js"
+    "ledger:clear-contributions": "node src/scripts/clearContributions.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
