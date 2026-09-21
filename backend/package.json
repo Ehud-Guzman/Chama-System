@@ -27,8 +27,7 @@
     "ledger:collect-week": "node src/scripts/postWeekCollection.js",
     "ledger:clear-contributions": "node src/scripts/clearContributions.js",
     "ledger:template": "node src/scripts/createLedgerTemplate.js",
-    "ledger:import": "node src/scripts/importLedgerFromSpreadsheet.js",
-    "ledger:import-incremental": "node src/scripts/importLedgerIncremental.js"
+    "ledger:import": "node src/scripts/importLedgerFromSpreadsheet.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

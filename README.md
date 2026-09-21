@@ -134,6 +134,18 @@ money dated before the cycle opens is credited to the opening week.
 | `npm run audit:prune -- --days=730 --confirm-write` | Trims the audit trail to a retention window. Dry run without `--confirm-write`; the prune itself is recorded in what remains |
 | `npm run reset:week92` · `balances:restore` · `ledger:clear-contributions` · `ledger:collect-week` | The destructive ones. All dry-run by default, all back up to `backend/data/` (gitignored), all write a `System` audit entry naming the operator (`--by=<email>`, or the earliest super admin) |
 
+Two spreadsheet importers for the paper books — `ledger:import` and `ledger:import-incremental` —
+were written for the one-off historical import. **`ledger:import-incremental` was removed on
+2026-09-21**: the import it was built for is done, the cycle now opens at Week 92 with each member's
+verified balance carried in as `openingBalance`, and the script carried its own set of
+spreadsheet-to-ledger rules — how welfare becomes a liability, how a fines column is treated — which
+no longer describe how the books work. A tool that can only be wrong now, that nobody has run for
+months and that writes to the **live** database, is how a ledger ends up with a second set of books.
+`ledger:import` is the same tool under another name (its own header still points at the deleted
+file), and is waiting on the same decision. To put historical figures back now: set opening balances
+from the ledger setup screen or `npm run balances:restore`, or restore a whole database with
+`npm run restore:backup`.
+
 A fine can be cleared in two ways: automatically (a logged payment pays down pending
 fines oldest-first, on both the ledger's own log endpoint and `/api/contributions`),
 or by hand from the member's page — **Fines → Pay**. Voiding a fine is for a fine
