@@ -55,7 +55,16 @@ test('an unknown route answers JSON, not an HTML error page', async () => {
 });
 
 test('the admin API refuses an anonymous caller', async () => {
-  for (const path of ['/api/members', '/api/auth/me', '/api/ledger', '/api/fines']) {
+  for (const path of [
+    '/api/members',
+    '/api/auth/me',
+    '/api/ledger',
+    '/api/fines',
+    // The reminders screen writes to people's inboxes, so the mail status and the list
+    // behind it have to refuse a stranger before anything else about them matters.
+    '/api/notifications/status',
+    '/api/notifications/reminders',
+  ]) {
     const res = await get(path);
     assert.equal(res.status, 401, `${path} should be 401 without a token`);
   }

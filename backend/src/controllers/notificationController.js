@@ -6,8 +6,21 @@ const { getOrCreateSettings } = require('../utils/settings');
 const { resolveConfig } = require('../utils/weekCycle');
 const { WEEKLY_TYPE_NAME, bucketForType } = require('../utils/ledgerTypes');
 const { computeMemberLedger } = require('../utils/memberLedger');
-const { isMailConfigured, sendMail, buildReminderEmail } = require('../utils/mailer');
+const {
+  assertMailConfigured,
+  describeMailConfig,
+  describeMailError,
+  sendMail,
+  verifyMail,
+  buildReminderEmail,
+  buildTestEmail,
+} = require('../utils/mailer');
 const { logAudit } = require('../utils/auditLogger');
+// The request log is where "emails are not being sent" gets its evidence: a request the
+// office gives up on leaves no line of its own (only a finished response is logged), so
+// the outcome of every send has to be written down as it happens, not only returned in
+// a response somebody may never see.
+const { logEvent } = require('../middleware/requestLogger');
 
 // One request should never try to email the whole group and then time out — the
 // page selects a handful at a time, and the sends happen inside this request. Fifty
@@ -105,11 +118,13 @@ async function computeMemberDues(members) {
 }
 
 // GET /api/notifications/status — is this deployment able to send at all?
+//
+// `configured` is about the variables, not about reachability: a host that has the
+// SMTP_* values and cannot open the connection reports itself configured and still
+// sends nothing. The honest test is the test button (POST /api/notifications/test),
+// which opens a connection and signs in.
 async function mailStatus(req, res) {
-  res.json({
-    configured: isMailConfigured(),
-    from: isMailConfigured() ? process.env.MAIL_FROM : null,
-  });
+  res.json(describeMailConfig());
 }
 
 // GET /api/notifications/reminders?onlyOwing=1 — every active member, with what
@@ -147,8 +162,9 @@ async function listReminders(req, res, next) {
     visible.sort((a, b) => b.total - a.total);
 
     res.json({
-      configured: isMailConfigured(),
-      from: isMailConfigured() ? process.env.MAIL_FROM : null,
+      // The host, the port and the sending address travel with the list, so the screen
+      // can say what a batch will be sent as, and from where, without a second request.
+      ...describeMailConfig(),
       members: visible,
       owingCount: rows.filter((r) => r.total > 0).length,
       reachableCount: visible.filter((r) => r.email && r.emailNotifications).length,
@@ -179,12 +195,33 @@ async function deliverReminders({
   includeFines = true,
   note = '',
   performedBy,
+  // The request this batch belongs to, when a person asked for it: it ties these lines
+  // to the one line that request writes when it finishes. The weekly sweep has no
+  // request, so it passes nothing and its lines stand on their own.
+  rid = null,
 }) {
   const cleanNote = String(note || '').trim().slice(0, 600);
   const results = [];
   let sent = 0;
   let skipped = 0;
   let failed = 0;
+  const startedAt = Date.now();
+
+  // One connection, tried before the first message, because the alternative is one per
+  // member: with a provider this host cannot reach, every send spends its own
+  // connectionTimeout discovering the same fault, so fifty members becomes a quarter of
+  // an hour of waiting — and the office, whose browser gives up after twenty seconds,
+  // hears a timeout rather than the reason. Failing here costs a single wait, names the
+  // fault, and is also what the weekly sweep records in its job run.
+  //
+  // It sends nothing, so a deployment whose mail is broken says so the moment somebody
+  // presses send instead of after a batch of silent failures.
+  try {
+    await verifyMail();
+  } catch (err) {
+    logEvent('reminder_smtp_unavailable', { rid, error: describeMailError(err) }, 'error');
+    throw err;
+  }
 
   const skip = (member, reason) => {
     skipped += 1;
@@ -221,6 +258,11 @@ async function deliverReminders({
       sent += 1;
       results.push({ id: member._id, name: member.name, email: member.email, status: 'sent', reason: null });
 
+      // Written down as it happens, because the response these belong to may never be
+      // delivered — a request the office gives up on finishes nowhere and is logged
+      // nowhere. Without this line, "were the emails sent?" had no answer on the server.
+      logEvent('reminder_email_sent', { rid, memberId: String(member._id) });
+
       await logAudit({
         action: 'create',
         entityType: 'Notification',
@@ -244,8 +286,28 @@ async function deliverReminders({
         status: 'failed',
         reason: err.message,
       });
+      // The reason, with the provider's own code in it — 535 for a revoked app password,
+      // 550 for an address it will not accept, ETIMEDOUT for a host that cannot reach the
+      // port. Each is a different fix, and none of them is guessable from a screen that
+      // only says the send did not finish.
+      logEvent(
+        'reminder_email_failed',
+        { rid, memberId: String(member._id), error: describeMailError(err) },
+        'error'
+      );
     }
   }
+
+  // The batch in one line: what went, and how long it honestly took. The duration is the
+  // number that explains a screen complaining that the server took too long.
+  logEvent('reminder_batch_done', {
+    rid,
+    attempted: members.length,
+    sent,
+    skipped,
+    failed,
+    ms: Date.now() - startedAt,
+  });
 
   return { sent, skipped, failed, results };
 }
@@ -256,13 +318,10 @@ async function deliverReminders({
 // abort the rest of the batch.
 async function sendReminders(req, res, next) {
   try {
-    if (!isMailConfigured()) {
-      const err = new Error(
-        'Email sending is not set up yet. Add SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and MAIL_FROM to the server environment.'
-      );
-      err.status = 503;
-      throw err;
-    }
+    // Refused before a single member is looked at, with the same sentence the senders
+    // themselves use and marked as written for a person — so the screen shows it in
+    // production instead of the generic "Something went wrong".
+    assertMailConfigured();
 
     const { memberIds, includeLate = true, includeFines = true, note = '' } = req.body || {};
     const ids = [...new Set((Array.isArray(memberIds) ? memberIds : []).map(String))].slice(
@@ -287,6 +346,7 @@ async function sendReminders(req, res, next) {
       includeFines,
       note,
       performedBy: req.user._id,
+      rid: req.id,
     });
 
     res.json({
@@ -300,10 +360,61 @@ async function sendReminders(req, res, next) {
   }
 }
 
+// POST /api/notifications/test — one message, to the address on the signed-in account.
+//
+// This is the check that answers the question the office actually asks — "is it sending
+// at all?" — without a member being involved, and it is the only place an SMTP error is
+// worth showing exactly as the provider worded it: whoever presses the button is the
+// person who can change the server's environment. A reminder that fails says nothing to
+// anybody; this one says why.
+async function sendTestEmail(req, res, next) {
+  try {
+    assertMailConfigured();
+
+    const to = String(req.user.email || '').trim();
+    if (!to) {
+      const err = new Error('Your account has no email address, so there is nowhere to send a test.');
+      err.status = 400;
+      throw err;
+    }
+
+    const settings = await getOrCreateSettings();
+    const { subject, text, html } = buildTestEmail({ chamaName: settings.chamaName });
+
+    let info;
+    try {
+      info = await sendMail({ to, subject, text, html });
+    } catch (err) {
+      // A rejection carries a status only when it was written for a person (nothing
+      // configured); anything else is the provider's own answer, and that is what the
+      // person pressing this button needs to read. 535 names a revoked app password,
+      // ETIMEDOUT names a host that cannot reach the port at all — different fixes.
+      if (err.status) throw err;
+      const refused = new Error(`The mail server refused the test: ${describeMailError(err)}`);
+      refused.status = 503;
+      refused.expose = true;
+      throw refused;
+    }
+
+    logEvent('test_email_sent', { rid: req.id, userId: String(req.user._id), to });
+    res.json({
+      sent: true,
+      to,
+      from: process.env.MAIL_FROM || null,
+      messageId: (info && info.messageId) || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   mailStatus,
   listReminders,
   sendReminders,
+  // The office's own check, exported alongside the rest so the route file reads as the
+  // list of things this controller can do.
+  sendTestEmail,
   // Shared with the weekly sweep job, so a member emailed automatically and one emailed by
   // hand are told exactly the same thing.
   computeMemberDues,

@@ -500,9 +500,17 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   member isn't seeing himself (`POST /api/notifications/reminders` sends). A week still in
   progress is never counted as late, and the cycle only reaches back as far as week 92, so
   nobody is emailed about unreconcilable history. Sending needs `SMTP_*` + `MAIL_FROM`; without
-  them the page says so and the API returns a 503 with the same explanation. Every send is
-  audit-logged, members can be opted out individually (`emailNotifications`), and a member with
-  no address is listed as un-emailable rather than silently skipped.
+  them the page says so and the API returns a 503 with the same explanation. The page also
+  carries its own test button (`POST /api/notifications/test`), which emails the signed-in
+  account and nobody else: it is the only way to tell "the variables are set" from "this host can
+  reach the provider with these credentials", and the only place an SMTP error — a revoked app
+  password, a blocked outbound port — is reported in the provider's own words. A batch is sent
+  one member at a time and can take a minute or more, so it runs under its own 120-second ceiling
+  rather than the client's 20-second default, the connection is proved once before the first
+  message (an unreachable provider then costs one wait, not one per member), and every send — or
+  its failure, with the SMTP code in it — leaves a line in the request log as it happens. Every
+  send is audit-logged, members can be opted out individually (`emailNotifications`), and a
+  member with no address is listed as un-emailable rather than silently skipped.
 - **Member records:** each member carries an email address, a profile photo, a next of kin
   (name, relationship, phone, email) and an email-reminders switch. Next of kin and notes stay
   on the admin side; only the photo and public passbook fields are exposed publicly.
@@ -578,6 +586,9 @@ bundle as a foreign-looking URL).
 - Sign in as the super admin, check **Settings → chama name** reads `WAZO MOJA SELF-HELP GROUP`.
 - Email and Cloudinary keep working only if their variables are set on the host too (7 `SMTP_*` /
   `MAIL_FROM` and the `CLOUDINARY_*` trio) — on the server they are silently disabled otherwise.
+  Once they are set, press **Send a test email** on `/admin/reminders`: the values being present
+  is not the same as the host being able to reach the provider, and the button says which of the
+  two is missing.
 - Open a member's passbook from a phone on mobile data (not the office Wi-Fi) to confirm the
   public lookup and the gated PDF/Excel work over the real domain.
 

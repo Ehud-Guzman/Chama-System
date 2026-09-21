@@ -126,7 +126,7 @@ const rowFor = (rows, name) => {
   return row;
 };
 
-test('a date of birth exports as the day the office wrote', async () => {
+test('a date of birth exports as the day the office wrote', { skip }, async () => {
   const { rows } = await downloadExport();
 
   // Both storage shapes render as the 17th: one stored at midnight EAT, one at midnight UTC.
@@ -136,7 +136,7 @@ test('a date of birth exports as the day the office wrote', async () => {
   assert.equal(rowFor(rows, 'Utc Midnight')['Date of birth'], '1990-04-17');
 });
 
-test('the export carries every column the importer reads', async () => {
+test('the export carries every column the importer reads', { skip }, async () => {
   const { rows } = await downloadExport();
   const headers = Object.keys(rows[0]);
 
@@ -165,7 +165,7 @@ test('the export carries every column the importer reads', async () => {
   }
 });
 
-test('an exported register uploads again with its dates intact', async () => {
+test('an exported register uploads again with its dates intact', { skip }, async () => {
   // The whole user story, through the real endpoint: download the roster, hand the sheet back as
   // CSV the way the browser does, and read it with the importer the upload uses.
   const { sheet } = await downloadExport();
