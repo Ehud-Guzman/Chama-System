@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { queueRequest } from './offlineQueue';
 
 export const TOKEN_KEY = 'cm_token';
 
@@ -23,7 +24,7 @@ api.interceptors.request.use((config) => {
 // Expired/invalid session on an admin page → back to login
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
+  async (err) => {
     const onAdminPage =
       window.location.pathname.startsWith('/admin') &&
       window.location.pathname !== '/admin/login';
@@ -31,6 +32,35 @@ api.interceptors.response.use(
       localStorage.removeItem(TOKEN_KEY);
       window.location.assign('/admin/login');
     }
+
+    // A write the caller marked as queueable, that failed for a reason a retry could fix, goes
+    // into the outbox instead of being lost (services/offlineQueue). It is opt-in per request, on
+    // purpose: silently keeping somebody's failed save is only acceptable where the API already
+    // treats a repeat as the same write, which is true of the ledger and not universally true.
+    //
+    // The error still rejects — the caller has to know it has not been saved yet, and there is a
+    // screen telling it so. `queuedOffline` is set so the message can say "kept, will send".
+    const config = err.config;
+    if (config?.offlineQueue && !config.__queuedOffline) {
+      const status = err.response?.status;
+      const worthRetrying = status === undefined || status === 408 || status === 429 || status >= 500;
+      if (worthRetrying) {
+        try {
+          await queueRequest({
+            url: config.url,
+            method: config.method,
+            body: config.data,
+            label: config.offlineLabel || '',
+          });
+          config.__queuedOffline = true;
+          err.queuedOffline = true;
+        } catch {
+          // The browser will not store it (private mode, no quota). The error stands as it was,
+          // which is the honest outcome: it really was not saved.
+        }
+      }
+    }
+
     return Promise.reject(err);
   }
 );

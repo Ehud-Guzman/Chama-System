@@ -1,0 +1,17 @@
+# What never goes into the image.
+#
+# This file is not housekeeping. `COPY . .` in the Dockerfile would otherwise carry `data/` into
+# the image, and `backend/data/` is where this project keeps the things that must never leave the
+# machine: the reset and opening-balances dumps, the spreadsheets, and the nightly backups the job
+# writes to `data/backups/`. An image is a file that gets pushed, pulled and kept — exactly the
+# wrong place for the register.
+data/
+secrets/
+node_modules/
+.env
+.env.*
+*.log
+
+# Anything which is not source.
+Dockerfile
+.dockerignore

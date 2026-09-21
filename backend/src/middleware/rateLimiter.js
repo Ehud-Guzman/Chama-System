@@ -107,6 +107,42 @@ const passwordChangeLimiter = rateLimit({
   message: { message: 'Too many attempts. Please wait a few minutes and try again.' },
 });
 
+// The second factor, budgeted twice over like the password is.
+//
+// A six-digit code is a million possibilities, and one slot of slack either side means
+// three of them are live at any moment — so ten tries is already one in thirty-three
+// thousand against a single thirty-second window, and the code changes before a script
+// could get through a meaningful fraction of the budget.
+//
+// Keyed on the challenge rather than only the address, and the challenge is hashed: the
+// token is a live credential for the next five minutes, so it must not be kept in the
+// limiter's memory in the clear (which is the same rule the API limiter follows for a
+// session token). Budgeting per challenge also means one admin fat-fingering his own
+// code cannot use up another admin's budget from the same office connection.
+function challengeKey(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 16);
+}
+
+const twoFactorLimiter = rateLimit({
+  windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.TWO_FACTOR_RATE_LIMIT_MAX) || 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `${ipKey(req)}:${challengeKey(req.body?.challenge)}`,
+  message: { message: 'Too many code attempts. Please wait a few minutes and try again.' },
+});
+
+const twoFactorSprayLimiter = rateLimit({
+  windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.LOGIN_SPRAY_LIMIT_MAX) || 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => ipKey(req),
+  message: { message: 'Too many attempts from this connection. Please wait a few minutes.' },
+});
+
 // The authenticated API: a ceiling on volume rather than an attempt to stop
 // nothing in particular. It exists so one runaway client (a retry loop, a script, a
 // stolen token) cannot hammer the database, and it is keyed on the session rather
@@ -130,6 +166,8 @@ const apiLimiter = rateLimit({
 module.exports = {
   loginLimiter,
   loginSprayLimiter,
+  twoFactorLimiter,
+  twoFactorSprayLimiter,
   apiLimiter,
   lookupLimiter,
   overviewLimiter,

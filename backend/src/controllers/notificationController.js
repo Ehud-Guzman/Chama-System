@@ -161,6 +161,95 @@ async function listReminders(req, res, next) {
   }
 }
 
+// The sending itself, separated from the request that asked for it.
+//
+// Two things send reminders now: the reminders screen, where an admin picks members and
+// presses send, and the weekly sweep, where nobody is watching. They must not be two
+// implementations — a member who is emailed by the sweep has to get the same message, off
+// the same figures, as one emailed by hand, or the two will disagree about what he owes.
+//
+// `performedBy` is the account credited in the audit trail. For the sweep that is the
+// supervising account rather than a person (utils/systemActor), which is why it is a
+// parameter and not read off `req`.
+async function deliverReminders({
+  members,
+  dues,
+  settings,
+  includeLate = true,
+  includeFines = true,
+  note = '',
+  performedBy,
+}) {
+  const cleanNote = String(note || '').trim().slice(0, 600);
+  const results = [];
+  let sent = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  const skip = (member, reason) => {
+    skipped += 1;
+    results.push({ id: member._id, name: member.name, email: member.email || '', status: 'skipped', reason });
+  };
+
+  for (const member of members) {
+    const due = dues.get(String(member._id)) || { lateWeeks: [], fines: [] };
+    const lateWeeks = includeLate ? due.lateWeeks : [];
+    const fines = includeFines ? due.fines : [];
+
+    if (!member.email) {
+      skip(member, 'No email address on file');
+      continue;
+    }
+    if (member.emailNotifications === false) {
+      skip(member, 'Member has switched email reminders off');
+      continue;
+    }
+    if (lateWeeks.length === 0 && fines.length === 0 && !cleanNote) {
+      skip(member, 'Nothing outstanding');
+      continue;
+    }
+
+    try {
+      const { subject, html, text } = buildReminderEmail({
+        chamaName: settings.chamaName,
+        member,
+        lateWeeks,
+        fines,
+        note: cleanNote,
+      });
+      await sendMail({ to: member.email, subject, html, text });
+      sent += 1;
+      results.push({ id: member._id, name: member.name, email: member.email, status: 'sent', reason: null });
+
+      await logAudit({
+        action: 'create',
+        entityType: 'Notification',
+        entityId: member._id,
+        performedBy,
+        after: {
+          channel: 'email',
+          to: member.email,
+          subject,
+          lateWeeks: lateWeeks.length,
+          fines: fines.length,
+          note: cleanNote || null,
+        },
+      });
+    } catch (err) {
+      failed += 1;
+      results.push({
+        id: member._id,
+        name: member.name,
+        email: member.email,
+        status: 'failed',
+        reason: err.message,
+      });
+    }
+  }
+
+  return { sent, skipped, failed, results };
+}
+
 // POST /api/notifications/reminders — body:
 // { memberIds: [...], includeLate: true, includeFines: true, note: '' }
 // Sends sequentially and reports per member, so a single bad address can't
@@ -188,82 +277,36 @@ async function sendReminders(req, res, next) {
       .select('name phone email emailNotifications')
       .lean();
 
-    const [dues, settings] = await Promise.all([
-      computeMemberDues(members),
-      getOrCreateSettings(),
-    ]);
+    const [dues, settings] = await Promise.all([computeMemberDues(members), getOrCreateSettings()]);
 
-    const cleanNote = String(note || '').trim().slice(0, 600);
-    const results = [];
-    let sent = 0;
-    let skipped = 0;
-    let failed = 0;
+    const summary = await deliverReminders({
+      members,
+      dues,
+      settings,
+      includeLate,
+      includeFines,
+      note,
+      performedBy: req.user._id,
+    });
 
-    const skip = (member, reason) => {
-      skipped += 1;
-      results.push({ id: member._id, name: member.name, email: member.email || '', status: 'skipped', reason });
-    };
-
-    for (const member of members) {
-      const due = dues.get(String(member._id)) || { lateWeeks: [], fines: [] };
-      const lateWeeks = includeLate ? due.lateWeeks : [];
-      const fines = includeFines ? due.fines : [];
-
-      if (!member.email) {
-        skip(member, 'No email address on file');
-        continue;
-      }
-      if (member.emailNotifications === false) {
-        skip(member, 'Member has switched email reminders off');
-        continue;
-      }
-      if (lateWeeks.length === 0 && fines.length === 0 && !cleanNote) {
-        skip(member, 'Nothing outstanding');
-        continue;
-      }
-
-      try {
-        const { subject, html, text } = buildReminderEmail({
-          chamaName: settings.chamaName,
-          member,
-          lateWeeks,
-          fines,
-          note: cleanNote,
-        });
-        await sendMail({ to: member.email, subject, html, text });
-        sent += 1;
-        results.push({ id: member._id, name: member.name, email: member.email, status: 'sent', reason: null });
-
-        await logAudit({
-          action: 'create',
-          entityType: 'Notification',
-          entityId: member._id,
-          performedBy: req.user._id,
-          after: {
-            channel: 'email',
-            to: member.email,
-            subject,
-            lateWeeks: lateWeeks.length,
-            fines: fines.length,
-            note: cleanNote || null,
-          },
-        });
-      } catch (err) {
-        failed += 1;
-        results.push({
-          id: member._id,
-          name: member.name,
-          email: member.email,
-          status: 'failed',
-          reason: err.message,
-        });
-      }
-    }
-
-    res.json({ sent, skipped, failed, results });
+    res.json({
+      sent: summary.sent,
+      skipped: summary.skipped,
+      failed: summary.failed,
+      results: summary.results,
+    });
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { mailStatus, listReminders, sendReminders };
+module.exports = {
+  mailStatus,
+  listReminders,
+  sendReminders,
+  // Shared with the weekly sweep job, so a member emailed automatically and one emailed by
+  // hand are told exactly the same thing.
+  computeMemberDues,
+  deliverReminders,
+  MAX_RECIPIENTS,
+};

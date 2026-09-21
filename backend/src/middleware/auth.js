@@ -14,6 +14,19 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ message: 'Not authenticated' });
     }
     const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ALGORITHMS });
+
+    // A token that only proves "the password was right" is not a session. The 2FA
+    // challenge is a JWT too, because it is the same signed thing with a shorter life
+    // and a smaller claim — so it has to be told apart from a real one here, or the
+    // second factor would be optional for anyone who reads the challenge out of the
+    // sign-in response.
+    //
+    // Tokens issued before the 2FA step existed carry no scope at all, and are treated
+    // as sessions: refusing them would sign every admin out on deploy for no gain.
+    if (payload.scope && payload.scope !== 'session') {
+      return res.status(401).json({ message: 'Your sign-in is not finished. Please start again.' });
+    }
+
     const user = await User.findById(payload.id);
     if (!user || !user.active) {
       return res.status(401).json({ message: 'Account not found or deactivated' });

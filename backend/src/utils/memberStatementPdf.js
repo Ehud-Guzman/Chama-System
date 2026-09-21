@@ -1,5 +1,5 @@
 const PDFDocument = require('pdfkit');
-const { buildStatement, money, shortDate } = require('./memberStatement');
+const { buildStatement, reconciliationLines, money, shortDate } = require('./memberStatement');
 const { CHAMA_NAME } = require('../data/branding');
 
 // The member's own statement as a PDF — the format a person actually reads on a
@@ -63,6 +63,8 @@ function renderMemberStatementPdf(res, profile, chamaName) {
   const doc = new PDFDocument({ margin: MARGIN, size: 'A4' });
   doc.pipe(res);
 
+  const period = statement.period;
+
   // ----------------------------------------------------------------- header
   doc.font('Helvetica-Bold').fontSize(17).text(chamaName || CHAMA_NAME);
   doc.font('Helvetica').fontSize(10).fillColor('#666').text('Member Contribution Statement');
@@ -71,11 +73,20 @@ function renderMemberStatementPdf(res, profile, chamaName) {
   doc.font('Helvetica').fontSize(9).fillColor('#666');
   if (statement.member.regNumber) doc.text(`Member number ${statement.member.regNumber}`);
   if (statement.member.phoneMasked) doc.text(`Phone ${statement.member.phoneMasked}`);
+  // What this statement covers, on the same lines as who it is for. A period statement without its
+  // period printed on it is a page of figures that cannot be checked against anything.
+  if (period) {
+    doc.fillColor('#000').font('Helvetica-Bold').fontSize(10);
+    doc.text(`Period: ${period.label}`);
+    doc.font('Helvetica').fillColor('#666').fontSize(9);
+    if (period.note) doc.text(period.note, { width: CONTENT_WIDTH });
+    doc.fillColor('#000');
+  }
   doc.moveDown(1);
   doc.fillColor('#000');
 
   // ---------------------------------------------------------------- figures
-  let y = sectionTitle(doc, doc.y, 'Where he stands');
+  let y = sectionTitle(doc, doc.y, period ? 'Where he stood in this period' : 'Where he stands');
   for (const figure of statement.figures) {
     y = ensureRoom(doc, y, 16);
     doc.font(figure.strong ? 'Helvetica-Bold' : 'Helvetica').fontSize(figure.strong ? 10 : 9);
@@ -89,6 +100,38 @@ function renderMemberStatementPdf(res, profile, chamaName) {
     );
     doc.fillColor('#000');
     y += figure.strong ? 16 : 14;
+  }
+
+  // ------------------------------------------------------- the arithmetic
+  // Printed as a sum rather than a list of facts, because this is the block somebody will check by
+  // hand across a table — and if it does not add up, the statement says so here instead of being
+  // handed over as though it did.
+  if (period) {
+    y = sectionTitle(doc, y, 'How that adds up');
+    for (const line of reconciliationLines(period)) {
+      y = ensureRoom(doc, y, 16);
+      doc.font('Helvetica').fontSize(9).fillColor('#000');
+      doc.text(`${line.sign ? `${line.sign}  ` : ''}${line.label}`, MARGIN, y, { width: 300 });
+      doc.text(money(line.value), MARGIN + 300, y, { width: 195, align: 'right' });
+      y += 14;
+    }
+    y = ensureRoom(doc, y, 26);
+    if (period.balanced) {
+      doc.font('Helvetica').fontSize(8).fillColor('#666');
+      doc.text('The arithmetic above reconciles.', MARGIN, y, { width: CONTENT_WIDTH });
+    } else {
+      // Deliberately loud. A statement that does not add up must never look like one that does, and
+      // the office needs to be told here rather than by a member at a meeting.
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#b3261e');
+      doc.text(
+        'THESE FIGURES DO NOT RECONCILE. Do not issue this statement — report it to whoever maintains the system.',
+        MARGIN,
+        y,
+        { width: CONTENT_WIDTH }
+      );
+    }
+    doc.fillColor('#000').font('Helvetica');
+    y += 18;
   }
 
   y += 8;

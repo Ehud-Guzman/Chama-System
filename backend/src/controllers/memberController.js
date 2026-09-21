@@ -16,6 +16,7 @@ const { computeMemberLedger } = require('../utils/memberLedger');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { renderMemberStatementPdf } = require('../utils/memberStatementPdf');
 const { memberStatementSheets } = require('../utils/memberStatement');
+const { resolvePeriod, computePeriodBlock } = require('../utils/statementPeriod');
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { cleanEmail, isValidEmail } = require('../utils/mailer');
@@ -918,6 +919,7 @@ async function exportMembers(req, res, next) {
 async function buildPublicProfile(member, options = {}) {
   const callerIsSelf = Boolean(options.self);
   const showTeaFund = Boolean(options.includeTeaFund);
+  const period = options.period || null;
   const [docs, breakdown, settings] = await Promise.all([
     Contribution.find({ memberId: member._id, deleted: false })
       .sort({ date: 1, createdAt: 1 })
@@ -966,15 +968,31 @@ async function buildPublicProfile(member, options = {}) {
   // the paper ledger's money has been carried into openingBalance, so what a
   // member holds has to come from here — otherwise his own passbook says he has
   // nothing while the office sees 123,400 against his name.
-  const ledger = computeMemberLedger({
-    member,
-    contributions: docs.map((c) => ({
-      ...c,
-      bucket: bucketForType(c.typeId),
-      isGroupFund: Boolean(c.typeId && c.typeId.isGroupFund),
-    })),
-    config,
-  });
+  //
+  // Built once and reused below for the period's own two calls, so a statement cannot be
+  // reconciling against a differently-annotated set of the same rows.
+  const annotated = docs.map((c) => ({
+    ...c,
+    bucket: bucketForType(c.typeId),
+    isGroupFund: Boolean(c.typeId && c.typeId.isGroupFund),
+  }));
+  const ledger = computeMemberLedger({ member, contributions: annotated, config });
+
+  // A statement for a period ("his 2026", "this quarter"). The block's figures come from the same
+  // engine, called as at the period's two ends — which is what makes the statement's arithmetic
+  // reconcile instead of being a sum of whichever rows happened to fall inside the dates
+  // (utils/statementPeriod explains why that matters).
+  const periodBlock = period
+    ? computePeriodBlock({
+        member,
+        config,
+        all: annotated,
+        // The rows the reader is entitled to see. The engine above still sees everything, tea
+        // included, because that is what the tea deduction is reconciled against.
+        visible: contributions,
+        period,
+      })
+    : null;
   // Strip admin-only fields (who issued it, which contribution settled it)
   // before this reaches the public passbook.
   const publicFine = (f) => ({
@@ -1028,6 +1046,10 @@ async function buildPublicProfile(member, options = {}) {
     })),
     contributions,
     fines: publicFines,
+    // The period block, when the caller asked for one. Deliberately not exposed on the passbook
+    // JSON: the lookup has no period, and a field nobody asked for is a field somebody will
+    // misread. It is attached here because the PDF and the workbook both render this same object.
+    ...(periodBlock ? { period: periodBlock } : {}),
     // Only the funds the reader is meant to see: for a member's own lookup that
     // is his personal weekly contribution, never the Group's automatic tea.
     weeklySchedules: visibleSchedules,
@@ -1065,13 +1087,29 @@ async function sendStatementExcel(res, profile) {
   sendWorkbook(res, `statement-${slug}.xlsx`, memberStatementSheets(profile, settings.chamaName));
 }
 
+// Reads the period off a statement request, or answers 400 with the sentence.
+//
+// Shared by all four statement endpoints — the member's own two and the office's two — because a
+// period that one of them accepted and another refused would be a support call nobody could
+// reproduce. `undefined` period (nothing asked for) is the whole-book statement and always valid.
+function readStatementPeriod(req, res) {
+  const period = resolvePeriod(req.query, { now: Date.now() });
+  if (period && period.error) {
+    res.status(400).json({ message: period.error });
+    return { failed: true };
+  }
+  return { period };
+}
+
 // GET /api/public/lookup/statement?nationalId= — PUBLIC, same access rule as
-// publicLookup.
+// publicLookup. `?year=`, `?quarter=`, `?from=&to=` and `?range=` narrow it to a period.
 async function publicLookupStatement(req, res, next) {
   try {
     const gate = await findActiveMemberByNationalId(req.query.nationalId);
     if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
-    await sendStatement(res, await buildPublicProfile(gate.member, { self: true }));
+    const read = readStatementPeriod(req, res);
+    if (read.failed) return undefined;
+    await sendStatement(res, await buildPublicProfile(gate.member, { self: true, period: read.period }));
   } catch (err) {
     next(err);
   }
@@ -1081,7 +1119,12 @@ async function publicLookupStatementExcel(req, res, next) {
   try {
     const gate = await findActiveMemberByNationalId(req.query.nationalId);
     if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
-    await sendStatementExcel(res, await buildPublicProfile(gate.member, { self: true }));
+    const read = readStatementPeriod(req, res);
+    if (read.failed) return undefined;
+    await sendStatementExcel(
+      res,
+      await buildPublicProfile(gate.member, { self: true, period: read.period })
+    );
   } catch (err) {
     next(err);
   }
@@ -1093,7 +1136,12 @@ async function memberStatement(req, res, next) {
   try {
     const member = await Member.findById(req.params.id).lean();
     if (!member) return res.status(404).json({ message: 'Member not found' });
-    await sendStatement(res, await buildPublicProfile(member, { includeTeaFund: true }));
+    const read = readStatementPeriod(req, res);
+    if (read.failed) return undefined;
+    await sendStatement(
+      res,
+      await buildPublicProfile(member, { includeTeaFund: true, period: read.period })
+    );
   } catch (err) {
     next(err);
   }
@@ -1134,11 +1182,14 @@ async function memberStatementExcel(req, res, next) {
       });
     }
 
+    const read = readStatementPeriod(req, res);
+    if (read.failed) return undefined;
+
     await sendStatementExcel(
       res,
       // The office's copy: it keeps the Tea Fund in it, as the finance ledger
       // does — a member's own download from the lookup leaves it out.
-      await buildPublicProfile(member, { includeTeaFund: true })
+      await buildPublicProfile(member, { includeTeaFund: true, period: read.period })
     );
   } catch (err) {
     next(err);

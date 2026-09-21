@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node --test",
     "icons": "node scripts/generate-icons.mjs",
     "verify:icons": "node scripts/verify-icons.mjs",
     "report:bundle": "node scripts/report-bundle.mjs",

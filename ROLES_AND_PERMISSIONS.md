@@ -156,8 +156,31 @@ dashboard.
 | **Settings** | R/W | R/W | ❌ | ❌ | ❌ |
 | **Backup/Restore** | R/W | ❌ | ❌ | ❌ | ❌ |
 | **Audit Log** | R | R | R | R | ❌ |
+| **Scheduled jobs** (`/api/jobs`) | R/W | ❌ | ❌ | ❌ | ❌ |
+| **Two-factor auth** (own account) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Two-factor reset** (another account) | ✅ | C (secretary/disciplinary) | ❌ | ❌ | ❌ |
 
 **Legend:** R = Read, W = Write, C = Create Only, R/W = Read & Write, ❌ = No Access
+
+**Two-factor authentication** is not a privilege, so it does not belong to a role: once the
+group has it switched on, anyone with a sign-in can and should turn it on for their own
+account, from **Settings → Security** (`/api/auth/me/2fa/setup`, `/enable`, `/disable`,
+`/recovery-codes`). The rules differ only in what each role may *do to somebody else*:
+
+- **Super admin** may reset another admin's second factor (a lost phone) from the accounts
+  panel — **and is the only role that can switch the feature on or off for the group**
+  (`PATCH /api/settings` with `twoFactorAuthEnabled`). It is **off by default**, so no code
+  is ever asked for until he turns it on. Off means off for everybody, including accounts
+  that had already enrolled; their setup is kept, not deleted.
+- **Admin** may reset a `secretary` or `disciplinary` account's second factor — the same
+  limit that already applies to creating, deactivating and resetting passwords for those
+  roles. He cannot switch the group's feature on.
+- **Treasurer, secretary and disciplinary** manage their own and nobody else's.
+
+Resetting somebody else's second factor clears it entirely, so the account signs in with a
+password alone until they enrol again — which is why it leaves an audit entry naming who did
+it and for whom. Whoever resets it should change that password in the same sitting.
+
 
 ---
 

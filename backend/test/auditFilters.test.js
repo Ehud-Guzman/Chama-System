@@ -68,16 +68,16 @@ test('the person filter only accepts a real id', () => {
 });
 
 test('a search is a search, not a pattern', () => {
-  const { match } = buildFilters({ q: 'Benson (Maina)' });
+  const { match } = buildFilters({ q: 'Example (Member)' });
   const regexes = match.$or.map((clause) => Object.values(clause)[0]);
   // Escaped in the source, so the brackets are characters rather than a group.
   assert.ok(regexes.every((rx) => rx.source.includes('\\(') && rx.source.includes('\\)')));
-  assert.ok(regexes[0].test('Benson (Maina)'));
+  assert.ok(regexes[0].test('Example (Member)'));
 
   // And a pattern typed into the box stays text: this one matches nothing, rather
   // than matching everybody.
   const pattern = buildFilters({ q: '^(.*)$' }).match.$or[0]['after.name'];
-  assert.ok(!pattern.test('Benson Maina'));
+  assert.ok(!pattern.test('Example Member'));
   assert.ok(pattern.test('^(.*)$'));
 
   assert.equal(buildFilters({ q: '   ' }).match.$or, undefined);

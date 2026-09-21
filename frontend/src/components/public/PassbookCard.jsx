@@ -6,6 +6,7 @@ import { blobErrorMessage } from '../../utils/blobError';
 import MemberAvatar from '../members/MemberAvatar';
 import FinesPanel from '../shared/FinesPanel';
 import WeeklyScheduleTable from '../shared/WeeklyScheduleTable';
+import StatementPeriodPicker, { useStatementPeriod } from '../shared/StatementPeriodPicker';
 
 const PAGE_SIZE = 20;
 
@@ -19,6 +20,10 @@ const PAGE_SIZE = 20;
 // both optional — omit them if the caller has no way to re-identify this member.
 // They are independent URLs, not derived from one another — always pass both
 // explicitly from the caller.
+//
+// The period picker appends its query to those URLs here rather than at the call site, so the
+// member's own statement and the office's copy take their period from the same component and the
+// same wording.
 export default function PassbookCard({
   result,
   statementUrl,
@@ -27,6 +32,7 @@ export default function PassbookCard({
   const toast = useToast();
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  const period = useStatementPeriod();
   // Animates once on mount only — paging away and back doesn't replay it
   const animateRef = useRef(true);
 
@@ -42,7 +48,7 @@ export default function PassbookCard({
   async function exportStatement() {
     setExporting(true);
     try {
-      const res = await api.get(statementUrl, { responseType: 'blob' });
+      const res = await api.get(`${statementUrl}${period.query}`, { responseType: 'blob' });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
       a.href = url;
@@ -59,7 +65,7 @@ export default function PassbookCard({
   async function exportStatementExcel() {
     setExporting(true);
     try {
-      const res = await api.get(statementExcelUrl, { responseType: 'blob' });
+      const res = await api.get(`${statementExcelUrl}${period.query}`, { responseType: 'blob' });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
       a.href = url;
@@ -95,30 +101,48 @@ export default function PassbookCard({
             </div>
           </div>
           {(statementUrl || statementExcelUrl) && (
-            <div className="flex shrink-0 gap-2">
-              {statementUrl && (
-                <button
-                  type="button"
-                  onClick={exportStatement}
-                  disabled={exporting}
-                  aria-label={`Download ${result.name}'s statement as a PDF`}
-                  className="inline-flex min-h-11 items-center rounded-lg border border-rule px-3 text-sm font-medium text-primary disabled:opacity-60"
-                >
-                  {exporting ? 'Exporting…' : 'Statement PDF'}
-                </button>
-              )}
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <div className="flex gap-2">
+                {statementUrl && (
+                  <button
+                    type="button"
+                    onClick={exportStatement}
+                    disabled={exporting}
+                    aria-label={`Download ${result.name}'s statement as a PDF${
+                      period.label && period.preset !== 'whole' ? ` for ${period.label}` : ''
+                    }`}
+                    className="inline-flex min-h-11 items-center rounded-lg border border-rule px-3 text-sm font-medium text-primary disabled:opacity-60"
+                  >
+                    {exporting ? 'Exporting…' : 'Statement PDF'}
+                  </button>
+                )}
 
-              {statementExcelUrl && (
-                <button
-                  type="button"
-                  onClick={exportStatementExcel}
-                  disabled={exporting}
-                  aria-label={`Download ${result.name}'s statement as a spreadsheet`}
-                  className="inline-flex min-h-11 items-center rounded-lg border border-rule px-3 text-sm font-medium text-primary disabled:opacity-60"
-                >
-                  {exporting ? 'Exporting…' : 'Statement Excel'}
-                </button>
-              )}
+                {statementExcelUrl && (
+                  <button
+                    type="button"
+                    onClick={exportStatementExcel}
+                    disabled={exporting}
+                    aria-label={`Download ${result.name}'s statement as a spreadsheet`}
+                    className="inline-flex min-h-11 items-center rounded-lg border border-rule px-3 text-sm font-medium text-primary disabled:opacity-60"
+                  >
+                    {exporting ? 'Exporting…' : 'Statement Excel'}
+                  </button>
+                )}
+              </div>
+              {/* Both buttons download whatever period is chosen here, which is why the picker sits
+                  with them rather than buried further down the passbook. */}
+              <StatementPeriodPicker
+                className="w-full sm:w-56"
+                idPrefix="member-period"
+                preset={period.preset}
+                from={period.from}
+                to={period.to}
+                onChange={({ preset, from, to }) => {
+                  if (preset !== undefined) period.setPreset(preset);
+                  if (from !== undefined) period.setFrom(from);
+                  if (to !== undefined) period.setTo(to);
+                }}
+              />
             </div>
           )}
         </header>

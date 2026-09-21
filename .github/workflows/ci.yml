@@ -51,6 +51,12 @@ jobs:
       - name: Tests
         run: npm test
 
+      - name: Tests, with coverage
+        # The suite runs twice on purpose: once as a plain pass/fail gate for a reader, and once
+        # with the coverage report, which is the thing that shows a new money path arrived with no
+        # test at all. Not a threshold — a number nobody looks at is a number that stops being read.
+        run: node --test --experimental-test-coverage
+
       - name: Rehearsal against a real MongoDB
         run: npm run test:integration
 
@@ -76,5 +82,16 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Tests
+        run: npm test
+
+      - name: Icons are well formed
+        run: npm run verify:icons
+
       - name: Build
         run: npm run build
+
+      - name: Critical path stays inside its budget
+        # The members' page is a phone on Kenyan mobile data. 150 KB gzip is the line the README
+        # draws; this is the step that makes it a line rather than a hope.
+        run: npm run report:bundle -- --max=150

@@ -62,6 +62,7 @@ const documentRoutes = require('./routes/documentRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const backupRoutes = require('./routes/backupRoutes');
+const jobRoutes = require('./routes/jobRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const app = express();
 
@@ -257,6 +258,9 @@ app.use('/api/notifications', notificationRoutes);
 
 app.use('/api/backup', backupRoutes);
 
+// The scheduled jobs: what they are, when they run next, and a way to run one by hand.
+app.use('/api/jobs', jobRoutes);
+
 // The audit trail: who changed what, when, and which of it was out of the ordinary.
 app.use('/api/audit', auditRoutes);
 
@@ -291,6 +295,16 @@ if (require.main === module) {
     // The document vault's headings: seeded so a vault that has never been filed
     // in still offers the group's own six.
     .then(() => ensureDocumentCategories())
+    // The scheduled work: the nightly backup, the weekly audit check and the reminder sweep.
+    // Started last, after the seeds, so a job can never run against a half-initialised database.
+    .then(() => {
+      if (String(process.env.JOBS_ENABLED || 'true').toLowerCase() !== 'false') {
+        // Required lazily so the test suite — which never boots a server — does not pull the
+        // jobs, the models behind them, or their schedules into the process at all.
+        const { startJobs } = require('./jobs');
+        startJobs();
+      }
+    })
     .then(() => {
       server = app.listen(PORT, '0.0.0.0', () => {
         logEvent('api_started', {
@@ -320,6 +334,16 @@ if (require.main === module) {
     timer.unref?.();
 
     try {
+      // The scheduled jobs stop first: a nightly backup that starts during a deploy would be
+      // killed half-written, and a half-written backup file is worse than none — it looks like
+      // a backup and cannot be restored.
+      try {
+        const { stopJobs } = require('./jobs');
+        stopJobs();
+      } catch {
+        // The jobs module was never loaded (JOBS_ENABLED=false, or a failed boot).
+      }
+
       if (server) {
         await new Promise((resolve) => server.close(resolve));
       }

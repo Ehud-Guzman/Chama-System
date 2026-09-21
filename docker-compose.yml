@@ -1,0 +1,62 @@
+# Local development, in one command.
+#
+#   docker compose up -d mongo          # just the database, then run the API on the host
+#   docker compose up --build           # the database and the API
+#   docker compose run --rm api npm run test:integration
+#
+# The README used to ask for `docker run -d --name chama-rehearsal -p 27017:27017 mongo:7` by hand,
+# which is fine until somebody runs it twice, or loses the container name, or attaches the volume
+# somewhere odd. This is the same thing written down.
+services:
+  mongo:
+    image: mongo:7
+    # The name the README's own instructions used, kept so an existing container and this file do
+    # not fight over the port.
+    container_name: chama-rehearsal
+    ports:
+      - '27017:27017'
+    volumes:
+      # A named volume rather than a bind mount: this is throwaway data, and it must not appear in
+      # the working tree. A database directory inside the repository is member data inside the
+      # repository, which is the one thing this project has already had to fix once.
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./backend
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      PORT: 5000
+      NODE_ENV: development
+      # Talk to the container next to it, not to localhost.
+      MONGO_URI: mongodb://mongo:27017/chama
+      # Development only. The API refuses to boot without 32+ characters; this one is public and
+      # must never be the value on a host.
+      JWT_SECRET: dev-only-secret-that-is-definitely-long-enough
+      # The Vite dev server and the SPA, so a browser can reach the API from the host.
+      FRONTEND_URL: http://localhost:5173,http://127.0.0.1:5173
+      # Schedules for the nightly backup and the weekly checks. Leave them on: a container that
+      # quietly does not run them is the difference between testing the jobs and not.
+      JOBS_ENABLED: 'true'
+      BACKUP_DIR: /app/data/backups
+    ports:
+      - '5000:5000'
+    volumes:
+      # Source is mounted for development, so `npm run dev` (watch mode) inside the container sees
+      # local edits. The named volume keeps the container's node_modules from being replaced by the
+      # host's — which is a bind mount of the same path on a different platform.
+      - ./backend:/app
+      - api-node-modules:/app/node_modules
+      - api-data:/app/data
+    command: npm run dev
+
+volumes:
+  mongo-data:
+  api-node-modules:
+  api-data:

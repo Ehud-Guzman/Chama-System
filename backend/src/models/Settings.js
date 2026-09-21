@@ -58,6 +58,18 @@ const SettingsSchema = new Schema(
     // call, not a developer's, and because a deploy must never be able to change
     // figures on its own.
     autoSettleFines: { type: Boolean, default: false },
+    // Whether two-factor authentication is in use at all.
+    //
+    // OFF by default, and that is the point: the feature is built and ready, but until the
+    // committee decides it wants it, nobody is asked for a code and nobody can enrol. One switch,
+    // in one place, that a super admin controls - rather than a feature that quietly starts
+    // challenging people because a deploy carried new code.
+    //
+    // While it is off, an account that had already enrolled is not challenged either: "off" has to
+    // mean off, or the switch is decoration. Their enrolment is kept, not deleted, so turning it
+    // back on restores exactly the state it was in - the panel says how many accounts that affects
+    // before anybody flips it.
+    twoFactorAuthEnabled: { type: Boolean, default: false },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

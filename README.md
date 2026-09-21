@@ -80,26 +80,39 @@ node src/scripts/seedSuperAdmin.js "Your Name" you@example.com "a-strong-passwor
 ### Checks and tests
 
 ```bash
-npm test                    # the week engine, money, uploads, minutes, the API's own behaviour
-npm run test:integration    # the rehearsal: the money paths against a real MongoDB (below)
+npm test                    # the week engine, money, uploads, minutes, 2FA, the audit chain,
+                            # the job schedules, and the API's own behaviour (no database needed)
+npm run test:integration    # the rehearsal: the money paths, the audit chain and the scheduled
+                            # jobs, against a real MongoDB (below)
 npm run check:data          # refuses to pass if any spreadsheet or dump is tracked
 npm run check:national-ids  # read-only: two members sharing a national ID
 npm run verify:figures      # read-only: does the live database agree with the new rules
+npm run verify:audit        # read-only: has anybody edited the audit trail (see below)
 npm audit --omit=dev        # dependency advisories
 ```
 
-`npm test` needs no database and no `.env`. `npm run test:integration` is the rehearsal:
-it starts the API against a scratch MongoDB, signs in, logs a payment, checks a duplicate
-submit is not counted twice, issues and settles a fine, watches the quarter-drop guard
-refuse a save, then takes a backup through the real endpoint and restores it into a second
-database — asserting the dates and ids came back as dates and ids. CI runs it against a
-`mongo:7` service container.
+In `frontend/`:
+
+```bash
+npm test                    # the pure frontend logic (formatting, ID handling, links)
+npm run report:bundle -- --max=150   # the critical path in gzip KB, and fails if it is over 150
+```
+
+`npm test` needs no database and no `.env`. `npm run test:integration` is the rehearsal: it starts
+the API against a scratch MongoDB, signs in, logs a payment, checks a duplicate submit is not
+counted twice, issues and settles a fine, watches the quarter-drop guard refuse a save, takes a
+backup through the real endpoint and restores it into a second database — then writes audit entries,
+edits one *behind the API's back* and checks the chain notices, drives the job runner, and writes a
+real backup file and reads it back. CI runs it against a `mongo:7` service container.
 
 ```bash
 docker run -d --name chama-rehearsal -p 27017:27017 mongo:7   # once
 npm run test:integration
 docker start chama-rehearsal                                  # next time
 ```
+
+Or with Compose, from the repository root (`docker compose up -d mongo`, or `up --build` for the
+API too).
 
 Point it somewhere else with `TEST_MONGO_URI=mongodb://host:27017/chama-scratch`; it
 creates and drops its own databases and refuses a URL that does not look like a scratch one.
@@ -522,6 +535,16 @@ bundle as a foreign-looking URL).
 | `SMTP_HOST` · `SMTP_PORT` · `SMTP_USER` · `SMTP_PASS` · `SMTP_SECURE` | Outgoing mail for reminders |
 | `MAIL_FROM` | Address reminders are sent as — required for sending to work at all |
 | `MAIL_REPLY_TO` | Optional reply-to (e.g. the treasurer's own inbox) |
+| `TWO_FACTOR_RATE_LIMIT_MAX` | Code attempts per challenge, default 10 per 15 minutes |
+| `JOBS_ENABLED` | `false` switches the scheduled jobs off. Safe to leave on with more than one instance — the lease in the database decides who runs |
+| `JOB_BACKUP_SCHEDULE` · `JOB_AUDIT_SCHEDULE` · `JOB_REMINDER_SCHEDULE` | `daily@HH:MM` · `weekly@<day>@HH:MM` · `monthly@<day>@HH:MM`, in EAT. Defaults `daily@02:00`, `weekly@sat@04:00`, `weekly@sun@18:00` |
+| `BACKUP_DIR` | Where the nightly backup is written (default `backend/data/backups`, gitignored). **Point this at a mounted volume on a host with an ephemeral disk** |
+| `BACKUP_RETENTION` | How many backup files to keep, default 14 |
+| `AUDIT_RETENTION_DAYS` | Blank or 0 keeps everything (the default). Only pre-chain entries are ever pruned automatically |
+| `AUDIT_HEAD_EMAIL` | Where the weekly audit check sends the chain's head. Defaults to `MAIL_REPLY_TO`, then `MAIL_FROM` |
+| `REMINDER_SWEEP_SEND` | `true` lets the weekly sweep actually email members who are behind. Off by default |
+| `REMINDER_SWEEP_MAX` | Most members one sweep will email, default 200 |
+| `SYSTEM_ACTOR_EMAIL` | Which account automatic writes are credited to in the audit trail. Defaults to the earliest super admin |
 
 ## Environment variables (frontend)
 
@@ -610,6 +633,209 @@ an ID, the refusal to answer at all when an ID matches two members, and the deni
 above. (2) Money is stored as two-decimal numbers rather than integer cents; exact to
 two places, which is what the shilling needs, but integer cents would be exact beyond
 it if the group ever trades in fractions of a shilling.
+
+**Admin accounts can have a second factor — switched off by default.** `/admin/settings`
+→ **Security** has a master switch that only the super admin can flip: **two-factor
+authentication is off for the group until he turns it on**. Off means off for everybody,
+including accounts that had already enrolled — nobody is asked for a code and nobody can
+enrol, and their setup is kept rather than deleted so turning it back on restores exactly
+what was there. An account can still turn its own second factor off while the group has it
+off, because the switch must not trap anybody. It is built and tested and waiting; turn it
+on when the committee has decided who will use it.
+
+Once it is on: an admin enrols from the same screen, with an authenticator app — the same
+RFC 6238 standard every one of them implements, so nothing needs installing that the admin
+does not already have. `utils/totp.js` is the implementation and it carries no dependency —
+`crypto`, base32, and the published RFC test vectors in `test/totp.test.js`, which is the
+only way to be sure a code works in Google Authenticator and not merely in this codebase.
+
+Three decisions in it are worth knowing:
+
+  * **Nothing is switched on until a code from the app verifies.** The secret is held as
+    *pending* until then, so an admin who starts enrolling and gets distracted is not
+    locked out of his own account by a half-finished setup.
+  * **Signing in is two steps, and the first one is not a session.** A correct password
+    returns a five-minute `scope: '2fa'` challenge, which `middleware/auth` refuses
+    everywhere a session is accepted — otherwise the challenge would itself be a working
+    token and the second factor would be decoration.
+  * **The secret never leaves the server as a picture.** There is no QR code, because
+    drawing one means handing the account's shared secret to a third-party image service.
+    The key is shown in a readable, grouped, copyable form instead, and every authenticator
+    app accepts manual entry.
+
+Ten single-use **recovery codes** cover the lost phone, stored only as HMACs keyed on
+`JWT_SECRET` (so a dump of the accounts table cannot be worked through offline) and removed
+as they are spent. Using one is logged and said out loud at sign-in, because a recovery code
+is the weakest link in any 2FA setup: it is written down, and it does not expire. A code
+already used for one sign-in cannot be used again — the accepted thirty-second slot is
+recorded on the account. Turning the second factor off, or reissuing codes, needs the
+password *and* a live code, because either one alone is something a thief holding the phone
+already has. An admin whose phone is gone is unblocked by another admin from the accounts
+panel, which leaves the loudest entry the trail takes.
+
+**The audit trail is tamper-evident.** Every entry carries the hash of the entry before it
+(`utils/auditChain`), so a stored document that has been edited, an entry that has been
+deleted, or one that has been inserted is no longer a quiet change: it breaks every hash
+after it, and `npm run verify:audit` names the first entry that does not add up — with the
+exit code as the answer, so it can run on a schedule or in CI. The canonical form is
+key-sorted, because a verifier that re-serialised a stored document and compared strings
+would report breaks that are not there, and a verifier that cries wolf gets ignored.
+
+Two honest limits, written into the module rather than left implied:
+
+  * **A chain cannot catch entries removed from the end** — a shortened trail is internally
+    perfect. That is what the recorded head is for: `verify:audit` prints it, and the weekly
+    job emails it (see below). A head written down or received a month ago is what proves
+    nothing was dropped since.
+  * **It is not a signature.** Somebody who rewrites every entry from the break onward and
+    recomputes the hashes defeats it; that needs the anchor kept somewhere the operator cannot
+    reach, which is exactly what the emailed head is.
+
+Entries written before the chain existed carry no hash and are skipped by the verifier:
+inventing a hash for history nobody can honestly recompute would be a worse lie than an honest
+gap. Writes retry against the real head if two land at once (`chainSequence` is unique, so a
+fork is refused by the database rather than by hope), and the chain is a *reason to notice*,
+never a reason to refuse the payment being audited.
+
+**The things nobody has to remember.** `jobs/` runs three jobs, and their whole point is that
+they happen without a person: everything in this system has always waited for somebody to press
+something, which is right for the books and wrong for a backup.
+
+| Job | Default | What it does |
+| --- | --- | --- |
+| `nightly-backup` | `daily@02:00` EAT | Writes the whole database to a file — the same format and the same code as the download button (`utils/backup`) — and keeps the newest `BACKUP_RETENTION` (14) |
+| `audit-check` | `weekly@sat@04:00` | Verifies the chain, records the head, and emails it |
+| `reminder-sweep` | `weekly@sun@18:00` | Works out who is behind; emails them **only** if `REMINDER_SWEEP_SEND=true` |
+
+Four things about the runner are deliberate:
+
+  * **A job runs once, even with two instances.** A lease in the database (`models/JobLock`,
+    insert-then-steal against a unique index) is the arbiter, because a timer alone would happily
+    take the nightly backup twice during a deploy. The lease expires, so a container killed
+    mid-job does not stop the job happening ever again.
+  * **A failing job never takes the process down**, and it is recorded either way: the absence of
+    a backup is what this guards against, and an absence is invisible without a record of
+    presence. `GET /api/jobs` (super admin) lists the schedules, the next run and the last five
+    runs, and reads the backup directory from disk rather than from those records — because the
+    question is whether the files are there.
+  * **Schedules are East African time**, a fixed +3 like the week engine, and they are written
+    the way a person says them: `daily@02:00`, `weekly@fri@03:00`, `monthly@1@04:00`.
+  * **The reminder sweep reports before it sends.** It computes and reports every week and emails
+    only when switched on — the same principle as `autoSettleFines`: a deploy must never begin
+    writing to the membership on its own.
+
+Run one by hand with `npm run job:backup` (or `job:audit`, `job:reminders`), or
+`POST /api/jobs/<name>/run`. Both go through the same code as the timer, so "run it now" is a
+real rehearsal of the schedule rather than a second implementation of it.
+
+**Where a backup goes matters.** `BACKUP_DIR` defaults to `backend/data/backups/`, which is
+gitignored — and on a host with an ephemeral disk (Render, Railway) it does **not** survive a
+deploy. Point it at a mounted volume, or copy the directory off the host. A backup that lives
+only on the machine it is backing up is not a backup, and the job records the directory it wrote
+to so the question is answerable.
+
+**The ledger works with no signal.** `frontend/src/services/offlineQueue.js` keeps a ledger entry
+that failed for a network reason and sends it when the signal returns, and
+`frontend/public/sw.js` caches the app shell so the page opens at all on a bad cell. The outbox is
+safe *because* of `clientRequestId` on `Contribution` — a unique sparse index, so a replay
+resolves to the same payment instead of a second one — and it is **opt-in per request**
+(`offlineQueue: true`), because silently keeping a failed save is only acceptable where the API
+already treats a repeat as the same write.
+
+Three rules keep it honest:
+
+  * **It never skips ahead.** If the first queued entry cannot be sent, the ones behind it wait: a
+    member's later payment must not land before his earlier one, or his statement reads as though
+    the second came first.
+  * **A refusal is not retried.** A 4xx means the API understood and said no; it is discarded and
+    *reported*, because an entry that can never succeed would otherwise hide the real one behind
+    it forever. A conflict is reported as "already went through" rather than as a failure. The
+    banner says "could not be saved and will not be retried" — the one message in this system that
+    must never be softened.
+  * **The clerk's next entry gets a new key.** After a queued save the screen rotates its request
+    id; reusing it would make the API treat the next, different payment as a duplicate of the
+    queued one and silently drop it. That is the single way an outbox loses money instead of
+    saving it.
+
+The service worker caches **nothing under `/api/`** — not the ledger, and above all not the
+ID-gated documents, minutes or constitution. The API marks those `no-store`, and a worker that
+kept a copy anyway would leave a member's papers sitting in a browser cache after the page was
+closed. It is registered in production only, because a worker serving the shell from a cache
+fights Vite's hot-reload; test it with `npm run build && npm run preview`.
+
+**A statement can cover a period.** Every statement has always been "everything": the figures to
+date, the last twelve months summarised, the schedule, every row. What it could not answer is the
+question members and the committee actually ask — *what happened in this year, this quarter, this
+month?* — and the picker next to the two statement buttons now answers it, on the office's member
+page and on the members' own passbook. Both download whatever period is chosen, at
+`/api/members/:id/statement[.xlsx]` and `/api/public/lookup/statement[.xlsx]`.
+
+The API takes any of these, and a request with **none** of them is the whole-book statement,
+unchanged:
+
+```
+?year=2026                    the whole of 2026 (or to today, if 2026 is still running)
+?year=2026&quarter=2          Q2
+?year=2026&month=3            March
+?range=this-year              this-year · last-year · this-quarter · last-quarter · this-month · last-month
+?from=2026-03-01&to=2026-06-30   an explicit pair; `to` alone means "to today"
+```
+
+**Why the figures are not a sum of the rows in the period.** A member's money is not what he paid;
+it is `openingBalance + paid − required − tea`, where `required` and `tea` accrue automatically for
+every week that has *closed* since the books opened (`utils/memberLedger`). Slice the rows to March
+and add them up and the total is a number that appears nowhere in the system and that nobody can
+reconcile — and a statement whose figures do not add up is worse than no statement, because it will
+be argued with. So the period's figures are **differences of two calls to that same engine**, taken
+as at the period's two ends (`utils/statementPeriod`):
+
+```
+opening (at the start)              = computeMemberLedger(…, now = from).money
+closing (at the end)                = computeMemberLedger(…, now = to).money
+paid in / weeks that closed / tea   = the differences of the same three figures
+```
+
+which turns the reconciliation into an identity rather than an assertion:
+
+```
+closing − opening  =  paidIn − required − tea
+```
+
+`balanced` checks exactly that, and both renderers print the sum — the PDF as a section headed
+"How that adds up", the workbook as rows on the summary sheet above the line *The arithmetic adds
+up: Yes*. Where it does not balance, the PDF says **"THESE FIGURES DO NOT RECONCILE. Do not issue
+this statement"** in red rather than handing it over as though it did. A statement that is quietly
+wrong is the one failure this whole feature is built to avoid.
+
+Four things the period does that are worth knowing:
+
+  * **A period that has not finished is clamped to today, and says so on the statement.** Asking
+    for `?year=2027` in June gives you January to today with a printed note, because a closing
+    balance for a period that has not happened is a figure that is simply wrong.
+  * **Only weeks that have closed are scored**, exactly as in the passbook — so the opening week
+    (92, the baseline) and the week still running both come to nothing, and a month's "weeks that
+    closed" count is the engine's own, not a count of Thursdays. The tests pin this.
+  * **The weeks and the tea always move together** (`tea = weeksClosed × chaiAmount`), which is what
+    makes "less the weeks" checkable by eye across a table.
+  * **A bad period is a 400 with a sentence, never a file.** `2026-02-31` is caught (the regex
+    accepts it; the calendar does not), as are a backwards range, `quarter=9` and `range=forever`.
+    The message names what is allowed, because an operator is the one who reads it.
+
+The office's copy is unchanged in the one way that matters: it names the Tea Fund and the member's
+own does not, because that money is the Group's and listing it among his contributions would read as
+money he paid in. A period statement also lists the months the period touches and only the rows
+inside it, drops the "carried forward" summary (its money is not part of the period), and still
+prints **money held today** — the question that always follows the period one.
+
+**How the period is tested.** `test/statementPeriod.test.js` covers the resolving (a year, a
+quarter, a month, leap Februaries, "last quarter" asked for in January, clamping, and every refusal)
+and, more importantly, the reconciliation: the identity above is asserted for a year, a quarter, a
+single month, a month with no payments at all, **a single week** (Friday to the following Thursday),
+a single day, a period entirely before the cycle opened, and one straddling it.
+`test/integration/statements.test.js` then does it for real — through the API, against a real
+MongoDB, reading the workbook back out of the response bytes — including that a statement with no
+period is still exactly what it always was, that both formats really are the format they claim to
+be, and that another member's money cannot appear on one.
 
 
 98% of this app's usage is a phone on Kenyan mobile data: a 375px Android on 3G, a

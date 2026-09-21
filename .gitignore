@@ -8,6 +8,11 @@ Thumbs.db
 .idea/
 *.log
 
+# Docker build context and the Compose database volume, if somebody ends up with a stray directory
+# from an older Compose file. The named volumes in docker-compose.yml live outside the tree.
+backend/data/db/
+.mongo/
+
 # These two migration scripts embedded real member names, phone numbers and
 # amounts, so a tracked copy would hand out the key to the members area — a phone
 # number is the credential for the gated documents and minutes. Both have been

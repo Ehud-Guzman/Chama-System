@@ -17,6 +17,7 @@ import FinesPanel from '../components/shared/FinesPanel';
 import WeeklyScheduleTable from '../components/shared/WeeklyScheduleTable';
 import Loader from '../components/shared/Loader';
 import MemberAvatar from '../components/members/MemberAvatar';
+import StatementPeriodPicker, { useStatementPeriod } from '../components/shared/StatementPeriodPicker';
 import { takeWarmJson } from '../services/prefetch';
 
 // One label/value pair in the profile's admission blocks. Renders nothing when
@@ -49,6 +50,9 @@ export default function MemberDetail() {
   const [voidingFine, setVoidingFine] = useState(null);
   const [settlingFine, setSettlingFine] = useState(null);
   const [busy, setBusy] = useState(false);
+  // The period the two statement buttons download. Whole book by default, so the buttons behave
+  // exactly as they always have until somebody chooses otherwise.
+  const statementPeriod = useStatementPeriod();
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState('');
   const photoInputRef = useRef(null);
@@ -119,7 +123,9 @@ export default function MemberDetail() {
 
   async function exportStatement() {
     try {
-      const res = await api.get(`/api/members/${id}/statement`, { responseType: 'blob' });
+      const res = await api.get(`/api/members/${id}/statement${statementPeriod.query}`, {
+        responseType: 'blob',
+      });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
       a.href = url;
@@ -249,7 +255,7 @@ export default function MemberDetail() {
 
 async function exportStatementExcel() {
   try {
-    const res = await api.get(`/api/members/${id}/statement/excel`, {
+    const res = await api.get(`/api/members/${id}/statement/excel${statementPeriod.query}`, {
       responseType: 'blob',
     });
 
@@ -617,6 +623,22 @@ async function exportStatementExcel() {
           >
             Statement Excel
           </button>
+
+          {/* Both statement buttons download whatever period is chosen here. The picker sits in the
+              action row rather than under the figures because it is an argument to those two
+              buttons, not a fact about the member. */}
+          <StatementPeriodPicker
+            className="min-w-[13rem]"
+            idPrefix="office-period"
+            preset={statementPeriod.preset}
+            from={statementPeriod.from}
+            to={statementPeriod.to}
+            onChange={({ preset, from, to }) => {
+              if (preset !== undefined) statementPeriod.setPreset(preset);
+              if (from !== undefined) statementPeriod.setFrom(from);
+              if (to !== undefined) statementPeriod.setTo(to);
+            }}
+          />
 
           {member.active && (
             <button

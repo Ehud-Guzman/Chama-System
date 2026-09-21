@@ -169,15 +169,27 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
     }
     setBusy(true);
     try {
-      const res = await api.post(`/api/ledger/members/${id}/log`, {
-        kind,
-        amount: value,
-        method,
-        date,
-        note: note.trim(),
-        description: description.trim(),
-        clientRequestId: requestIdRef.current,
-      });
+      const res = await api.post(
+        `/api/ledger/members/${id}/log`,
+        {
+          kind,
+          amount: value,
+          method,
+          date,
+          note: note.trim(),
+          description: description.trim(),
+          clientRequestId: requestIdRef.current,
+        },
+        {
+          // If the phone has no signal, this entry goes into the outbox rather than being lost
+          // (services/offlineQueue). Safe to queue *because* of `clientRequestId` above: the API
+          // stores it under a unique index, so a replay resolves to the same payment instead of a
+          // second one.
+          offlineQueue: true,
+          // What the banner calls it if it has to report that this one was refused later.
+          offlineLabel: `${money(value)} for ${data?.member?.name || 'a member'}`,
+        }
+      );
       // A payment pays down pending fines first (oldest first). Say so: the figure
       // he sees move on the ledger is the net, and the difference has to be
       // accounted for out loud or it looks like money that went missing.
@@ -198,7 +210,18 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
       await load();
       onChanged?.();
     } catch (err) {
-      toast(apiMessage(err), 'error');
+      if (err.queuedOffline) {
+        // Kept, and it will be sent when the signal comes back — so the next request needs a *new*
+        // key. Reusing this one would make the API treat the treasurer's next, different payment as
+        // a duplicate of the one now sitting in the outbox, and silently drop it. That is the one
+        // way an outbox loses money instead of saving it.
+        requestIdRef.current = crypto.randomUUID();
+        setNote('');
+        setDescription('');
+        toast('No signal — kept, and it will be sent when you are back online');
+      } else {
+        toast(apiMessage(err), 'error');
+      }
     } finally {
       setBusy(false);
     }

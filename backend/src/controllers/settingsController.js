@@ -38,6 +38,7 @@ async function updateSettings(req, res, next) {
       cycleStartWeek,
       weekAnchorDate,
       autoSettleFines,
+      twoFactorAuthEnabled,
     } = req.body || {};
     if (chamaName !== undefined) {
       if (!String(chamaName).trim()) {
@@ -127,6 +128,22 @@ async function updateSettings(req, res, next) {
         return res.status(400).json({ message: 'autoSettleFines must be true or false' });
       }
       settings.autoSettleFines = autoSettleFines;
+    }
+    // Two-factor authentication, as a group decision rather than a personal one.
+    //
+    // Super admin only, like autoSettleFines above and for the same kind of reason: it changes what
+    // everybody else has to do to sign in. Off by default, so a deploy carrying this code changes
+    // nothing until somebody with the authority decides it should.
+    if (twoFactorAuthEnabled !== undefined) {
+      if (req.user.role !== 'super_admin') {
+        return res.status(403).json({
+          message: 'Only the super admin can switch two-factor authentication on or off for the group.',
+        });
+      }
+      if (typeof twoFactorAuthEnabled !== 'boolean') {
+        return res.status(400).json({ message: 'twoFactorAuthEnabled must be true or false' });
+      }
+      settings.twoFactorAuthEnabled = twoFactorAuthEnabled;
     }
     if (weeklyTrackingStartDate !== undefined) {
       if (weeklyTrackingStartDate === null || weeklyTrackingStartDate === '') {

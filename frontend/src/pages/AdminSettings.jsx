@@ -1,6 +1,7 @@
 import { useAuth } from '../context/AuthContext';
 import ChamaSettingsForm from '../components/shared/ChamaSettingsForm';
 import ChangePasswordForm from '../components/shared/ChangePasswordForm';
+import TwoFactorPanel from '../components/shared/TwoFactorPanel';
 import AddAdminForm from '../components/shared/AddAdminForm';
 import BackupPanel from '../components/shared/BackupPanel';
 import BackLink from '../components/shared/BackLink';
@@ -40,6 +41,15 @@ const SECTIONS = [
     id: 'password',
     label: 'My password',
     hint: 'Change your own sign-in password',
+    roles: ['super_admin', 'admin'],
+  },
+  {
+    id: 'security',
+    label: 'Security',
+    hint: 'The group’s two-factor switch, and your own second factor',
+    // The page itself is super-admin/admin only (see App.jsx), and the master switch on it is
+    // super admin only. Listed to match the guard rather than to promise something the route
+    // would refuse.
     roles: ['super_admin', 'admin'],
   },
   {
@@ -111,6 +121,11 @@ export default function AdminSettings() {
           {has('password') && (
             <div id="password" className="scroll-mt-24">
               <ChangePasswordForm />
+            </div>
+          )}
+          {has('security') && (
+            <div id="security" className="scroll-mt-24">
+              <TwoFactorPanel />
             </div>
           )}
           {has('backup') && (

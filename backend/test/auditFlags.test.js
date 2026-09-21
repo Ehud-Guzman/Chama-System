@@ -112,17 +112,19 @@ test('a deleted row is flagged with the money it carried', () => {
 });
 
 test("a member's phone number is a credential, so changing it is called out", () => {
+  // A synthetic name and balance throughout: the real ones were here once, and a name is member
+  // data even when it is only a test fixture (see the README).
   const read = readAuditEntry({
     action: 'update',
     entityType: 'Member',
-    before: { name: 'Benson Maina', phone: '0712345678', active: true, openingBalance: 114610 },
-    after: { name: 'Benson Maina', phone: '0799999999', active: true, openingBalance: 114610 },
+    before: { name: 'Example Member', phone: '0712345678', active: true, openingBalance: 120000 },
+    after: { name: 'Example Member', phone: '0799999999', active: true, openingBalance: 120000 },
   });
   assert.ok(keys(read).includes('credential'));
   assert.equal(read.severity, 'high');
   // Named by the change, never by the value: the trail says a phone number moved,
   // it does not print the number.
-  assert.equal(read.summary, 'Benson Maina · phone number');
+  assert.equal(read.summary, 'Example Member · phone number');
   assert.ok(!read.summary.includes('0799999999'));
 });
 
@@ -130,8 +132,8 @@ test('the carried-in balance is the base every figure stands on', () => {
   const read = readAuditEntry({
     action: 'update',
     entityType: 'Member',
-    before: { name: 'Benson Maina', openingBalance: 114610 },
-    after: { name: 'Benson Maina', openingBalance: 100000 },
+    before: { name: 'Example Member', openingBalance: 120000 },
+    after: { name: 'Example Member', openingBalance: 100000 },
   });
   assert.ok(keys(read).includes('opening-balance'));
   assert.equal(read.severity, 'high');
