@@ -101,7 +101,7 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
     return summary;
   }
   if (!isMailConfigured()) {
-    summary.note = 'REMINDER_SWEEP_SEND is on, but SMTP is not configured, so nothing was sent.';
+    summary.note = 'REMINDER_SWEEP_SEND is on, but email is not configured, so nothing was sent.';
     return summary;
   }
   if (targets.length === 0) {

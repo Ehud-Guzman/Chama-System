@@ -149,11 +149,17 @@ export default function Reminders() {
       {data && !data.configured && (
         <div className="rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-sm">
           <p className="font-semibold">Email sending isn&apos;t set up yet</p>
+          {/* The reason first, when there is one. A key with no provider name is set but
+              unusable, and "add SMTP_HOST" would send somebody to the wrong variable. */}
+          {data.problem && <p className="mt-1">{data.problem}</p>}
           <p className="mt-1 text-muted">
-            Add <span className="amount">SMTP_HOST</span>,{' '}
+            On the backend, set either <span className="amount">SMTP_HOST</span> (with{' '}
             <span className="amount">SMTP_PORT</span>, <span className="amount">SMTP_USER</span>,{' '}
-            <span className="amount">SMTP_PASS</span> and <span className="amount">MAIL_FROM</span>{' '}
-            to the backend environment and restart the API. Everything below still works — the
+            <span className="amount">SMTP_PASS</span>) or{' '}
+            <span className="amount">MAIL_API_PROVIDER</span> and{' '}
+            <span className="amount">MAIL_API_KEY</span> — in both cases with{' '}
+            <span className="amount">MAIL_FROM</span> — then restart the API. The mail API is the
+            one to use on a host that blocks SMTP. Everything below still works either way; the
             send button will just report that it isn&apos;t configured.
           </p>
         </div>
@@ -280,7 +286,9 @@ export default function Reminders() {
           <span className="text-xs text-muted">
             {data?.host
               ? `To ${user?.email || 'your own address'} via ${data.host}:${data.port} — press this first if reminders seem not to arrive.`
-              : 'To your own address — press this first if reminders seem not to arrive.'}
+              : data?.provider
+                ? `To ${user?.email || 'your own address'} via ${data.provider} — press this first if reminders seem not to arrive.`
+                : 'To your own address — press this first if reminders seem not to arrive.'}
           </span>
         </div>
       </section>

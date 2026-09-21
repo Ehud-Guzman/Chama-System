@@ -55,9 +55,10 @@ function validateEnv() {
         '  Warning: FRONTEND_URL still lists http://localhost:5173 in production.'
       );
     }
-    if (!process.env.MAIL_FROM || !process.env.SMTP_HOST) {
+    if (!process.env.MAIL_FROM || (!process.env.SMTP_HOST && !process.env.MAIL_API_KEY)) {
       console.warn(
-        '  Warning: SMTP_HOST/MAIL_FROM are not set, so reminder emails will report '
+        '  Warning: no mail configuration (SMTP_HOST, or MAIL_API_KEY with '
+          + 'MAIL_API_PROVIDER, plus MAIL_FROM), so reminder emails will report '
           + 'themselves as not configured.'
       );
     }

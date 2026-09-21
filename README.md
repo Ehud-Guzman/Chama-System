@@ -598,9 +598,12 @@ bundle as a foreign-looking URL).
   network traffic on ports 25, 465, or 587"**, their own words, which is why the group's Gmail
   account could not send from one at all. Ways out, cheapest first: a transactional provider
   offering SMTP on **port 2525** (Brevo, Mailgun, Mailjet, Postmark, SendGrid — no code change,
-  just `SMTP_HOST`/`SMTP_PORT` and a verified sender), an **HTTPS mail API** on 443 (a small
-  addition to `utils/mailer`, and the only one of the three that survives port policy changes),
-  or a **paid Render instance**, which is what the limitation is documented as belonging to.
+  just `SMTP_HOST`/`SMTP_PORT` and a verified sender); a provider's **HTTPS mail API** on 443
+  (`MAIL_API_PROVIDER` + `MAIL_API_KEY`, one of `brevo`, `resend`, `sendgrid` — implemented, and
+  the only one of the three that no port policy can close, which makes it the road to use on a
+  free host); or a **paid Render instance**, which is what the limitation is documented as
+  belonging to. Whichever is chosen, **Send a test email** on `/admin/reminders` is the check:
+  on the API road it asks the provider whether the key is real without sending anything.
 - **Sending while the API cannot.** Where the host blocks 465/587 and no relay has been set up
   yet, reminders still go out from any machine whose network can open those ports — the office PC,
   which is where the Gmail app password already lives in `backend/.env`:
@@ -643,6 +646,7 @@ bundle as a foreign-looking URL).
 | `SMTP_HOST` · `SMTP_PORT` · `SMTP_USER` · `SMTP_PASS` · `SMTP_SECURE` | Outgoing mail for reminders |
 | `MAIL_FROM` | Address reminders are sent as — required for sending to work at all |
 | `MAIL_REPLY_TO` | Optional reply-to (e.g. the treasurer's own inbox) |
+| `MAIL_API_PROVIDER` · `MAIL_API_KEY` | Send through a mail API over **HTTPS** instead of SMTP — `brevo`, `resend` or `sendgrid`. The road to use where the host blocks outbound 25/465/587 (Render's Free instances do), and the only one no port policy can close. A key here wins over `SMTP_HOST`; the test button checks the key itself |
 | `TWO_FACTOR_RATE_LIMIT_MAX` | Code attempts per challenge, default 10 per 15 minutes |
 | `JOBS_ENABLED` | `false` switches the scheduled jobs off. Safe to leave on with more than one instance — the lease in the database decides who runs |
 | `JOB_BACKUP_SCHEDULE` · `JOB_AUDIT_SCHEDULE` · `JOB_REMINDER_SCHEDULE` | `daily@HH:MM` · `weekly@<day>@HH:MM` · `monthly@<day>@HH:MM`, in EAT. Defaults `daily@02:00`, `weekly@sat@04:00`, `weekly@sun@18:00` |

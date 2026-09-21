@@ -31,8 +31,32 @@ function isValidEmail(value) {
 // Sending
 // -----------------------------------------------------------------------------
 
+// Two roads to the same place, and the deployment decides which one is open.
+//
+//   SMTP (`SMTP_HOST` + `MAIL_FROM`) — what every provider speaks, and the road a host can
+//   refuse to open: Render's Free instances drop outbound 25, 465 and 587 outright, which
+//   leaves the reminders screen reporting a timeout nobody can do anything about.
+//
+//   A mail API over HTTPS (`MAIL_API_PROVIDER` + `MAIL_API_KEY` + `MAIL_FROM`) — the same
+//   providers' REST endpoint on 443, which is the port this API already talks to its own
+//   database and its clients on, so no host policy closes it without taking the whole app
+//   down with it. On a host that blocks SMTP, this is the road that works.
+//
+// A key wins when both are configured: whoever set one up meant it.
 function isMailConfigured() {
-  return Boolean(process.env.SMTP_HOST && process.env.MAIL_FROM);
+  if (!process.env.MAIL_FROM) return false;
+  if (process.env.MAIL_API_KEY) return Boolean(apiProvider());
+  return Boolean(process.env.SMTP_HOST);
+}
+
+// The shape of a failure written for a person: a 503 whose message survives
+// middleware/errorHandler in production, which hides a 5xx body unless the error is marked
+// `expose`. Every message below that an office could act on goes through here.
+function mailError(message) {
+  const err = new Error(message);
+  err.status = 503;
+  err.expose = true;
+  return err;
 }
 
 // The one error every caller gets when there is nothing to send with.
@@ -40,20 +64,14 @@ function isMailConfigured() {
 // One function rather than one sentence copied into four places — the reminders
 // screen before it accepts a batch, the weekly sweep, the test button, and the
 // senders themselves — because four copies of a message drift apart.
-//
-// `expose` is what makes the sentence reach the office at all. middleware/
-// errorHandler shows a 5xx message only when the error is marked as written for a
-// person, so without it the screen said "Something went wrong" exactly where the
-// README promises the explanation.
 function assertMailConfigured() {
   if (isMailConfigured()) return;
 
-  const err = new Error(
-    'Email sending is not set up yet. Add SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and MAIL_FROM to the server environment.'
+  throw mailError(
+    'Email sending is not set up yet. Set SMTP_HOST (with MAIL_FROM) to send through an SMTP '
+      + 'provider, or MAIL_API_PROVIDER and MAIL_API_KEY (with MAIL_FROM) to send through a mail '
+      + 'API over HTTPS.'
   );
-  err.status = 503;
-  err.expose = true;
-  throw err;
 }
 
 // Port 465 is implicit TLS; 587/25 start plain and upgrade via STARTTLS.
@@ -63,6 +81,229 @@ function secureForPort(port) {
   return process.env.SMTP_SECURE
     ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
     : port === 465;
+}
+
+// -----------------------------------------------------------------------------
+// The HTTPS transport (a mail API on 443)
+// -----------------------------------------------------------------------------
+//
+// The road a host cannot close. Configured with MAIL_API_PROVIDER, MAIL_API_KEY and
+// MAIL_FROM. Each provider is three small things — where to check the key, where to post a
+// message, and how it wants that message shaped — so adding one is a dozen lines and a change
+// nowhere else in this file.
+//
+// The builders are pure functions taking everything they need as arguments, which is what lets
+// every shape be tested without an account, a key or a network.
+const API_PROVIDERS = {
+  brevo: {
+    label: 'Brevo',
+    // A cheap authenticated call that answers "is this key real?" without sending anything.
+    // This is what the test button asks on this road.
+    verify: (key) => ({ url: 'https://api.brevo.com/v3/account', headers: { 'api-key': key } }),
+    send: ({ key, from, to, subject, text, html }) => ({
+      url: 'https://api.brevo.com/v3/smtp/email',
+      headers: { 'api-key': key },
+      body: {
+        sender: from.name ? { email: from.email, name: from.name } : { email: from.email },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+        textContent: text,
+      },
+    }),
+  },
+
+  resend: {
+    label: 'Resend',
+    verify: (key) => ({
+      url: 'https://api.resend.com/domains',
+      headers: { Authorization: `Bearer ${key}` },
+    }),
+    send: ({ key, rawFrom, to, subject, text, html }) => ({
+      url: 'https://api.resend.com/emails',
+      headers: { Authorization: `Bearer ${key}` },
+      // Resend takes the whole From header as one string, which is what MAIL_FROM already is.
+      body: { from: rawFrom, to: [to], subject, html, text },
+    }),
+  },
+
+  sendgrid: {
+    label: 'SendGrid',
+    verify: (key) => ({
+      url: 'https://api.sendgrid.com/v3/scopes',
+      headers: { Authorization: `Bearer ${key}` },
+    }),
+    send: ({ key, from, to, subject, text, html }) => ({
+      url: 'https://api.sendgrid.com/v3/mail/send',
+      headers: { Authorization: `Bearer ${key}` },
+      body: {
+        personalizations: [{ to: [{ email: to }] }],
+        from: from.name ? { email: from.email, name: from.name } : { email: from.email },
+        subject,
+        content: [
+          { type: 'text/plain', value: text },
+          { type: 'text/html', value: html },
+        ],
+      },
+    }),
+  },
+};
+
+// How long one call to a provider may take — the same order as the SMTP road's connection
+// timeout, and for the same reason: a provider that accepts the socket and then says nothing
+// must not hold the office's request open.
+const API_TIMEOUT_MS = 15000;
+
+// `MAIL_FROM` as a person writes it, split into what the providers want: `Wazo Moja
+// <chama@example.com>`, a quoted display name, or a bare address.
+function parseMailFrom(value) {
+  const raw = String(value || '').trim();
+  const angled = raw.match(/^(.*?)<([^>]+)>\s*$/);
+  if (!angled) return { email: raw, name: null };
+
+  return {
+    email: angled[2].trim(),
+    // Straight quotes are only how a name containing a comma or a full stop has to be written;
+    // they are not part of the name.
+    name: angled[1].trim().replace(/^"|"$/g, '') || null,
+  };
+}
+
+function apiProviderName() {
+  return String(process.env.MAIL_API_PROVIDER || '').trim().toLowerCase();
+}
+
+// The configured provider, or null when there is no usable API configuration. Never throws:
+// the status endpoint and the reminders list ask this on every page load.
+function apiProvider() {
+  if (!process.env.MAIL_API_KEY) return null;
+  const name = apiProviderName();
+  return API_PROVIDERS[name] ? { name, ...API_PROVIDERS[name] } : null;
+}
+
+// Why a configuration that looks set cannot send, said out loud. A key with no provider name
+// is otherwise a deployment that reports itself configured while sending nothing, which is the
+// worst of both answers.
+function mailConfigurationProblem() {
+  if (!process.env.MAIL_FROM) return 'MAIL_FROM is not set, so there is no address to send as.';
+
+  if (process.env.MAIL_API_KEY && !apiProvider()) {
+    const name = apiProviderName();
+    return `MAIL_API_PROVIDER is ${name ? `"${name}"` : 'not set'}, which this app does not know. Use one of: ${Object.keys(API_PROVIDERS).join(', ')}.`;
+  }
+  if (!process.env.MAIL_API_KEY && !process.env.SMTP_HOST) {
+    return 'Neither SMTP_HOST nor MAIL_API_KEY is set, so there is nothing to send through.';
+  }
+  return null;
+}
+
+// Which road a send takes, or why there is none. Thrown rather than returned, because every
+// caller is about to send something and has nothing useful to do without it.
+function activeMailTransport() {
+  if (process.env.MAIL_API_KEY) {
+    const provider = apiProvider();
+    if (!provider) {
+      throw mailError(
+        `MAIL_API_PROVIDER is ${apiProviderName() ? `"${apiProviderName()}"` : 'not set'}, which this app does not know. `
+          + `Use one of: ${Object.keys(API_PROVIDERS).join(', ')} — or unset MAIL_API_KEY to send over SMTP.`
+      );
+    }
+    return { kind: 'api', provider };
+  }
+
+  assertMailConfigured();
+  return { kind: 'smtp' };
+}
+
+// The provider's own words for a refusal, whichever shape it uses: Brevo answers
+// { code, message }, Resend { message }, SendGrid { errors: [{ message }] }. "Key not found"
+// is worth a great deal more to the office than "HTTP 401", because it says which of the two
+// things to go and fix.
+function providerMessage(payload, status) {
+  if (payload && typeof payload === 'object') {
+    if (typeof payload.message === 'string' && payload.message) return payload.message;
+    if (typeof payload.error === 'string' && payload.error) return payload.error;
+    const first = Array.isArray(payload.errors) ? payload.errors[0] : null;
+    if (first && typeof first.message === 'string' && first.message) return first.message;
+  }
+  return `HTTP ${status}`;
+}
+
+// One call to a provider: its key check, or one message.
+//
+// Failures are labelled the way the SMTP road labels its own, so everything downstream —
+// mailFailure, the reminders screen, the weekly sweep — explains them the same way: a code
+// meaning the socket never got there, or a code meaning the provider answered and refused.
+async function apiCall({ url, headers, body, label }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: body ? 'POST' : 'GET',
+      headers: { accept: 'application/json', 'content-type': 'application/json', ...headers },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    // A refusal to connect carries its own code — ENOTFOUND, ECONNREFUSED,
+    // UND_ERR_CONNECT_TIMEOUT — and that is what tells an operator whether the address or the
+    // credentials are in question. The timeout is this app's own, so it is named as one.
+    const cause = (err && err.cause) || {};
+    const message =
+      err.name === 'AbortError'
+        ? `${label} did not answer within ${Math.round(API_TIMEOUT_MS / 1000)}s`
+        : cause.code
+          ? `${cause.code}: ${cause.message || err.message}`
+          : err.message;
+
+    const failed = new Error(message);
+    failed.code = err.name === 'AbortError' ? 'ETIMEDOUT' : cause.code || 'EHTTP';
+    throw failed;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const text = await response.text().catch(() => '');
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    // A body that is not JSON — an HTML error page from a proxy, say — is left as text for the
+    // message to fall back on.
+  }
+
+  if (!response.ok) {
+    const refused = new Error(providerMessage(payload, response.status));
+    // 401/403 is the key; anything else is the provider refusing this message. Neither is a
+    // connection failure, and saying so is the whole point of carrying a code.
+    refused.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EPROVIDER';
+    refused.responseCode = response.status;
+    throw refused;
+  }
+
+  return { payload, text, status: response.status };
+}
+
+// One message, posted to the provider. Returns the same shape the SMTP road returns, so that
+// nothing downstream can tell the two apart — which is the point of having two.
+async function sendViaApi(provider, { to, subject, html, text }) {
+  const request = provider.send({
+    key: process.env.MAIL_API_KEY,
+    from: parseMailFrom(process.env.MAIL_FROM),
+    rawFrom: process.env.MAIL_FROM,
+    to,
+    subject,
+    text,
+    html,
+  });
+
+  const { payload } = await apiCall({ ...request, label: provider.label });
+  return {
+    messageId: (payload && (payload.messageId || payload.id)) || null,
+    response: `HTTP 200 (${provider.label})`,
+  };
 }
 
 // How long a resolved address is trusted. The same five minutes nodemailer caches its own
@@ -167,6 +408,14 @@ async function getTransporter() {
 // `to` is deliberately the only caller-supplied recipient — every send in this
 // app is triggered by an admin from the reminders page, never by member input.
 async function sendMail({ to, subject, html, text }) {
+  // Which road is decided here, and only here: everything above this line — the reminders
+  // screen, the test button, the weekly sweep — asks "send this message" and gets told what
+  // happened, without knowing whether it left over SMTP or HTTPS.
+  const transport = activeMailTransport();
+  if (transport.kind === 'api') {
+    return sendViaApi(transport.provider, { to, subject, html, text });
+  }
+
   // getTransporter refuses with the not-configured 503 itself, so every sender says
   // the same thing instead of each carrying its own copy of the sentence.
   const tx = await getTransporter();
@@ -180,7 +429,7 @@ async function sendMail({ to, subject, html, text }) {
   });
 }
 
-// Opens a connection and authenticates, and sends nothing.
+// Does the configuration in front of us actually work, without sending anything?
 //
 // "The variables are set" and "this host can reach the provider with these
 // credentials" are different facts, and only the second one delivers mail. This is
@@ -190,6 +439,18 @@ async function sendMail({ to, subject, html, text }) {
 // quarter of an hour of waiting and the office, whose client gives up in twenty
 // seconds, never hears why.
 async function verifyMail() {
+  const transport = activeMailTransport();
+
+  if (transport.kind === 'api') {
+    // The provider's cheapest authenticated call, which answers "is this key real?" without
+    // posting a message: the same question, asked the way this road can answer it.
+    await apiCall({
+      ...transport.provider.verify(process.env.MAIL_API_KEY),
+      label: transport.provider.label,
+    });
+    return;
+  }
+
   const tx = await getTransporter();
   await tx.verify();
 }
@@ -212,13 +473,22 @@ const CONNECTION_CODES = new Set([
   'ETIMEDOUT',
   'ECONNREFUSED',
   'ECONNRESET',
+  'EPIPE',
   'ENETUNREACH',
   'EHOSTUNREACH',
   'ENOTFOUND',
+  'EAI_AGAIN',
   'ESOCKET',
   'ECONNECTION',
   'EDNS',
   'ETLS',
+  // The HTTPS road's own names for the same thing, from undici. `EHTTP` is what apiCall labels
+  // a fetch that failed with nothing more specific — and fetch only rejects for a reason at the
+  // network level, never for a status code.
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'EHTTP',
 ]);
 
 function isConnectionFailure(err) {
@@ -231,11 +501,28 @@ function isConnectionFailure(err) {
 // failure, because "Connection timeout" on its own does not say which address was tried,
 // and the first question is always whether it is the address or the port.
 function describeMailEndpoint() {
+  // The road that is actually configured, not the one that might be: a message about "the
+  // mail server" that names a host this deployment is not using sends somebody to the wrong
+  // place entirely.
+  const api = apiProvider();
+  if (api) return `${api.label} over HTTPS`;
+
   const hostname = process.env.SMTP_HOST;
   if (!hostname) return null;
 
   const port = Number(process.env.SMTP_PORT) || 587;
   return `${hostname}:${port}${transportAddress ? ` (IPv4 ${transportAddress})` : ''}`;
+}
+
+// What to try next, which depends on the road. On SMTP the host most often blocks the port —
+// Render's Free instances drop 25, 465 and 587 outright — and swapping in a provider that
+// listens elsewhere is the cheap answer. On HTTPS it is DNS or an egress firewall, and the API
+// itself already depends on 443, so advice about SMTP ports would be advice about nothing.
+function connectionHint() {
+  return apiProvider()
+    ? 'The HTTPS road needs outbound access to the provider on 443, which this API already uses to reach everything else.'
+    : 'A host that cannot open that port most often has outbound SMTP switched off — '
+      + 'a provider that listens on port 2525, or an HTTPS mail API, works where 587 does not.';
 }
 
 // Every mail failure, turned into the sentence that gets shown to whoever asked for the
@@ -248,9 +535,7 @@ function mailFailure(err) {
 
   const where = describeMailEndpoint();
   const message = isConnectionFailure(err)
-    ? `Nothing answered at ${where || 'the mail server'}: ${describeMailError(err)}. ` +
-      'A host that cannot open that port most often has outbound SMTP switched off — ' +
-      'a provider that listens on port 2525, or an HTTPS mail API, works where 587 does not.'
+    ? `Nothing answered at ${where || 'the mail server'}: ${describeMailError(err)}. ${connectionHint()}`
     : `The mail server refused the message: ${describeMailError(err)}${where ? ` (at ${where})` : ''}`;
 
   const wrapped = new Error(message);
@@ -265,9 +550,18 @@ function mailFailure(err) {
 function describeMailConfig() {
   const port = Number(process.env.SMTP_PORT) || 587;
   const configured = isMailConfigured();
+  const api = apiProvider();
+
   return {
     configured,
     from: configured ? process.env.MAIL_FROM : null,
+    // Which road, and what a screen can say about it. `host`/`port` belong to the SMTP road;
+    // the provider's name belongs to the API road; and a configuration that is set but cannot
+    // send — a key with no provider name, a from-address missing — is named by `problem`
+    // rather than left for somebody to infer from a failure.
+    transport: api ? 'api' : process.env.SMTP_HOST ? 'smtp' : null,
+    provider: api ? api.label : null,
+    problem: mailConfigurationProblem(),
     host: process.env.SMTP_HOST || null,
     port,
     secure: secureForPort(port),
@@ -409,6 +703,12 @@ module.exports = {
   isConnectionFailure,
   describeMailEndpoint,
   mailFailure,
+  // The HTTPS road, also exported for the test: the request shapes are pure builders, and the
+  // question of which road a deployment is on is answered with no network at all.
+  parseMailFrom,
+  providerMessage,
+  mailConfigurationProblem,
+  activeMailTransport,
   // Exported for the test, which checks the two decisions that make a message reachable
   // on a host without outbound IPv6 — the literal address and the TLS server name —
   // without opening a connection to anything.

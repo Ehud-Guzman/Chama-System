@@ -23,6 +23,10 @@ const {
   isConnectionFailure,
   describeMailEndpoint,
   mailFailure,
+  parseMailFrom,
+  providerMessage,
+  mailConfigurationProblem,
+  activeMailTransport,
   resolveIpv4,
   transportOptions,
   sendMail,
@@ -31,7 +35,17 @@ const {
   buildTestEmail,
 } = require('../src/utils/mailer');
 
-const KEYS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_SECURE', 'MAIL_FROM', 'MAIL_REPLY_TO'];
+const KEYS = [
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_USER',
+  'SMTP_PASS',
+  'SMTP_SECURE',
+  'MAIL_FROM',
+  'MAIL_REPLY_TO',
+  'MAIL_API_PROVIDER',
+  'MAIL_API_KEY',
+];
 const SAVED = {};
 
 // The rejection this module writes when there is nothing to send with, which several
@@ -205,6 +219,9 @@ test('the status says where mail would go, and never the credentials', () => {
   assert.deepEqual(describeMailConfig(), {
     configured: false,
     from: null,
+    transport: null,
+    provider: null,
+    problem: 'MAIL_FROM is not set, so there is no address to send as.',
     host: null,
     port: 587,
     secure: false,
@@ -335,4 +352,201 @@ test('an address is trimmed, and an empty one is allowed', () => {
   assert.equal(isValidEmail(''), true);
   assert.equal(isValidEmail('a@b.test'), true);
   assert.equal(isValidEmail('not-an-address'), false);
+});
+
+// -----------------------------------------------------------------------------
+// The HTTPS road
+// -----------------------------------------------------------------------------
+//
+// Still no network: fetch is stubbed and the request builders are pure. What is checked is the
+// part a deployment gets wrong — which road gets chosen, what each provider is actually sent,
+// and whether a refused key is told apart from a dead network.
+
+test('the From header is split the way the providers want it', () => {
+  assert.deepEqual(parseMailFrom('WAZO MOJA SELF-HELP GROUP <chama@example.test>'), {
+    email: 'chama@example.test',
+    name: 'WAZO MOJA SELF-HELP GROUP',
+  });
+  // A quoted name is only written that way because of the comma, and the quotes are not part of
+  // it — sending them would put a stray pair in front of every member.
+  assert.deepEqual(parseMailFrom('"Wazo Moja, Group" <chama@example.test>'), {
+    email: 'chama@example.test',
+    name: 'Wazo Moja, Group',
+  });
+  assert.deepEqual(parseMailFrom('chama@example.test'), { email: 'chama@example.test', name: null });
+  assert.deepEqual(parseMailFrom(''), { email: '', name: null });
+});
+
+test('a refusal is read from whatever shape the provider uses', () => {
+  // Brevo answers with one sentence, SendGrid with a list, and Resend with `message` too. All
+  // three have to reach the office as words, not as "HTTP 400".
+  assert.equal(providerMessage({ code: 'unauthorized', message: 'Key not found' }, 401), 'Key not found');
+  assert.equal(providerMessage({ errors: [{ message: 'The from address does not match' }] }, 400), 'The from address does not match');
+  assert.equal(providerMessage({ error: 'nope' }, 500), 'nope');
+  assert.equal(providerMessage('<html>502</html>', 502), 'HTTP 502');
+  assert.equal(providerMessage(null, 503), 'HTTP 503');
+});
+
+test('one message is posted to the provider that was configured', async () => {
+  process.env.MAIL_FROM = 'Chama <chama@example.test>';
+  process.env.MAIL_API_KEY = 'test-key';
+  process.env.MAIL_API_PROVIDER = 'brevo';
+
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, status: 201, text: async () => JSON.stringify({ messageId: '<abc@brevo>' }) };
+  };
+
+  try {
+    const info = await sendMail({
+      to: 'member@example.test',
+      subject: 'Reminder',
+      text: 'text body',
+      html: '<p>html body</p>',
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'https://api.brevo.com/v3/smtp/email');
+    assert.equal(calls[0].options.method, 'POST');
+    assert.equal(calls[0].options.headers['api-key'], 'test-key');
+
+    const body = JSON.parse(calls[0].options.body);
+    assert.deepEqual(body.sender, { email: 'chama@example.test', name: 'Chama' });
+    assert.deepEqual(body.to, [{ email: 'member@example.test' }]);
+    assert.equal(body.subject, 'Reminder');
+    assert.equal(body.textContent, 'text body');
+    assert.equal(body.htmlContent, '<p>html body</p>');
+
+    // The same shape the SMTP road returns, so nothing downstream can tell the roads apart.
+    assert.equal(info.messageId, '<abc@brevo>');
+  } finally {
+    globalThis.fetch = realFetch;
+    clearMailEnv();
+  }
+});
+
+test('the test button asks the provider whether the key is real', async () => {
+  process.env.MAIL_FROM = 'chama@example.test';
+  process.env.MAIL_API_KEY = 'test-key';
+  process.env.MAIL_API_PROVIDER = 'sendgrid';
+
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    calls.push(url);
+    return { ok: true, status: 200, text: async () => '{}' };
+  };
+
+  try {
+    await verifyMail();
+    // Nobody is sent anything: the key check is the whole request.
+    assert.deepEqual(calls, ['https://api.sendgrid.com/v3/scopes']);
+  } finally {
+    globalThis.fetch = realFetch;
+    clearMailEnv();
+  }
+});
+
+test('a refused key and a dead network are told apart', async () => {
+  process.env.MAIL_FROM = 'chama@example.test';
+  process.env.MAIL_API_KEY = 'test-key';
+  process.env.MAIL_API_PROVIDER = 'brevo';
+
+  const realFetch = globalThis.fetch;
+  const message = { to: 'member@example.test', subject: 'x', text: 'x' };
+
+  try {
+    // The provider answered and said no — so it is the key, and sending the office off to
+    // inspect firewalls for a typo in an API key is exactly the failure being avoided here.
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({ code: 'unauthorized', message: 'Key not found' }),
+    });
+
+    await assert.rejects(
+      () => sendMail(message),
+      (err) => {
+        assert.equal(err.code, 'EAUTH');
+        assert.equal(err.responseCode, 401);
+        assert.equal(err.message, 'Key not found');
+        assert.equal(isConnectionFailure(err), false);
+
+        const wrapped = mailFailure(err);
+        assert.equal(wrapped.status, 503);
+        assert.equal(wrapped.expose, true);
+        // The HTTP status is kept in front of the provider's sentence: "401" and "Key not
+        // found" together say which thing to go and change, and neither alone does.
+        assert.match(wrapped.message, /refused the message: 401: Key not found/);
+        assert.match(wrapped.message, /Brevo over HTTPS/);
+        // And nothing about SMTP ports, which is what the HTTPS road's failure would otherwise
+        // be mis-explained as.
+        assert.equal(/2525/.test(wrapped.message), false);
+        return true;
+      }
+    );
+
+    // The socket never got there. The code survives — that is what tells the two apart — and
+    // the hint is the HTTPS road's own.
+    globalThis.fetch = async () => {
+      const err = new TypeError('fetch failed');
+      err.cause = { code: 'ENOTFOUND', message: 'getaddrinfo ENOTFOUND api.brevo.com' };
+      throw err;
+    };
+
+    await assert.rejects(
+      () => sendMail(message),
+      (err) => {
+        assert.equal(err.code, 'ENOTFOUND');
+        assert.equal(isConnectionFailure(err), true);
+        assert.match(mailFailure(err).message, /Nothing answered at Brevo over HTTPS/);
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    clearMailEnv();
+  }
+});
+
+test('a key with no usable provider name says so instead of pretending', () => {
+  process.env.MAIL_FROM = 'chama@example.test';
+  process.env.MAIL_API_KEY = 'test-key';
+
+  // No provider name at all. Reporting itself configured while sending nothing is the worst of
+  // both answers, so this counts as unconfigured — and says which names would work.
+  assert.equal(isMailConfigured(), false);
+  assert.match(mailConfigurationProblem(), /MAIL_API_PROVIDER is not set/);
+  assert.match(mailConfigurationProblem(), /brevo/);
+  assert.throws(() => activeMailTransport(), /does not know/);
+
+  process.env.MAIL_API_PROVIDER = 'mailgunish';
+  assert.match(mailConfigurationProblem(), /"mailgunish"/);
+  assert.equal(isMailConfigured(), false);
+
+  process.env.MAIL_API_PROVIDER = 'resend';
+  assert.equal(isMailConfigured(), true);
+  assert.equal(mailConfigurationProblem(), null);
+  assert.deepEqual(
+    { transport: describeMailConfig().transport, provider: describeMailConfig().provider },
+    { transport: 'api', provider: 'Resend' }
+  );
+  assert.equal(describeMailEndpoint(), 'Resend over HTTPS');
+
+  // MAIL_FROM is named for what it is, which is a different fix from a missing key.
+  delete process.env.MAIL_FROM;
+  assert.equal(isMailConfigured(), false);
+  assert.match(mailConfigurationProblem(), /MAIL_FROM/);
+
+  // With no key at all, the road being described is SMTP.
+  delete process.env.MAIL_API_KEY;
+  process.env.MAIL_FROM = 'chama@example.test';
+  process.env.SMTP_HOST = 'smtp.example.test';
+  assert.equal(describeMailConfig().transport, 'smtp');
+  assert.equal(describeMailConfig().provider, null);
+  assert.equal(describeMailEndpoint(), 'smtp.example.test:587');
+
+  clearMailEnv();
 });
