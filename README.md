@@ -233,13 +233,17 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   The PDF and Excel statements lead with that same figure and print the four numbers it is made
   of.
 - **The weekly reconciliation names both sides of a week:** the drill-down behind each week
-  (`/admin/reports` → Weekly reconciliation) lists the members who still owe their weekly minimum,
-  and under it the members who paid, each with what he put in ("Who paid in full (2)"). The second
-  list is not decoration: a week with two payers and thirty non-payers otherwise shows Ksh 9,000
-  collected on the fund line with every name beneath it reading zero — money from nobody. The two
-  lists are complements, so between them they account for every eligible member, and both are cut
-  from the same `personalPaid` on each member's own ledger row — which is what makes the names add
-  up to the figure above them (`backend/test/memberLedger.test.js`).
+  (`/admin/reports` → Weekly reconciliation) leads with the members who **paid in full**, each with
+  what he put in ("Who paid in full (2)"), and then — under a "Still to pay" heading — the members
+  who still owe their weekly minimum. The payers lead because that is the question the page is held
+  open to answer ("did he pay?"); they used to sit at the bottom, behind a click, under a roster of
+  everybody who had *not* paid. Neither list is decoration: a week with two payers and thirty
+  non-payers otherwise shows Ksh 9,000 collected on the fund line with every name beneath it reading
+  zero — money from nobody. The two lists are complements, so between them they account for every
+  eligible member, and both are cut from the same `personalPaid` on each member's own ledger row —
+  which is what makes the names add up to the figure above them
+  (`backend/test/memberLedger.test.js`). The `.xlsx` export keeps the same order: **Paid in full**
+  before **Shortfalls**.
 - **Every money label says what it means.** The paper ledger's shorthand is not what a new
   treasurer knows, so each figure carries its own explanation in brackets, and the same words are
   used for the same thing on every screen — the dashboard and finance list (which set the pattern,

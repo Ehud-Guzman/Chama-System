@@ -634,8 +634,10 @@ async function exportWeekly(req, res, next) {
           'them put in, so the two sheets together account for every eligible member.',
       }),
       { name: 'Weeks', rows: overviewRows },
-      { name: 'Shortfalls', rows: shortfallRows },
+      // Contributors before shortfalls, matching the weekly screen: the sheet a
+      // treasurer opens first is the one naming who paid.
       { name: 'Paid in full', rows: paidRows },
+      { name: 'Shortfalls', rows: shortfallRows },
     ]);
   } catch (err) {
     next(err);

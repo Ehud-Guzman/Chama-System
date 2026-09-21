@@ -1038,49 +1038,17 @@ export default function Reports() {
                                   opening balances)
                                 </p>
                               )}
-                              {t.shortfallMembers.length > 0 ? (
-                                <ul className="mt-1 space-y-0.5">
-                                  {t.shortfallMembers.map((m) => (
-                                    <li
-                                      key={m.memberId}
-                                      className="flex items-center justify-between text-xs"
-                                    >
-                                      <span className="text-muted">
-                                        {m.name}
-                                        {m.regNumber && (
-                                          <span className="amount ml-1 text-muted">
-                                            ({m.regNumber})
-                                          </span>
-                                        )}
-                                      </span>
-                                      <span
-                                        className={`amount font-medium ${
-                                          m.status === "unpaid"
-                                            ? "text-alert"
-                                            : "text-primary"
-                                        }`}
-                                      >
-                                        {money(m.paid)} ·{" "}
-                                        {m.status === "partial" ? "partly paid" : "nothing paid"}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="mt-1 text-xs text-muted">
-                                  Every eligible member paid in full this week.
-                                </p>
-                              )}
-                              {/* The names behind the fund line above. Without
-                                  them a week with two payers and thirty
-                                  non-payers reads as money collected from
-                                  nobody: the roster above names only the thirty,
-                                  every one of them zero. Closed by default so a
-                                  fully-paid week stays a one-line week. Guarded,
-                                  because an API deployed before this field
-                                  existed simply has neither list. */}
+                              {/* Contributors first. This list used to sit at the
+                                  bottom of the block, behind a click, under a roster
+                                  of everybody who had NOT paid — so the one question
+                                  the treasurer is holding the page open to answer
+                                  ("did he pay?") took the longest to reach. It is now
+                                  the first list, open by default, and still a
+                                  <details> so a week where everybody paid can be
+                                  folded away. Guarded, because an API deployed before
+                                  this field existed simply has no list. */}
                               {t.paidMembers?.length > 0 && (
-                                <details className="mt-1">
+                                <details className="mt-1" open>
                                   <summary className="cursor-pointer text-xs font-medium text-primary">
                                     Who paid in full ({t.paidMembers.length})
                                   </summary>
@@ -1105,6 +1073,51 @@ export default function Reports() {
                                     ))}
                                   </ul>
                                 </details>
+                              )}
+                              {/* Then who still owes. It needs its own heading now that
+                                  it follows the payers: without one it reads as a
+                                  continuation of the list above it, which is the
+                                  opposite of what it says. */}
+                              {t.shortfallMembers.length > 0 ? (
+                                <>
+                                  <p className="mt-2 text-xs font-medium text-alert">
+                                    Still to pay ({t.shortfallMembers.length})
+                                  </p>
+                                  <ul className="mt-1 space-y-0.5">
+                                    {t.shortfallMembers.map((m) => (
+                                      <li
+                                        key={m.memberId}
+                                        className="flex items-center justify-between text-xs"
+                                      >
+                                        <span className="text-muted">
+                                          {m.name}
+                                          {m.regNumber && (
+                                            <span className="amount ml-1 text-muted">
+                                              ({m.regNumber})
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span
+                                          className={`amount font-medium ${
+                                            m.status === "unpaid"
+                                              ? "text-alert"
+                                              : "text-primary"
+                                          }`}
+                                        >
+                                          {money(m.paid)} ·{" "}
+                                          {m.status === "partial" ? "partly paid" : "nothing paid"}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </>
+                              ) : t.paidMembers?.length ? null : (
+                                // Only when there is nothing else to show: with the
+                                // payers listed above it, this sentence said the same
+                                // thing twice.
+                                <p className="mt-1 text-xs text-muted">
+                                  Every eligible member paid in full this week.
+                                </p>
                               )}
                             </div>
                           ))}
