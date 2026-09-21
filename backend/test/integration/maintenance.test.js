@@ -48,6 +48,7 @@ const {
   findDefinition,
   listDefinitions,
   jobsEnabled,
+  DEFINITIONS,
 } = require('../../src/jobs');
 const { runBackupJob } = require('../../src/jobs/backupJob');
 const { walkChain } = require('../../src/jobs/auditJob');
@@ -238,6 +239,28 @@ test('every registered job has a schedule that parses', { skip }, async () => {
     assert.ok(definition.nextRunIn);
   }
   assert.equal(jobsEnabled(), true);
+});
+
+test('every registered job can actually run, in a process that boots nothing else', { skip }, async () => {
+  // The API registers whatever its route files happen to import; a job run by hand —
+  // `npm run job:reminders`, a first run on a new host — boots none of them. That gap is real
+  // and it bit: the reminder sweep died in the CLI with "Schema hasn't been registered for
+  // model \"FineType\"", because mongoose resolves a `ref` by name when the query runs and
+  // only the fine-types route was pulling that model in. So each registered job is executed
+  // here for real, from its own definition, with no server behind it.
+  //
+  // Nothing may be emailed by this, whatever the shell has exported into it: a rehearsal that
+  // mails a member is worse than no test at all.
+  delete process.env.REMINDER_SWEEP_SEND;
+  delete process.env.SMTP_HOST;
+  delete process.env.MAIL_FROM;
+
+  for (const definition of DEFINITIONS) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await executeJob(definition, { trigger: 'manual', holder: 'test' });
+    assert.equal(result.ok, true, `${definition.name}: ${result.error}`);
+    assert.ok(result.summary, `${definition.name} recorded no summary`);
+  }
 });
 
 test('the stored documents are what verify, key order and all', { skip }, async () => {

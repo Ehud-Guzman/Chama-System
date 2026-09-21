@@ -2,6 +2,14 @@ const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const ContributionType = require('../models/ContributionType');
 const Fine = require('../models/Fine');
+// Required for the populate in computeMemberDues, not for anything named below: mongoose
+// resolves a `ref` by name when the query runs, so the model has to be registered in the
+// process, by whoever else happens to be there. The API process gets away with not doing it
+// here because fineTypeRoutes imports the model on the way past — which is exactly why the
+// omission went unnoticed until the reminder sweep was run by hand (`npm run job:reminders`,
+// a process that boots no routes) and died with "Schema hasn't been registered for
+// model \"FineType\"" instead of sending anything.
+require('../models/FineType');
 const { getOrCreateSettings } = require('../utils/settings');
 const { resolveConfig } = require('../utils/weekCycle');
 const { WEEKLY_TYPE_NAME, bucketForType } = require('../utils/ledgerTypes');

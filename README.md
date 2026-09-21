@@ -601,6 +601,24 @@ bundle as a foreign-looking URL).
   just `SMTP_HOST`/`SMTP_PORT` and a verified sender), an **HTTPS mail API** on 443 (a small
   addition to `utils/mailer`, and the only one of the three that survives port policy changes),
   or a **paid Render instance**, which is what the limitation is documented as belonging to.
+- **Sending while the API cannot.** Where the host blocks 465/587 and no relay has been set up
+  yet, reminders still go out from any machine whose network can open those ports — the office PC,
+  which is where the Gmail app password already lives in `backend/.env`:
+
+  ```
+  cd backend
+  npm run job:reminders                              # report only: who is behind, who is reachable
+  $env:REMINDER_SWEEP_SEND='true'; npm run job:reminders   # now it emails them and audit-logs each
+  ```
+
+  It runs the same `executeJob` → `runReminderJob` → `deliverReminders` path the timer runs, so the
+  message and the figures are the ones the screen would send. Three things to keep straight: the
+  job writes to whatever `MONGO_URI` `backend/.env` holds, so read the report before enabling
+  sending; it emails **everyone** reachable who is behind rather than a hand-picked list, and the
+  optional extra line is empty (a chosen few is what the screen is for, which needs the API
+  reachable); and `REMINDER_SWEEP_SEND` must stay **off on the host** — its own weekly sweep then
+  keeps working out and reporting who is behind instead of recording a failure it cannot avoid. If
+  it answers `Skipped: … lease`, the host holds the job lock: add `--force`.
 - Open a member's passbook from a phone on mobile data (not the office Wi-Fi) to confirm the
   public lookup and the gated PDF/Excel work over the real domain.
 
