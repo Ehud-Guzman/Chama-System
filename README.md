@@ -823,6 +823,18 @@ resolves to the same payment instead of a second one — and it is **opt-in per 
 (`offlineQueue: true`), because silently keeping a failed save is only acceptable where the API
 already treats a repeat as the same write.
 
+**What opens first is the group's mark, not a blank page.** `frontend/index.html` carries a splash
+inline — the logo on white, with one line of text under it — because a phone on Kenyan mobile data
+spends a second or two downloading a bundle before React can draw anything, and an empty white screen
+for that second is indistinguishable from a site that is down. Three details are deliberate: the
+splash is written into the HTML rather than rendered by React (so it cannot be waiting for the very
+code it is covering for), the group's name and tagline are left to the logo itself rather than typed
+under it, and the background is white because the logo is drawn on white — on the app's own canvas
+the JPEG would show as a grey-edged rectangle. `src/App.jsx` takes it down in an effect, so it goes
+only once the app's own first screen has committed; if the bundle never arrives, an inline timer in
+`index.html` says so after seven seconds and offers a reload after twenty, and `sw.js` keeps the
+logo in its precache list so a cold launch with no signal shows the mark instead of a broken image.
+
 Three rules keep it honest:
 
   * **It never skips ahead.** If the first queued entry cannot be sent, the ones behind it wait: a

@@ -34,9 +34,114 @@
     <meta property="og:description" content="Check your contributions, passbook and standing." />
     <meta property="og:url" content="https://wazomojashg.co.ke" />
     <title>Wazo Moja SHG</title>
+    <!-- The splash: what a phone on a slow link sees instead of a blank page.
+         Inline and self-contained on purpose — it cannot wait for the bundle's stylesheet, its
+         font or any request at all, because the moment it would need them is the moment it is
+         already too late to be useful. Colours are copied from index.css by hand for the same
+         reason: that file arrives with the bundle.
+
+         The group's name and tagline are inside the logo itself, so nothing here repeats them. -->
+    <style>
+      #splash {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.25rem;
+        padding: 2rem 1.5rem;
+        /* White, because the logo is drawn on white: on the app's own canvas the JPEG would show
+           as a grey-edged rectangle behind the mark. */
+        background-color: #ffffff;
+        color: #1b2b24;
+        font-family: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        text-align: center;
+        -webkit-font-smoothing: antialiased;
+      }
+      #splash img {
+        width: min(78vw, 320px);
+        height: auto;
+        animation: splash-breathe 2.4s ease-in-out infinite;
+      }
+      #splash p {
+        margin: 0;
+        font-size: 0.8125rem;
+        line-height: 1.5;
+        color: #5c6b62;
+      }
+      #splash .splash-slow {
+        max-width: 20rem;
+      }
+      #splash button {
+        min-height: 44px;
+        padding: 0 1.25rem;
+        border: 0;
+        border-radius: 0.75rem;
+        background-color: #166534;
+        color: #ffffff;
+        font: inherit;
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+      /* The rules above set `display` on these elements, so `hidden` needs to win over them. */
+      #splash [hidden] {
+        display: none !important;
+      }
+      @keyframes splash-breathe {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.82;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash img {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
+    <!-- Taken down by src/App.jsx once React has committed its first screen. -->
+    <div id="splash" role="status" aria-label="Opening Wazo Moja">
+      <img
+        src="/Logo/Wazo%20Moja%20logo.jpeg"
+        alt="Wazo Moja Self-Help Group"
+        width="320"
+        height="213"
+        fetchpriority="high"
+      />
+      <p>Opening your books…</p>
+      <!-- If the bundle never arrives — no signal, or a deploy caught mid-request — the splash would
+           otherwise sit here for ever with nothing to say. It says something, and then offers the
+           one action that helps. -->
+      <p class="splash-slow" id="splash-slow" hidden>
+        Still opening. On a slow connection this can take a moment — if nothing happens, check your
+        signal and try again.
+      </p>
+      <button id="splash-retry" type="button" hidden onclick="location.reload()">Try again</button>
+    </div>
     <div id="root"></div>
+    <script>
+      // Plain inline script, because the escape hatch has to work when nothing else has loaded.
+      (function () {
+        var slow = document.getElementById('splash-slow');
+        var retry = document.getElementById('splash-retry');
+        setTimeout(function () {
+          if (slow) slow.hidden = false;
+        }, 7000);
+        setTimeout(function () {
+          if (retry) retry.hidden = false;
+        }, 20000);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

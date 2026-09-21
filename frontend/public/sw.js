@@ -22,7 +22,12 @@ const CACHE = 'chama-shell-v1';
 
 // The smallest set that makes a cold, offline launch render something real. The hashed bundles are
 // picked up by the fetch handler below on first use, which is why they are not listed here.
-const PRECACHE = ['/', '/index.html', '/manifest.json', '/icon.svg'];
+//
+// The logo is here because it is the first thing the page draws: without it in the cache, a launch
+// with no signal paints the splash's white background, its line of text and a broken image icon
+// where the group's mark should be — worse than no splash at all. In the cache it is 87 KB spent
+// once, and the splash a member sees offline is the one they see online.
+const PRECACHE = ['/', '/index.html', '/manifest.json', '/icon.svg', '/Logo/Wazo%20Moja%20logo.jpeg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

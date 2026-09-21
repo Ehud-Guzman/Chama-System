@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import PublicLookup from './pages/PublicLookup.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
@@ -29,6 +29,21 @@ const DisciplinaryFines = lazy(() => import('./pages/DisciplinaryFines.jsx'));
 const AuditTrail = lazy(() => import('./pages/AuditTrail.jsx'));
 
 export default function App() {
+  // Take down the splash that index.html painted.
+  //
+  // It is removed here, in the one component that is always mounted, and only after React has
+  // committed — so the app's own first screen is already on the glass when the mark goes, never the
+  // other way round. A splash removed a moment too early is a blank screen, which is the thing the
+  // splash exists to prevent.
+  //
+  // If the app throws before committing, this never runs and the mark stays with its own "Try
+  // again" button, which is a better answer than an empty page. The slow-connection line and that
+  // button are put in place by index.html itself, because they have to work when nothing else has
+  // loaded.
+  useEffect(() => {
+    document.getElementById('splash')?.remove();
+  }, []);
+
   return (
     <AuthProvider>
       <ToastProvider>
