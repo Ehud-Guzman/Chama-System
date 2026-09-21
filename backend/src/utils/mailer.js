@@ -1,4 +1,7 @@
+const dns = require('dns');
+const net = require('net');
 const nodemailer = require('nodemailer');
+const { logEvent } = require('../middleware/requestLogger');
 
 // One email concern per place: validation helpers here, sending below, and the
 // reminder template at the bottom. Nothing in this module throws on import —
@@ -6,6 +9,10 @@ const nodemailer = require('nodemailer');
 // it just can't send.
 
 let transporter = null;
+// Which address the transport was built for, and when that was decided. Kept so a
+// provider that moves is followed without a lookup per message.
+let transportAddress = null;
+let transportResolvedAt = 0;
 
 // -----------------------------------------------------------------------------
 // Validation
@@ -58,15 +65,52 @@ function secureForPort(port) {
     : port === 465;
 }
 
-function getTransporter() {
-  if (transporter) return transporter;
-  assertMailConfigured();
+// How long a resolved address is trusted. The same five minutes nodemailer caches its own
+// answers for, so following a provider that moves costs no more lookups than the library
+// would have made anyway.
+const DNS_TTL_MS = 5 * 60 * 1000;
 
-  const port = Number(process.env.SMTP_PORT) || 587;
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
+// The provider's address, resolved to IPv4 before nodemailer is handed anything.
+//
+// That is not an optimisation. It is the difference between sending and not sending on a
+// host with no outbound IPv6: nodemailer 10 resolves both families itself, picks one of
+// them at random, and treats IPv6 as usable when any local interface carries an IPv6
+// address — a test that passes inside a container that has an IPv6 interface and no IPv6
+// route, which is exactly what Render gives you. Seen live from that host:
+//
+//   ESOCKET: connect ENETUNREACH 2607:f8b0:400e:c1e::6d:587
+//
+// Its fallback cannot rescue that either: when its own IPv4 query comes back empty it is
+// left holding IPv6 addresses only, so every attempt reaches for an address this host
+// cannot use, and the office is told the mail server refused a message it was never sent.
+// An IPv4 literal skips its resolver entirely.
+//
+// A null answer means "leave nodemailer to it", which is what this file did before: a
+// lookup that cannot run must never be the reason mail stops going out.
+async function resolveIpv4(hostname, lookup = dns.promises.lookup) {
+  // An address needs no resolving — and one that is already an IPv6 literal is somebody's
+  // deliberate choice, which this must not quietly override.
+  if (net.isIP(hostname)) return null;
+
+  try {
+    const { address } = await lookup(hostname, { family: 4 });
+    return address || null;
+  } catch {
+    return null;
+  }
+}
+
+// The transport's own settings, kept apart from its creation so the two decisions that
+// matter can be checked without a network: the address (an IPv4 literal when we have one)
+// and the TLS server name (the hostname, because no provider's certificate is issued to an
+// address — and without it, connecting to a literal fails verification rather than
+// silently skipping it).
+function transportOptions({ hostname, address, port }) {
+  return {
+    host: address || hostname,
     port,
     secure: secureForPort(port),
+    ...(address ? { tls: { servername: hostname } } : {}),
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
       : undefined,
@@ -80,7 +124,43 @@ function getTransporter() {
     connectionTimeout: 15000,
     greetingTimeout: 10000,
     socketTimeout: 30000,
+  };
+}
+
+async function getTransporter() {
+  assertMailConfigured();
+
+  if (transporter && Date.now() - transportResolvedAt < DNS_TTL_MS) return transporter;
+
+  const hostname = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT) || 587;
+  const address = await resolveIpv4(hostname);
+
+  if (transporter) {
+    // Still where it was, or the lookup failed this time: an address that works is not
+    // thrown away over one missing answer.
+    if (!address || address === transportAddress) {
+      transportResolvedAt = Date.now();
+      return transporter;
+    }
+    // It moved. The pooled sockets are talking to the address that went away.
+    transporter.close();
+    transporter = null;
+  }
+
+  transporter = nodemailer.createTransport(transportOptions({ hostname, address, port }));
+  transportAddress = address;
+  transportResolvedAt = Date.now();
+  // Worth a line of its own: when a provider cannot be reached, the first question is
+  // which address this process was talking to, and which family it chose.
+  logEvent('mail_transport_ready', {
+    host: hostname,
+    address: address || hostname,
+    family: address ? 4 : null,
+    port,
+    secure: secureForPort(port),
   });
+
   return transporter;
 }
 
@@ -89,7 +169,8 @@ function getTransporter() {
 async function sendMail({ to, subject, html, text }) {
   // getTransporter refuses with the not-configured 503 itself, so every sender says
   // the same thing instead of each carrying its own copy of the sentence.
-  return getTransporter().sendMail({
+  const tx = await getTransporter();
+  return tx.sendMail({
     from: process.env.MAIL_FROM,
     replyTo: process.env.MAIL_REPLY_TO || undefined,
     to,
@@ -109,7 +190,8 @@ async function sendMail({ to, subject, html, text }) {
 // quarter of an hour of waiting and the office, whose client gives up in twenty
 // seconds, never hears why.
 async function verifyMail() {
-  await getTransporter().verify();
+  const tx = await getTransporter();
+  await tx.verify();
 }
 
 // What an operator needs from a failed send: the library's own code (535, ETIMEDOUT,
@@ -268,6 +350,11 @@ module.exports = {
   assertMailConfigured,
   describeMailConfig,
   describeMailError,
+  // Exported for the test, which checks the two decisions that make a message reachable
+  // on a host without outbound IPv6 — the literal address and the TLS server name —
+  // without opening a connection to anything.
+  resolveIpv4,
+  transportOptions,
   sendMail,
   verifyMail,
   buildReminderEmail,

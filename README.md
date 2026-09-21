@@ -588,7 +588,11 @@ bundle as a foreign-looking URL).
   `MAIL_FROM` and the `CLOUDINARY_*` trio) — on the server they are silently disabled otherwise.
   Once they are set, press **Send a test email** on `/admin/reminders`: the values being present
   is not the same as the host being able to reach the provider, and the button says which of the
-  two is missing.
+  two is missing. If it reports `connect ENETUNREACH ...:587` instead, the host cannot reach the
+  provider's IPv6 address — the API resolves `SMTP_HOST` to IPv4 itself before handing it to
+  nodemailer, which picks an address family at random and treats IPv6 as usable whenever a local
+  interface carries an IPv6 address, true in a container with no route to one. A host that still
+  fails after that has the outbound port closed and needs a plan or provider that does not.
 - Open a member's passbook from a phone on mobile data (not the office Wi-Fi) to confirm the
   public lookup and the gated PDF/Excel work over the real domain.
 

@@ -20,6 +20,8 @@ const {
   assertMailConfigured,
   describeMailConfig,
   describeMailError,
+  resolveIpv4,
+  transportOptions,
   sendMail,
   verifyMail,
   buildReminderEmail,
@@ -80,6 +82,69 @@ test('with nothing configured, every sender refuses with an explanation', async 
     (err) => err.status === 503 && /not set up yet/.test(err.message)
   );
   await assert.rejects(() => verifyMail(), (err) => err.status === 503);
+});
+
+test('the provider is resolved to IPv4, and a lookup that fails is left to nodemailer', async () => {
+  const calls = [];
+  const lookup = async (hostname, options) => {
+    calls.push({ hostname, options });
+    return { address: '203.0.113.7', family: 4 };
+  };
+
+  assert.equal(await resolveIpv4('smtp.example.test', lookup), '203.0.113.7');
+  // Only IPv4 is ever asked for. An IPv6 address chosen from a full answer is what put
+  // the deployed API on an address its host could not reach.
+  assert.deepEqual(calls, [{ hostname: 'smtp.example.test', options: { family: 4 } }]);
+
+  // An address needs no resolving, and one already written as IPv6 is somebody's
+  // deliberate choice rather than something to quietly override.
+  const never = async () => {
+    throw new Error('the lookup must not be reached');
+  };
+  assert.equal(await resolveIpv4('203.0.113.7', never), null);
+  assert.equal(await resolveIpv4('2606:4700::1111', never), null);
+
+  // A lookup that fails says "nodemailer, you resolve it" — never "no mail today".
+  const broken = async () => {
+    throw new Error('ENOTFOUND');
+  };
+  assert.equal(await resolveIpv4('smtp.example.test', broken), null);
+});
+
+test('the transport connects to the address it resolved, and still names the host in TLS', () => {
+  process.env.SMTP_HOST = 'smtp.example.test';
+  process.env.SMTP_PORT = '587';
+  process.env.SMTP_USER = 'chama@example.test';
+  process.env.SMTP_PASS = 'a-google-app-password';
+
+  const options = transportOptions({
+    hostname: 'smtp.example.test',
+    address: '203.0.113.7',
+    port: 587,
+  });
+
+  assert.equal(options.host, '203.0.113.7');
+  assert.equal(options.port, 587);
+  assert.equal(options.secure, false);
+  assert.equal(options.pool, true);
+  // The certificate is issued to the hostname, so the connection has to name it: without
+  // this, connecting to the literal would fail verification rather than fall back to it.
+  assert.deepEqual(options.tls, { servername: 'smtp.example.test' });
+  // A ceiling per send, or one silent provider holds a request open past the client's own.
+  assert.ok(options.connectionTimeout > 0 && options.socketTimeout > 0);
+
+  // With nothing resolved, the connection is exactly what it was before this existed.
+  const plain = transportOptions({ hostname: 'smtp.example.test', address: null, port: 587 });
+  assert.equal(plain.host, 'smtp.example.test');
+  assert.equal(plain.tls, undefined);
+
+  // 465 is implicit TLS, as everywhere else in this module.
+  assert.equal(
+    transportOptions({ hostname: 'smtp.example.test', address: null, port: 465 }).secure,
+    true
+  );
+
+  clearMailEnv();
 });
 
 test('the status says where mail would go, and never the credentials', () => {
