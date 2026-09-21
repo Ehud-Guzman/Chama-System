@@ -14,6 +14,7 @@ import { money, shortDate, formatBytes, isoDateOf, isSameCalendarDay } from '../
 import { normalizeNationalId, maskNationalId, nationalIdMissing } from '../src/utils/nationalId.js';
 import { weakPasswordMessage } from '../src/utils/password.js';
 import { whatsappLink, mailtoLink } from '../src/utils/messaging.js';
+import { highlightParts } from '../src/utils/highlightTerm.js';
 
 test('money prints the way a Kenyan reader expects', () => {
   assert.equal(money(1400), 'Ksh 1,400');
@@ -133,4 +134,82 @@ test('a phone number becomes one WhatsApp link however it was stored', () => {
   assert.match(whatsappLink('0712345678', 'Week 92, 1,400'), /text=Week%2092%2C%201%2C400/);
 
   assert.match(mailtoLink('a@b.co', 'Subject', 'Body'), /^mailto:a@b\.co\?subject=Subject&body=Body$/);
+});
+
+test('the searched word is marked where it appears, and only where it appears', () => {
+  // Exactly the parts of the text that are the word, in the order they appear — the
+  // component renders each one as a text node, so this is the whole of what gets
+  // emphasised on the screen.
+  assert.deepEqual(highlightParts('Tea and tea money', 'tea'), [
+    { text: 'Tea', match: true },
+    { text: ' and ', match: false },
+    { text: 'tea', match: true },
+    { text: ' money', match: false },
+  ]);
+
+  // The reader's capitals are kept in what is shown: only the matching changes.
+  assert.deepEqual(highlightParts('Tea', 'tea'), [{ text: 'Tea', match: true }]);
+
+  // No search: one part, nothing marked.
+  assert.deepEqual(highlightParts('Tea and money', ''), [{ text: 'Tea and money', match: false }]);
+  assert.deepEqual(highlightParts('Tea and money', '   '), [
+    { text: 'Tea and money', match: false },
+  ]);
+
+  // A word that is not there, and a word longer than what is being marked up.
+  assert.deepEqual(highlightParts('Tea and money', 'coffee'), [
+    { text: 'Tea and money', match: false },
+  ]);
+  assert.deepEqual(highlightParts('Tea', 'tea and coffee'), [{ text: 'Tea', match: false }]);
+
+  // At the edges there is nothing left over to keep.
+  assert.deepEqual(highlightParts('money for tea', 'money'), [
+    { text: 'money', match: true },
+    { text: ' for tea', match: false },
+  ]);
+  assert.deepEqual(highlightParts('money for tea', 'tea'), [
+    { text: 'money for ', match: false },
+    { text: 'tea', match: true },
+  ]);
+
+  // What the office typed is what is looked for: `1,400` and `(chairman)` are
+  // characters, not a pattern — a dot must not mark up any character at all.
+  assert.deepEqual(highlightParts('We collected 1,400 that day', '1,400'), [
+    { text: 'We collected ', match: false },
+    { text: '1,400', match: true },
+    { text: ' that day', match: false },
+  ]);
+  assert.deepEqual(highlightParts('We collected 1400 that day', '1,400'), [
+    { text: 'We collected 1400 that day', match: false },
+  ]);
+  assert.deepEqual(highlightParts('(Chairman) opened', '(chairman)'), [
+    { text: '(Chairman)', match: true },
+    { text: ' opened', match: false },
+  ]);
+  assert.deepEqual(highlightParts('aXb', '.'), [{ text: 'aXb', match: false }]);
+
+  // Nothing in, nothing out — a missing title must not throw on the way to a result.
+  assert.deepEqual(highlightParts(null, 'tea'), [{ text: '', match: false }]);
+  assert.deepEqual(highlightParts(undefined, undefined), [{ text: '', match: false }]);
+});
+
+test('a Word file that is not a .docx is refused before anything is downloaded', async () => {
+  // The parser is a quarter of a megabyte and arrives with `import()`, so the name is
+  // checked before it is asked for: a wrong pick must not pay for the download, and a
+  // `.doc` — the older Word format, which the parser cannot read — is the mistake that
+  // actually happens at the office.
+  const { docxProblem, importDocxFile } = await import('../src/utils/importDocx.js');
+
+  assert.equal(docxProblem('minutes.docx'), null);
+  assert.equal(docxProblem('MINUTES.DOCX'), null);
+  assert.match(docxProblem('minutes.doc'), /\.docx file$/);
+  assert.match(docxProblem('minutes.pdf'), /\.docx file$/);
+  assert.match(docxProblem('minutes'), /\.docx file$/);
+  assert.match(docxProblem(''), /\.docx file$/);
+  assert.match(docxProblem(null), /\.docx file$/);
+
+  await assert.rejects(() => importDocxFile(null), /No file provided/);
+  // The object below has nothing on it but a name, so this passing is also proof that
+  // the file itself was never touched.
+  await assert.rejects(() => importDocxFile({ name: 'minutes.doc' }), /\.docx file$/);
 });

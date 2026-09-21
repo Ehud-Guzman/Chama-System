@@ -6,6 +6,7 @@ import { shortDate, formatBytes } from '../../utils/format';
 import { documentCategoryLabel } from '../../utils/documentCategories';
 import { opensInBrowser } from '../../utils/documentFiles';
 import { blobErrorMessage } from '../../utils/blobError';
+import HighlightedText from '../shared/HighlightedText';
 
 // The minute reader is the rich-text editor's parser and schema. Loading it with
 // the page put Tiptap and ProseMirror (~180 KB gzip) in the members' page bundle
@@ -40,6 +41,14 @@ export default function PublicRecords({ verifiedId }) {
   const [minutesLoading, setMinutesLoading] = useState(false);
   const [openMinute, setOpenMinute] = useState(null);
   const [openingMinuteId, setOpeningMinuteId] = useState(null);
+  // Searching the minutes. `minuteSearch` is what is in the box; `minuteQuery` is
+  // the term the server has actually answered for, which is the one the results are
+  // highlighted with. `minuteResults` null means the tab is showing every published
+  // minute.
+  const [minuteSearch, setMinuteSearch] = useState('');
+  const [minuteQuery, setMinuteQuery] = useState('');
+  const [minuteResults, setMinuteResults] = useState(null);
+  const [minuteSearching, setMinuteSearching] = useState(false);
 
   const unlock = useCallback(async (rawId) => {
     const normalized = normalizeNationalId(rawId);
@@ -66,6 +75,9 @@ export default function PublicRecords({ verifiedId }) {
       setMinutes([]);
       setMinutesLoaded(false);
       setOpenMinute(null);
+      setMinuteSearch('');
+      setMinuteQuery('');
+      setMinuteResults(null);
       setStatus('unlocked');
     } catch (err) {
       setDocuments([]);
@@ -117,6 +129,9 @@ export default function PublicRecords({ verifiedId }) {
     setMinutes([]);
     setMinutesLoaded(false);
     setOpenMinute(null);
+    setMinuteSearch('');
+    setMinuteQuery('');
+    setMinuteResults(null);
     setError('');
     setTab('documents');
     setStatus('locked');
@@ -172,10 +187,51 @@ export default function PublicRecords({ verifiedId }) {
     }
   }
 
+  // Any word from any meeting, searched where the words actually are: in the minute's
+  // body, which this list never carries. It is submitted rather than typed-ahead of
+  // purpose — the endpoint is ID-gated and budgeted at thirty requests a minute, and
+  // typing one word should not spend ten of them.
+  async function searchMinutes(e) {
+    e.preventDefault();
+    const term = minuteSearch.trim();
+    setError('');
+
+    if (!term) {
+      setMinuteQuery('');
+      setMinuteResults(null);
+      return;
+    }
+
+    setMinuteSearching(true);
+    try {
+      const res = await api.get('/api/public/minutes', {
+        params: { nationalId: unlockedId, q: term },
+      });
+      setMinuteResults(res.data.minutes || []);
+      // The term the answer belongs to, so what is highlighted on screen is what was
+      // actually searched for.
+      setMinuteQuery(term);
+    } catch (err) {
+      setError(apiMessage(err, 'Could not search the minutes right now.'));
+    } finally {
+      setMinuteSearching(false);
+    }
+  }
+
+  function clearMinuteSearch() {
+    setMinuteSearch('');
+    setMinuteQuery('');
+    setMinuteResults(null);
+  }
+
   const tabClass = (name) =>
     `min-h-11 rounded-lg px-3 text-xs font-bold transition ${
       tab === name ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-primary'
     }`;
+
+  // What the Minutes tab is showing: the search answer when there is one, the whole
+  // published list otherwise.
+  const visibleMinutes = minuteResults || minutes;
 
   return (
     <section className="rounded-2xl border border-rule bg-surface p-4 shadow-sm sm:p-6 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-center lg:gap-x-10">
@@ -412,24 +468,89 @@ export default function PublicRecords({ verifiedId }) {
               id="records-panel-minutes"
               aria-labelledby="records-tab-minutes"
             >
+              {/* Any word from any meeting. Submitted rather than searched as it is
+                  typed: the words are in the minute's body, which this list never
+                  carries, so the search is a request to the API — and that endpoint is
+                  ID-gated and budgeted, which typing letter by letter would spend. */}
+              <form
+                onSubmit={searchMinutes}
+                className="mt-4 flex flex-col gap-2 sm:flex-row"
+                noValidate
+              >
+                <span className="sr-only">Search the minutes</span>
+                <input
+                  type="search"
+                  value={minuteSearch}
+                  onChange={(e) => setMinuteSearch(e.target.value)}
+                  placeholder="Search any word from the meetings…"
+                  aria-label="Search the minutes"
+                  autoComplete="off"
+                  enterKeyHint="search"
+                  className="h-12 w-full rounded-xl border border-rule bg-page px-4 text-base"
+                />
+
+                <button
+                  type="submit"
+                  disabled={minuteSearching}
+                  className="min-h-12 shrink-0 rounded-xl bg-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {minuteSearching ? 'Searching…' : 'Search'}
+                </button>
+              </form>
+
+              {minuteQuery && (
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-muted">
+                    {visibleMinutes.length > 0
+                      ? `${visibleMinutes.length} ${
+                          visibleMinutes.length === 1 ? 'minute' : 'minutes'
+                        } mention “${minuteQuery}”.`
+                      : `No minute mentions “${minuteQuery}”.`}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={clearMinuteSearch}
+                    className="min-h-11 px-2 text-xs font-semibold text-primary"
+                  >
+                    Show all minutes
+                  </button>
+                </div>
+              )}
+
               {minutesLoading ? (
                 <p className="mt-4 text-center text-sm text-muted">Loading minutes…</p>
-              ) : minutes.length === 0 ? (
-                <p className="mt-4 rounded-xl border border-dashed border-rule px-4 py-6 text-center text-sm text-muted">
-                  No minutes have been published yet.
-                </p>
+              ) : visibleMinutes.length === 0 ? (
+                // A search that found nothing has already been said above; only an
+                // empty vault needs saying here.
+                minuteQuery ? null : (
+                  <p className="mt-4 rounded-xl border border-dashed border-rule px-4 py-6 text-center text-sm text-muted">
+                    No minutes have been published yet.
+                  </p>
+                )
               ) : (
                 <ul className="mt-4 space-y-2">
-                  {minutes.map((m) => (
+                  {visibleMinutes.map((m) => (
                     <li
                       key={m.id}
                       className="rounded-xl border border-rule bg-page px-4 py-3 lg:flex lg:items-center lg:justify-between lg:gap-6"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold">{m.title}</p>
+                        <HighlightedText
+                          text={m.title}
+                          term={minuteQuery}
+                          className="block text-sm font-semibold"
+                        />
                         <p className="mt-0.5 text-xs text-muted">{shortDate(m.date)}</p>
                         {m.preview && (
-                          <p className="mt-1 text-xs leading-5 text-muted">{m.preview}…</p>
+                          <HighlightedText
+                            // A search result's preview is the sentence the word was
+                            // found in and already ends in an ellipsis; a browse
+                            // preview is the minute's opening words and needs one.
+                            text={m.preview.endsWith('…') ? m.preview : `${m.preview}…`}
+                            term={minuteQuery}
+                            className="mt-1 block text-xs leading-5 text-muted"
+                          />
                         )}
                       </div>
 

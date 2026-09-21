@@ -469,6 +469,8 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   ID recorded for them (`GET /api/public/documents?nationalId=…`,
   `…/documents/:id/file?nationalId=…`, `GET /api/public/minutes?nationalId=…`,
   `…/minutes/:id?nationalId=…`, `GET /api/public/constitution?nationalId=…`, 30 requests/minute/IP).
+  A `q` on the minutes list searches the whole of every published minute — see
+  *Searching the minutes* below.
   An upload or a minute can be marked hidden from members to keep it admin-only; removals are soft
   deletes, like every other record. The ID is the only credential — anyone who knows a member's ID
   can open the members' area, so treat it as group-visible material, not private documents. It is
@@ -703,7 +705,24 @@ inline.
 **Minutes.** Written through `sanitize-html` against the editor's own schema
 (`utils/sanitizeHtml.js`), so a script cannot reach a member's page whatever client
 posted it. The editor cannot produce anything outside that allowlist, so a legitimate
-minute round-trips unchanged.
+minute round-trips unchanged. An existing Word document is imported in the browser
+(`utils/importDocx.js` — mammoth, reached with `import()` and warmed on the way to the
+button, so the file dialog opens before the download finishes and the pick usually costs
+nothing): a dialog closed without a file leaves the page exactly as it was, and what
+comes back is put into the editor rather than only into the form state behind it.
+
+**Searching the minutes.** The office's list (`/admin/minutes`) and the members' minutes
+tab both search *every word of every minute* — the title, the body, and the date as the
+office writes it (`21/05/2026`, `2026-05-21`, or just `2026`) — rather than filtering the
+handful of rows already on the screen. That is the point: the minute somebody wants is
+usually one from months back, and a minute's body is not in the list payload at all. The
+candidates come from a regex over the stored HTML (`GET /api/minutes?q=…`,
+`GET /api/public/minutes?nationalId=…&q=…`) and are then checked against the minute's own
+text (`utils/minuteSearch.js`), so `href`, `li` and `strong` are never offered as words
+somebody said in a meeting. A result opens with the sentence the word was found in, with
+the term marked, and one search scans the newest hundred candidates — saying so when it
+runs out of room rather than letting a truncated list read as the whole answer. A minute
+withheld from members is still found by the office, and never by a member.
 
 **The audit trail** (`/admin/audit`, its own destination — it was a panel under the reports). The
 trail is read when something needs explaining, by whoever has to explain it, so it is not buried
@@ -1010,7 +1029,7 @@ be, and that another member's money cannot appear on one.
 things that make the difference between the passbook opening and not opening.
 
 **Weight.** The document, JavaScript, CSS, the one font that loads **and the images the page draws**
-must stay under about **150 KB gzip** between them — currently **144.5 KB**. `npm run build && npm run
+must stay under about **150 KB gzip** between them — currently **145.1 KB**. `npm run build && npm run
 report:bundle` prints the figure, and it is the number CI gates on. Two rules keep it there: anything
 over ~50 KB is loaded with `await import()` at the moment it is used (`xlsx`, `docx`, `mammoth`, the
 Tiptap-based minute reader), and any new page goes into `App.jsx` as a `lazy()` route. The minute

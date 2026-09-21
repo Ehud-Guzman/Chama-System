@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -145,6 +146,22 @@ export default function RichTextEditor({ value, onChange, placeholder }) {
       },
     },
   });
+
+  // The editor takes its content once, at mount, and that stays right for typing: the
+  // parent is fed by this editor, so re-parsing on every keystroke would fight the
+  // cursor. It is wrong for an imported Word document, which replaces the whole body
+  // from outside — the office would pick a file, be told it was imported, and watch
+  // the page show nothing. An incoming value that is not already what the editor holds
+  // is therefore applied, without emitting an update (the parent already has it).
+  useEffect(() => {
+    if (!editor) return;
+    const next = toEditorHtml(value);
+    if (next === editor.getHTML()) return;
+    // An empty document reads back as '<p></p>'; a blank value must not be re-applied
+    // on every render for the sake of matching that.
+    if (!next && editor.isEmpty) return;
+    editor.commands.setContent(next, { emitUpdate: false });
+  }, [editor, value]);
 
   return (
     <div className="rounded-xl overflow-hidden border border-rule">
