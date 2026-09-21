@@ -145,9 +145,6 @@ export default function TwoFactorPanel() {
     }
   }
 
-  // Readable in fours, which is how a key gets typed into an app with no paste button.
-  const grouped = setup?.secret?.match(/.{1,4}/g)?.join(' ') || '';
-
   return (
     <section className="min-w-0 rounded-xl border border-rule bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -276,12 +273,20 @@ export default function TwoFactorPanel() {
         <form onSubmit={confirmSetup} className="mt-4 space-y-3 rounded-xl border border-rule bg-bg p-4">
           <h3 className="text-sm font-semibold">1. Add this key to your authenticator app</h3>
           <p className="text-sm leading-6 text-muted">
-            In the app, choose &ldquo;add account&rdquo;, then &ldquo;enter a setup key&rdquo;, and
-            type or paste this. Name it <strong>{setup.issuer}</strong> so you know what it is later.
+            In the app choose &ldquo;add account&rdquo;, then the option to enter a key by hand —
+            in Google Authenticator that is <strong>+ → Enter a setup key</strong>. Tap{' '}
+            <strong>Copy</strong> below and paste it into the <em>Key</em> box, then give it a name
+            so you know what it is later: <strong>{setup.issuer}</strong>.
           </p>
+          {/* The key is shown as one run of characters, with no spaces, because that is the only
+              form the manual-entry field of an authenticator app accepts. It used to be displayed
+              grouped in fours for readability — which looked friendlier and was actively harmful:
+              Google Authenticator answers a space with "key value has illegal character", so
+              anybody who typed what was on the screen failed, and the screen never said why. There
+              is no grouped version any more; copy it, or type the characters exactly as they are. */}
           <div className="flex flex-wrap items-center gap-2">
             <code className="min-w-0 flex-1 rounded-lg border border-rule bg-surface px-3 py-2 font-mono text-sm break-all">
-              {grouped}
+              {setup.secret}
             </code>
             <button
               type="button"
@@ -291,21 +296,34 @@ export default function TwoFactorPanel() {
               Copy
             </button>
           </div>
+          <p className="text-xs leading-5 text-muted">
+            Enter it exactly as it is, with no spaces. If the app says the key has an illegal
+            character, it is almost always a space or a line break that came along with it — tap
+            Copy rather than selecting the text by hand.
+          </p>
           <details className="text-sm">
             <summary className="min-h-11 cursor-pointer leading-[2.75rem] text-muted">
-              The app takes a link instead?
+              Some apps accept a link instead — not Google Authenticator
             </summary>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <code className="min-w-0 flex-1 rounded-lg border border-rule bg-surface px-3 py-2 font-mono text-xs break-all">
-                {setup.otpauthUrl}
-              </code>
-              <button
-                type="button"
-                onClick={() => copy(setup.otpauthUrl, 'Link')}
-                className="min-h-11 rounded-xl border border-rule px-4 text-sm font-semibold"
-              >
-                Copy
-              </button>
+            <div className="mt-2 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="min-w-0 flex-1 rounded-lg border border-rule bg-surface px-3 py-2 font-mono text-xs break-all">
+                  {setup.otpauthUrl}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => copy(setup.otpauthUrl, 'Link')}
+                  className="min-h-11 rounded-xl border border-rule px-4 text-sm font-semibold"
+                >
+                  Copy
+                </button>
+              </div>
+              <p className="text-xs leading-5 text-muted">
+                This link goes in an app that offers &ldquo;add from a link or URI&rdquo; — 1Password
+                and Bitwarden do. Google Authenticator and Authy do not: they only take the key
+                above, and pasting this link into their key box is what produces the illegal
+                character message.
+              </p>
             </div>
           </details>
 

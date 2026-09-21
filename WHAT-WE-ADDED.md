@@ -137,11 +137,18 @@ How to use it
    that code verifies, so an admin who starts the setup and gets distracted is not
    locked out of his own account.
 
-3. The screen then shows ten recovery codes, once. These are the way in if the phone
-   is lost or broken. They are single use, and they must be written down and kept
+3. The screen then shows ten recovery codes, once. These are the way in if the phone is
+   lost or broken. They are single use, and they must be written down and kept
    somewhere other than the phone, because the system keeps only a fingerprint of
    them and cannot read them back later. There is a button to issue a fresh set once
    they are used up.
+
+   The setup key is shown as one run of characters with a Copy button, and it is
+   deliberately NOT grouped into fours: Google Authenticator rejects a space in its key
+   box with "key value has illegal character", so a key displayed with spaces cannot be
+   typed in by anyone reading it off the screen. Copy it rather than selecting it by
+   hand, and note that the otpauth:// link is only for apps that offer "add from a link"
+   (1Password, Bitwarden) — Google Authenticator and Authy take the key and nothing else.
 
 Turning the second factor off for your own account, or issuing new recovery codes,
 needs your password AND a live code. Either one alone is something a thief holding

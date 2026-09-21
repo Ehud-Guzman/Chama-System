@@ -660,8 +660,11 @@ Three decisions in it are worth knowing:
     token and the second factor would be decoration.
   * **The secret never leaves the server as a picture.** There is no QR code, because
     drawing one means handing the account's shared secret to a third-party image service.
-    The key is shown in a readable, grouped, copyable form instead, and every authenticator
-    app accepts manual entry.
+    The key is shown as one run of characters with a copy button, and every authenticator
+    app accepts manual entry. It is deliberately **not** grouped into fours for
+    readability: Google Authenticator answers a space in the key box with "key value has
+    illegal character", so a key displayed with spaces in it is a key that cannot be typed
+    in by anybody who copies what is on the screen.
 
 Ten single-use **recovery codes** cover the lost phone, stored only as HMACs keyed on
 `JWT_SECRET` (so a dump of the accounts table cannot be worked through offline) and removed
