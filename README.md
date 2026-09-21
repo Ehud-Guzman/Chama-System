@@ -508,9 +508,12 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   one member at a time and can take a minute or more, so it runs under its own 120-second ceiling
   rather than the client's 20-second default, the connection is proved once before the first
   message (an unreachable provider then costs one wait, not one per member), and every send — or
-  its failure, with the SMTP code in it — leaves a line in the request log as it happens. Every
-  send is audit-logged, members can be opted out individually (`emailNotifications`), and a
-  member with no address is listed as un-emailable rather than silently skipped.
+  its failure, with the SMTP code in it — leaves a line in the request log as it happens.
+  `MAIL_FROM` must contain an address — `Name <chama@example.com>`, or the bare address — and a
+  display name on its own is refused here, before anything is sent, rather than by the provider
+  with "valid sender email required". Every send is audit-logged, members can be opted out
+  individually (`emailNotifications`), and a member with no address is listed as un-emailable
+  rather than silently skipped.
 - **Member records:** each member carries an email address, a profile photo, a next of kin
   (name, relationship, phone, email) and an email-reminders switch. Next of kin and notes stay
   on the admin side; only the photo and public passbook fields are exposed publicly.

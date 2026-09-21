@@ -550,3 +550,50 @@ test('a key with no usable provider name says so instead of pretending', () => {
 
   clearMailEnv();
 });
+
+test('a From with no address in it is refused, and names the variable to fix', async () => {
+  process.env.MAIL_API_KEY = 'test-key';
+  process.env.MAIL_API_PROVIDER = 'brevo';
+
+  // What Brevo answers this with is "valid sender email required" — which names neither the
+  // variable nor the file it lives in, and leaves somebody reading a screen that cannot tell
+  // them what to type. The refusal is this app's own instead, and it quotes what it read.
+  process.env.MAIL_FROM = 'WAZO MOJA SELF-HELP GROUP';
+
+  const realFetch = globalThis.fetch;
+  let posted = false;
+  globalThis.fetch = async () => {
+    posted = true;
+    throw new Error('nothing may be posted');
+  };
+
+  try {
+    await assert.rejects(
+      () => sendMail({ to: 'member@example.test', subject: 'x', text: 'x' }),
+      (err) => {
+        assert.equal(err.status, 503);
+        assert.equal(err.expose, true);
+        assert.match(err.message, /MAIL_FROM does not contain an email address/);
+        assert.match(err.message, /WAZO MOJA SELF-HELP GROUP/);
+        assert.match(err.message, /chama@example\.com/);
+        return true;
+      }
+    );
+    // Nothing left the process, so no half-formed message can be sitting at the provider being
+    // retried by their queue.
+    assert.equal(posted, false);
+
+    // An empty value is its own sentence, because it has its own fix.
+    process.env.MAIL_FROM = '';
+    await assert.rejects(
+      () => sendMail({ to: 'member@example.test', subject: 'x', text: 'x' }),
+      (err) => {
+        assert.match(err.message, /MAIL_FROM is not set/);
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    clearMailEnv();
+  }
+});

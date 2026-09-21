@@ -173,6 +173,26 @@ function apiProviderName() {
   return String(process.env.MAIL_API_PROVIDER || '').trim().toLowerCase();
 }
 
+// MAIL_FROM, parsed and checked.
+//
+// Providers answer a From that is not an address with something like Brevo's "valid sender
+// email required", which names neither the variable nor the file it lives in — and the office
+// reads that on a screen which cannot tell them what to type. So it is answered here instead,
+// beside the value that was read and the shape that is wanted.
+function mailFrom() {
+  const raw = String(process.env.MAIL_FROM || '').trim();
+  if (!raw) throw mailError('MAIL_FROM is not set, so there is no address to send as.');
+
+  const parsed = parseMailFrom(raw);
+  if (!parsed.email || !isValidEmail(parsed.email)) {
+    throw mailError(
+      `MAIL_FROM does not contain an email address: "${raw.slice(0, 80)}". `
+        + 'It must look like Chama Name <chama@example.com>, or be the bare address.'
+    );
+  }
+  return parsed;
+}
+
 // The configured provider, or null when there is no usable API configuration. Never throws:
 // the status endpoint and the reminders list ask this on every page load.
 function apiProvider() {
@@ -291,7 +311,7 @@ async function apiCall({ url, headers, body, label }) {
 async function sendViaApi(provider, { to, subject, html, text }) {
   const request = provider.send({
     key: process.env.MAIL_API_KEY,
-    from: parseMailFrom(process.env.MAIL_FROM),
+    from: mailFrom(),
     rawFrom: process.env.MAIL_FROM,
     to,
     subject,
@@ -412,6 +432,11 @@ async function sendMail({ to, subject, html, text }) {
   // screen, the test button, the weekly sweep — asks "send this message" and gets told what
   // happened, without knowing whether it left over SMTP or HTTPS.
   const transport = activeMailTransport();
+
+  // Checked before anything is attempted, on both roads: the From is the one field a deployment
+  // gets wrong in a way the provider reports cryptically, and the check costs a regex.
+  mailFrom();
+
   if (transport.kind === 'api') {
     return sendViaApi(transport.provider, { to, subject, html, text });
   }
