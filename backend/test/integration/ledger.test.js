@@ -289,6 +289,15 @@ test('before anything is downloaded, the panel says so', { skip }, async () => {
   assert.equal(typeof body.onHost.count, 'number');
   assert.equal(typeof body.onHost.directory, 'string');
   assert.ok(body.onHost.retention > 0);
+
+  // And the same fact reaches the weekly report, which is where the committee will meet it: the
+  // nag has to arrive through the screen people actually read, not only through this endpoint.
+  const weekly = await json(await api('GET', '/api/reports/weekly'));
+  assert.equal(weekly.status, 200);
+  assert.equal(weekly.body.backup.never, true);
+  assert.equal(weekly.body.backup.stale, true);
+  assert.ok(weekly.body.backup.note, 'the weekly report should say something');
+  assert.equal(weekly.body.backup.staleAfterDays, 30);
 });
 
 test('a backup restores into another database with dates and ids intact', { skip }, async () => {
@@ -374,6 +383,14 @@ test('the download above is what the panel now reports', { skip }, async () => {
   // panel says so rather than counting it as a copy.
   assert.equal(body.lastDownload.slim, false);
   assert.ok(!Number.isNaN(Date.parse(body.lastDownload.at)), 'the date should be readable');
+
+  // A fresh copy means the nag falls silent — the same rule, read through the weekly report. A
+  // reminder that keeps nagging after somebody has done the thing is one that gets ignored, which
+  // is the failure this whole rule exists to avoid.
+  const weekly = await json(await api('GET', '/api/reports/weekly'));
+  assert.equal(weekly.body.backup.stale, false);
+  assert.equal(weekly.body.backup.daysAgo, 0);
+  assert.equal(weekly.body.backup.note, null, 'nothing to say about a copy taken today');
 });
 
 

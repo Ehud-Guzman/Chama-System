@@ -12,6 +12,7 @@ const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { totalFinesCollected } = require('../utils/finesCollected');
 const { computeWeeklyReconciliation } = require('../utils/weeklyReconciliation');
+const { computeBackupHealth } = require('../utils/backupHealth');
 const { aboutSheet } = require('../utils/aboutSheet');
 const Expense = require('../models/Expense');
 
@@ -588,7 +589,13 @@ async function exportContributions(req, res, next) {
 // GET /api/reports/weekly — chama-wide week-by-week reconciliation (expected vs actual)
 async function weekly(req, res, next) {
   try {
-    res.json({ weeks: await computeWeeklyReconciliation() });
+    // The week's figures, and alongside them the one fact about the books that is not a figure:
+    // how old the last copy taken off this machine is. The committee reads this screen every week,
+    // and a backup that nobody has downloaded for two months is exactly the kind of thing that only
+    // gets noticed if it is put in front of somebody — `backup.note` says it, or is null when the
+    // last copy is recent enough to be nobody's business.
+    const [weeks, backup] = await Promise.all([computeWeeklyReconciliation(), computeBackupHealth()]);
+    res.json({ weeks, backup });
   } catch (err) {
     next(err);
   }
@@ -597,7 +604,7 @@ async function weekly(req, res, next) {
 // GET /api/reports/weekly/export — same data as an .xlsx workbook, one row per week × type
 async function exportWeekly(req, res, next) {
   try {
-    const weeks = await computeWeeklyReconciliation();
+    const [weeks, backup] = await Promise.all([computeWeeklyReconciliation(), computeBackupHealth()]);
     const overviewRows = weeks.map((w) => ({
       Week: w.weekNumber,
       'Start date': w.startDate.toISOString().slice(0, 10),
@@ -661,7 +668,10 @@ async function exportWeekly(req, res, next) {
           'nothing (every member\u2019s money for it is already carried forward) and the week still ' +
           'running is not scored. A week is "short" when at least one eligible member still owes ' +
           'their weekly minimum; "Paid in full" names the members who met it, with what each of ' +
-          'them put in, so the two sheets together account for every eligible member.',
+          'them put in, so the two sheets together account for every eligible member.' +
+          // The screen names this on the week's own list; a workbook that leaves the building
+          // should not be the one place the warning is missing.
+          (backup.note ? ` BACKUP: ${backup.note}` : ''),
       }),
       { name: 'Weeks', rows: overviewRows },
       // Contributors before shortfalls, matching the weekly screen: the sheet a

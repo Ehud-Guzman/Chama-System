@@ -64,6 +64,9 @@ export default function Reports() {
   const [months, setMonths] = useState(null);
   const [monthTotals, setMonthTotals] = useState(null);
   const [weeks, setWeeks] = useState(null);
+  // How old the last copy of the books taken off this machine is, alongside the week's figures.
+  // The backend decides whether it is worth saying; null means there is nothing to say.
+  const [backupHealth, setBackupHealth] = useState(null);
   const [openWeek, setOpenWeek] = useState(null);
   const [fines, setFines] = useState(null);
   // The member whose chart is open. Held as the row the table gave us, so the
@@ -121,7 +124,10 @@ export default function Reports() {
     if (tab === "weekly" && !weeks) {
       api
         .get("/api/reports/weekly")
-        .then((res) => setWeeks(res.data.weeks))
+        .then((res) => {
+          setWeeks(res.data.weeks);
+          setBackupHealth(res.data.backup || null);
+        })
         .catch(() => {});
     }
     if (tab === "fines" && !fines) {
@@ -942,6 +948,17 @@ export default function Reports() {
                 come in so far, because nobody can be behind on a collection
                 night that has not happened yet. Tap a week to see exactly who.
               </p>
+              {/* The week's figures, and one fact about the books that is not a figure: how long
+                  ago somebody last took a copy off this machine. The committee reads this screen
+                  every week, which makes it the right place for a nag nobody has to remember —
+                  and it renders only when the backend says there is something to say, so a group
+                  that downloads regularly never sees it. */}
+              {backupHealth?.note && (
+                <p className="mb-3 rounded-xl border border-alert/40 bg-alert/5 px-4 py-3 text-xs font-medium leading-5 text-alert">
+                  <span className="font-semibold">Backup: </span>
+                  {backupHealth.note}
+                </p>
+              )}
               <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
                 {weeks.map((w) => (
                   <li

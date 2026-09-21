@@ -142,6 +142,15 @@ export default function BackupPanel() {
           </dd>
         </div>
       </dl>
+
+      {/* The nag itself, when there is one: the backend decides whether the last copy is old
+          enough to mention, so this line is absent for a group that downloads regularly and
+          cannot be missed by one that has not. */}
+      {status?.note && (
+        <p className="mt-3 rounded-xl border border-alert/40 bg-alert/5 px-3 py-2 text-xs font-medium leading-5 text-alert">
+          {status.note}
+        </p>
+      )}
     </section>
   );
 }

@@ -1,8 +1,7 @@
 const { logAudit } = require('../utils/auditLogger');
 const { logEvent } = require('../middleware/requestLogger');
 const { encodeForBackup, filenameDate, writeBackupJson } = require('../utils/backup');
-const AuditLog = require('../models/AuditLog');
-const { listBackups, backupDir, retentionCount } = require('../jobs/backupJob');
+const { computeBackupHealth } = require('../utils/backupHealth');
 
 // GET /api/backup — super_admin only.
 //
@@ -65,49 +64,12 @@ async function downloadBackup(req, res, next) {
 //     every download writes itself there;
 //   * what is sitting ON the host instead. That is a different thing, and on an ephemeral disk it
 //     is not a backup at all: it is the same fact the nightly job cannot fix from inside the app.
-//     Reporting whether `BACKUP_DIR` is configured is what turns this panel into a straight answer
-//     to "is the nightly file somewhere that survives a deploy?".
 //
-// Read-only, so it is safe to call whenever the screen loads.
+// The rule that turns those into a nag lives in utils/backupHealth, because the weekly report and
+// the weekly reminder sweep say the same thing and all three have to agree.
 async function backupStatus(req, res, next) {
   try {
-    // A directory that cannot be read is not an error here: it means this host has never written
-    // a backup, which is a thing the panel should say plainly rather than fail over.
-    let files = [];
-    try {
-      files = listBackups(backupDir());
-    } catch {
-      files = [];
-    }
-
-    // Newest first, off the index the audit screen already pages through.
-    const lastDownload = await AuditLog.findOne({ 'after.action': 'backup-download' })
-      .sort({ createdAt: -1 })
-      .populate('performedBy', 'name')
-      .lean();
-
-    const newest = files.length ? files[files.length - 1] : null;
-
-    res.json({
-      lastDownload: lastDownload
-        ? {
-            at: lastDownload.createdAt,
-            by: lastDownload.performedBy?.name || null,
-            // A slim backup is the data without the document bytes, so it cannot restore on its
-            // own — the panel says so rather than letting it count as a copy.
-            slim: Boolean(lastDownload.after?.slim),
-          }
-        : null,
-      onHost: {
-        directory: backupDir(),
-        // Whether somebody has pointed the job at a mounted volume. False means the files live
-        // on the app's own disk, where a redeploy removes them.
-        persistent: Boolean(process.env.BACKUP_DIR),
-        retention: retentionCount(),
-        count: files.length,
-        newest: newest ? { name: newest.name, at: new Date(newest.mtimeMs) } : null,
-      },
-    });
+    res.json(await computeBackupHealth());
   } catch (err) {
     next(err);
   }

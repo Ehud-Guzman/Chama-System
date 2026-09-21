@@ -17,6 +17,7 @@
 const Member = require('../models/Member');
 const { getOrCreateSettings } = require('../utils/settings');
 const { isMailConfigured } = require('../utils/mailer');
+const { computeBackupHealth } = require('../utils/backupHealth');
 const {
   computeMemberDues,
   deliverReminders,
@@ -79,6 +80,20 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
 
   const shouldSend = send === null ? sendsEnabled() : Boolean(send);
   const targets = owing.filter((row) => row.reachable).slice(0, maxRecipients());
+
+  // The other thing worth saying once a week, and for the same reason this whole file exists: the
+  // failure it guards against is an absence, and an absence never announces itself. A copy of the
+  // books that nobody has taken off the machine for two months is invisible on every screen until
+  // somebody looks, so every run of the weekly sweep records how old the last copy is — whether or
+  // not a single member email goes out, which is why it is set before the early returns below.
+  const backup = await computeBackupHealth();
+  summary.backup = {
+    daysAgo: backup.daysAgo,
+    never: backup.never,
+    stale: backup.stale,
+    staleAfterDays: backup.staleAfterDays,
+    note: backup.note,
+  };
 
   if (!shouldSend) {
     summary.note =

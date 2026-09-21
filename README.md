@@ -556,6 +556,7 @@ bundle as a foreign-looking URL).
 | `JOB_BACKUP_SCHEDULE` · `JOB_AUDIT_SCHEDULE` · `JOB_REMINDER_SCHEDULE` | `daily@HH:MM` · `weekly@<day>@HH:MM` · `monthly@<day>@HH:MM`, in EAT. Defaults `daily@02:00`, `weekly@sat@04:00`, `weekly@sun@18:00` |
 | `BACKUP_DIR` | Where the nightly backup is written (default `backend/data/backups`, gitignored). **Point this at a mounted volume on a host with an ephemeral disk** |
 | `BACKUP_RETENTION` | How many backup files to keep, default 14 |
+| `BACKUP_STALE_DAYS` | How many days may pass without a download before the weekly report says so, default 30 |
 | `AUDIT_RETENTION_DAYS` | Blank or 0 keeps everything (the default). Only pre-chain entries are ever pruned automatically |
 | `AUDIT_HEAD_EMAIL` | Where the weekly audit check sends the chain's head. Defaults to `MAIL_REPLY_TO`, then `MAIL_FROM` |
 | `REMINDER_SWEEP_SEND` | `true` lets the weekly sweep actually email members who are behind. Off by default |
@@ -639,6 +640,17 @@ files in the backup directory, the newest of them, and **whether `BACKUP_DIR` is
 which is the straight answer to "will last night's file still exist after a deploy?". A download
 that has never happened reads **Never**, not a blank, because "nothing has ever been taken off this
 machine" is exactly the state that needs saying out loud.
+
+**And it nags.** The failure this guards against is an absence — a copy of the books nobody has
+taken off the machine for two months — and an absence announces itself on no screen, so the age of
+the last download is computed once (`utils/backupHealth.js`) and said in four places: the Backup
+panel, the **weekly reconciliation** (a line above the week list, and the same line on the
+workbook's cover sheet), the weekly reminder sweep's own record, and `GET /api/backup/status`. Past
+`BACKUP_STALE_DAYS` (30 by default) — or the day a group that has never downloaded one opens the
+page — the line appears; a copy taken recently means **nothing is said at all**, because a reminder
+that keeps firing after somebody has done the thing is a reminder everybody learns to ignore. The
+rule is pinned in `test/backupHealth.test.js`: the day before the mark, the mark itself (the rule is
+*older than*, so 30 days is not yet stale), the day after, and a clock that disagrees with the record.
 
 **Observability.** One JSON line per request on stdout (`rid`, method, path, status,
 duration, account, address) and `X-Request-Id` on every response. A 5xx logs the
@@ -764,7 +776,8 @@ to so the question is answerable. The Backup panel answers it on screen as well,
 read an environment variable to find out whether last night's file is somewhere that survives:
 it names the directory, and says plainly when the files are on the app's own disk. Relying on the
 download button instead is a legitimate choice — a copy in an official's hands is better than a
-file on an ephemeral disk — which is why the panel reports when the last one was taken.
+file on an ephemeral disk — which is why the panel reports when the last one was taken, and why the
+weekly report says so once `BACKUP_STALE_DAYS` (default 30) have passed with nothing downloaded.
 
 **The ledger works with no signal.** `frontend/src/services/offlineQueue.js` keeps a ledger entry
 that failed for a network reason and sends it when the signal returns, and
