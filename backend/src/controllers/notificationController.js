@@ -22,7 +22,6 @@ const {
   sendMail,
   verifyMail,
   buildReminderEmail,
-  buildTestEmail,
 } = require('../utils/mailer');
 const { logAudit } = require('../utils/auditLogger');
 // The request log is where "emails are not being sent" gets its evidence: a request the
@@ -128,10 +127,10 @@ async function computeMemberDues(members) {
 
 // GET /api/notifications/status — is this deployment able to send at all?
 //
-// `configured` is about the variables, not about reachability: a host that has the
-// SMTP_* values and cannot open the connection reports itself configured and still
-// sends nothing. The honest test is the test button (POST /api/notifications/test),
-// which opens a connection and signs in.
+// `configured` is about the variables, not about reachability: a host that holds the SMTP_*
+// values and cannot open the connection reports itself configured and still sends nothing.
+// A batch is the honest test, because it proves the connection before it sends anything and
+// reports the provider's own words when it cannot.
 async function mailStatus(req, res) {
   res.json(describeMailConfig());
 }
@@ -371,58 +370,10 @@ async function sendReminders(req, res, next) {
   }
 }
 
-// POST /api/notifications/test — one message, to the address on the signed-in account.
-//
-// This is the check that answers the question the office actually asks — "is it sending
-// at all?" — without a member being involved, and it is the only place an SMTP error is
-// worth showing exactly as the provider worded it: whoever presses the button is the
-// person who can change the server's environment. A reminder that fails says nothing to
-// anybody; this one says why.
-async function sendTestEmail(req, res, next) {
-  try {
-    assertMailConfigured();
-
-    const to = String(req.user.email || '').trim();
-    if (!to) {
-      const err = new Error('Your account has no email address, so there is nowhere to send a test.');
-      err.status = 400;
-      throw err;
-    }
-
-    const settings = await getOrCreateSettings();
-    const { subject, text, html } = buildTestEmail({ chamaName: settings.chamaName });
-
-    let info;
-    try {
-      info = await sendMail({ to, subject, text, html });
-    } catch (err) {
-      // The provider's own answer, turned into the sentence an operator can act on: a
-      // revoked app password, a sender it will not accept, and a host whose outbound port
-      // is closed are three different fixes, and none is guessable from a generic message.
-      // A connection failure also names the address and port that were tried, because
-      // "Connection timeout" on its own tells nobody where to look.
-      throw mailFailure(err);
-    }
-
-    logEvent('test_email_sent', { rid: req.id, userId: String(req.user._id), to });
-    res.json({
-      sent: true,
-      to,
-      from: process.env.MAIL_FROM || null,
-      messageId: (info && info.messageId) || null,
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
 module.exports = {
   mailStatus,
   listReminders,
   sendReminders,
-  // The office's own check, exported alongside the rest so the route file reads as the
-  // list of things this controller can do.
-  sendTestEmail,
   // Shared with the weekly sweep job, so a member emailed automatically and one emailed by
   // hand are told exactly the same thing.
   computeMemberDues,

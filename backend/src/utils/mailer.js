@@ -61,9 +61,9 @@ function mailError(message) {
 
 // The one error every caller gets when there is nothing to send with.
 //
-// One function rather than one sentence copied into four places — the reminders
-// screen before it accepts a batch, the weekly sweep, the test button, and the
-// senders themselves — because four copies of a message drift apart.
+// One function rather than one sentence copied into three places — the reminders screen
+// before it accepts a batch, the weekly sweep, and the senders themselves — because three
+// copies of a message drift apart.
 function assertMailConfigured() {
   if (isMailConfigured()) return;
 
@@ -98,7 +98,7 @@ const API_PROVIDERS = {
   brevo: {
     label: 'Brevo',
     // A cheap authenticated call that answers "is this key real?" without sending anything.
-    // This is what the test button asks on this road.
+    // This is what verifyMail asks on this road, before a batch trusts it.
     verify: (key) => ({ url: 'https://api.brevo.com/v3/account', headers: { 'api-key': key } }),
     send: ({ key, from, to, subject, text, html }) => ({
       url: 'https://api.brevo.com/v3/smtp/email',
@@ -429,8 +429,8 @@ async function getTransporter() {
 // app is triggered by an admin from the reminders page, never by member input.
 async function sendMail({ to, subject, html, text }) {
   // Which road is decided here, and only here: everything above this line — the reminders
-  // screen, the test button, the weekly sweep — asks "send this message" and gets told what
-  // happened, without knowing whether it left over SMTP or HTTPS.
+  // screen and the weekly sweep — asks "send this message" and gets told what happened,
+  // without knowing whether it left over SMTP or HTTPS.
   const transport = activeMailTransport();
 
   // Checked before anything is attempted, on both roads: the From is the one field a deployment
@@ -681,43 +681,6 @@ function buildReminderEmail({ chamaName, member, lateWeeks = [], fines = [], not
   return { subject, text, html };
 }
 
-// The office's own test message (POST /api/notifications/test).
-//
-// Deliberately plain, and deliberately not a reminder: it exists to prove the one
-// thing a reminder cannot prove about itself — that the server opened a connection,
-// signed in and was accepted — and to be forwardable to whoever keeps the mailbox.
-// A real reminder would be mistaken for a member's business.
-function buildTestEmail({ chamaName }) {
-  const name = String(chamaName || '').trim() || 'the chama';
-  const subject = `${name}: test email from the chama system`;
-
-  const text = [
-    `This is a test message from ${name}'s chama system.`,
-    '',
-    'Nobody was reminded by it. If you are reading it, then:',
-    '',
-    '  • the server reached the mail provider;',
-    '  • it signed in as the sending account, if one is configured;',
-    '  • the message was accepted for delivery — not merely written to a file.',
-    '',
-    'So if a member says a reminder never arrived while this one did, the system is not',
-    'the reason: check his address on his member record, and whether email reminders are',
-    'switched on for him.',
-    '',
-    `— ${name}`,
-  ].join('\n');
-
-  const html = `
-  <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.6;color:#1b2b24">
-    <p>This is a <strong>test message</strong> from ${escapeHtml(name)}&rsquo;s chama system.</p>
-    <p>Nobody was reminded by it. If you are reading it, then the server reached the mail provider, signed in as the sending account, and the message was accepted for delivery.</p>
-    <p>So if a member says a reminder never arrived while this one did, the system is not the reason: check his address on his member record, and whether email reminders are switched on for him.</p>
-    <p style="margin:16px 0 0">Thank you,<br>${escapeHtml(name)}</p>
-  </div>`;
-
-  return { subject, text, html };
-}
-
 module.exports = {
   cleanEmail,
   isValidEmail,
@@ -742,5 +705,4 @@ module.exports = {
   sendMail,
   verifyMail,
   buildReminderEmail,
-  buildTestEmail,
 };

@@ -499,16 +499,15 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   shows (`computeMemberLedger`), so a reminder can never quote a week number or an amount the
   member isn't seeing himself (`POST /api/notifications/reminders` sends). A week still in
   progress is never counted as late, and the cycle only reaches back as far as week 92, so
-  nobody is emailed about unreconcilable history. Sending needs `SMTP_*` + `MAIL_FROM`; without
-  them the page says so and the API returns a 503 with the same explanation. The page also
-  carries its own test button (`POST /api/notifications/test`), which emails the signed-in
-  account and nobody else: it is the only way to tell "the variables are set" from "this host can
-  reach the provider with these credentials", and the only place an SMTP error — a revoked app
-  password, a blocked outbound port — is reported in the provider's own words. A batch is sent
-  one member at a time and can take a minute or more, so it runs under its own 120-second ceiling
-  rather than the client's 20-second default, the connection is proved once before the first
-  message (an unreachable provider then costs one wait, not one per member), and every send — or
-  its failure, with the SMTP code in it — leaves a line in the request log as it happens.
+  nobody is emailed about unreconcilable history. Sending needs a mail configuration — `SMTP_*`
+  + `MAIL_FROM`, or `MAIL_API_PROVIDER` + `MAIL_API_KEY` + `MAIL_FROM` for the HTTPS road;
+  without one the page says so and the API returns a 503 with the same explanation. A batch is
+  sent one member at a time and can take a minute or more, so it runs under its own 120-second
+  ceiling rather than the client's 20-second default; the connection (or the API key) is proved
+  once before the first message, so an unreachable provider costs one wait rather than one per
+  member — and its refusal is reported in the provider's own words, on the screen and in the log,
+  before anybody is emailed. Every send — or its failure, with the provider's code in it — leaves
+  a line in the request log as it happens.
   `MAIL_FROM` must contain an address — `Name <chama@example.com>`, or the bare address — and a
   display name on its own is refused here, before anything is sent, rather than by the provider
   with "valid sender email required". Every send is audit-logged, members can be opted out
@@ -587,11 +586,11 @@ bundle as a foreign-looking URL).
 ### After the first deploy
 
 - Sign in as the super admin, check **Settings → chama name** reads `WAZO MOJA SELF-HELP GROUP`.
-- Email and Cloudinary keep working only if their variables are set on the host too (7 `SMTP_*` /
-  `MAIL_FROM` and the `CLOUDINARY_*` trio) — on the server they are silently disabled otherwise.
-  Once they are set, press **Send a test email** on `/admin/reminders`: the values being present
-  is not the same as the host being able to reach the provider, and the button says which of the
-  two is missing.
+- Email and Cloudinary keep working only if their variables are set on the host too (the mail
+  configuration and the `CLOUDINARY_*` trio) — on the server they are silently disabled otherwise.
+  The values being present is not the same as the host being able to reach the provider, so the
+  first batch sent after a change is the check: a refusal appears on the screen in the provider's
+  own words, before a single member is emailed.
 - **Two host-side traps, both met for real.** `connect ENETUNREACH ...:587` is the host having no
   route to the provider's IPv6 address — the API resolves `SMTP_HOST` to IPv4 itself before
   handing it to nodemailer, which picks an address family at random and counts IPv6 as usable
@@ -605,10 +604,11 @@ bundle as a foreign-looking URL).
   (`MAIL_API_PROVIDER` + `MAIL_API_KEY`, one of `brevo`, `resend`, `sendgrid` — implemented, and
   the only one of the three that no port policy can close, which makes it the road to use on a
   free host); or a **paid Render instance**, which is what the limitation is documented as
-  belonging to. Whichever is chosen, **Send a test email** on `/admin/reminders` is the check:
-  on the API road it asks the provider whether the key is real without sending anything. This
-  deployment took the middle one — Brevo's API over HTTPS, with the group's own address verified
-  as the sender there — and the button has sent from it since.
+  belonging to. Whichever is chosen, the first batch after the change is the check: it proves the
+  connection, or asks the provider whether the key is real, before it sends anybody anything — and
+  a refusal names the provider's own reason on the screen. This deployment took the middle one —
+  Brevo's API over HTTPS, with the group's own address verified as the sender there — and
+  reminders have sent from it since.
 - **Sending from a machine, when the host cannot.** A deployment whose host blocks 465/587 and has
   no relay configured yet can still send from any machine whose network opens those ports — the
   office PC, where the credentials already live in `backend/.env`:
@@ -653,7 +653,7 @@ bundle as a foreign-looking URL).
 | `SMTP_HOST` · `SMTP_PORT` · `SMTP_USER` · `SMTP_PASS` · `SMTP_SECURE` | Outgoing mail for reminders |
 | `MAIL_FROM` | Address reminders are sent as — required for sending to work at all |
 | `MAIL_REPLY_TO` | Optional reply-to (e.g. the treasurer's own inbox) |
-| `MAIL_API_PROVIDER` · `MAIL_API_KEY` | Send through a mail API over **HTTPS** instead of SMTP — `brevo`, `resend` or `sendgrid`. The road to use where the host blocks outbound 25/465/587 (Render's Free instances do), and the only one no port policy can close. A key here wins over `SMTP_HOST`; the test button checks the key itself |
+| `MAIL_API_PROVIDER` · `MAIL_API_KEY` | Send through a mail API over **HTTPS** instead of SMTP — `brevo`, `resend` or `sendgrid`. The road to use where the host blocks outbound 25/465/587 (Render's Free instances do), and the only one no port policy can close. A key here wins over `SMTP_HOST`; the key is checked before every batch |
 | `TWO_FACTOR_RATE_LIMIT_MAX` | Code attempts per challenge, default 10 per 15 minutes |
 | `JOBS_ENABLED` | `false` switches the scheduled jobs off. Safe to leave on with more than one instance — the lease in the database decides who runs |
 | `JOB_BACKUP_SCHEDULE` · `JOB_AUDIT_SCHEDULE` · `JOB_REMINDER_SCHEDULE` | `daily@HH:MM` · `weekly@<day>@HH:MM` · `monthly@<day>@HH:MM`, in EAT. Defaults `daily@02:00`, `weekly@sat@04:00`, `weekly@sun@18:00` |

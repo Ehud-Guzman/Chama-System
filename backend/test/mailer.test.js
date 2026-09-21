@@ -32,7 +32,6 @@ const {
   sendMail,
   verifyMail,
   buildReminderEmail,
-  buildTestEmail,
 } = require('../src/utils/mailer');
 
 const KEYS = [
@@ -330,21 +329,6 @@ test('a name or a reason cannot put markup into the message', () => {
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
 });
 
-test('the test message says what it proves, and does not read as a bill', () => {
-  const { subject, text, html } = buildTestEmail({ chamaName: 'WAZO MOJA SELF-HELP GROUP' });
-
-  assert.equal(subject, 'WAZO MOJA SELF-HELP GROUP: test email from the chama system');
-  assert.match(text, /test message/);
-  assert.match(text, /check his address on his member record/);
-  assert.equal(/Ksh/.test(text), false, "a test must not look like a member's balance");
-  assert.match(html, /test message/);
-
-  // A chama with no name set still produces something a person can read, and a name is
-  // escaped on the way into the HTML like every other value.
-  assert.equal(buildTestEmail({}).subject, 'the chama: test email from the chama system');
-  assert.equal(buildTestEmail({ chamaName: '<b>x</b>' }).html.includes('<b>x</b>'), false);
-});
-
 test('an address is trimmed, and an empty one is allowed', () => {
   assert.equal(cleanEmail('  a@b.test '), 'a@b.test');
   assert.equal(cleanEmail(null), '');
@@ -427,7 +411,7 @@ test('one message is posted to the provider that was configured', async () => {
   }
 });
 
-test('the test button asks the provider whether the key is real', async () => {
+test('the key check asks the provider whether the key is real, without sending anything', async () => {
   process.env.MAIL_FROM = 'chama@example.test';
   process.env.MAIL_API_KEY = 'test-key';
   process.env.MAIL_API_PROVIDER = 'sendgrid';

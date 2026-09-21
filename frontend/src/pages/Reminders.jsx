@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import api, { apiMessage } from '../services/api';
-import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/shared/Toast';
 import ErrorState from '../components/shared/ErrorState';
 import Loader from '../components/shared/Loader';
@@ -8,12 +7,11 @@ import BackLink from '../components/shared/BackLink';
 import MemberAvatar from '../components/members/MemberAvatar';
 import { money } from '../utils/format';
 
-// The server sends a batch one message at a time, so twenty members is half a minute of
-// SMTP before the API can answer — and the client's default ceiling is twenty seconds,
-// which a batch passes routinely. The office then read "the server took too long to
-// answer" about emails that were already on their way, which is indistinguishable from
-// email that is not working. This is the one call in the app allowed to take minutes; the
-// test message below keeps the short ceiling, because it is one message.
+// The server sends a batch one message at a time, so twenty members is half a minute before
+// the API can answer — and the client's default ceiling is twenty seconds, which a batch
+// passes routinely. The office then read "the server took too long to answer" about emails
+// that were already on their way, which is indistinguishable from email that is not working.
+// This is the one call in the app allowed to take minutes.
 const SEND_TIMEOUT_MS = 120000;
 
 // Who owes what, and a way to email them about it. The figures come from the
@@ -21,7 +19,6 @@ const SEND_TIMEOUT_MS = 120000;
 // claim something their statement contradicts.
 export default function Reminders() {
   const toast = useToast();
-  const { user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -31,7 +28,6 @@ export default function Reminders() {
   const [includeFines, setIncludeFines] = useState(true);
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
-  const [testing, setTesting] = useState(false);
   const [results, setResults] = useState(null);
 
   const load = useCallback(async () => {
@@ -104,23 +100,6 @@ export default function Reminders() {
       toast(apiMessage(err, 'Could not send the reminders'), 'error');
     } finally {
       setSending(false);
-    }
-  }
-
-  // The office's own check, and the only one that can tell "the variables are set" from
-  // "the provider accepts us" — the difference between a screen that looks ready and a
-  // member who never receives anything. When it fails, the API returns the mail server's
-  // own words (a rejected password, a host that cannot reach the port), because whoever
-  // presses this button is the person who can change the server's environment.
-  async function sendTest() {
-    setTesting(true);
-    try {
-      const res = await api.post('/api/notifications/test', {}, { timeout: 30000 });
-      toast(`Test email sent to ${res.data.to}`);
-    } catch (err) {
-      toast(apiMessage(err, 'Could not send the test email'), 'error');
-    } finally {
-      setTesting(false);
     }
   }
 
@@ -268,28 +247,6 @@ export default function Reminders() {
           >
             Clear
           </button>
-        </div>
-
-        {/* The check the office should press before blaming the reminders: one message to
-            the person pressing it. Without a test, "are emails going out?" can only be
-            answered by waiting to hear from a member, which is how a silent failure looks
-            exactly like members who have not checked their mail. */}
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <button
-            type="button"
-            onClick={sendTest}
-            disabled={testing}
-            className="min-h-11 rounded-lg border border-rule px-4 text-sm font-medium disabled:opacity-60"
-          >
-            {testing ? 'Testing…' : 'Send a test email'}
-          </button>
-          <span className="text-xs text-muted">
-            {data?.host
-              ? `To ${user?.email || 'your own address'} via ${data.host}:${data.port} — press this first if reminders seem not to arrive.`
-              : data?.provider
-                ? `To ${user?.email || 'your own address'} via ${data.provider} — press this first if reminders seem not to arrive.`
-                : 'To your own address — press this first if reminders seem not to arrive.'}
-          </span>
         </div>
       </section>
 {results && (
