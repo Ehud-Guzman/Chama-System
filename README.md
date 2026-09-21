@@ -396,6 +396,27 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   from a spreadsheet — the CSV import already reads a `nationalId` column.
   One ID belongs to one member: create, edit and import refuse a duplicate, and if two records ever
   end up sharing one the gate answers 409 rather than showing the wrong passbook.
+- **The spreadsheets are meant to be edited, and the members one comes back in.** Every export is a
+  real `.xlsx` (`utils/xlsxExport`), and the member register is the one that round-trips: the
+  export, the blank import template and the importer share one table of headings
+  (`FORM_EXPORT_COLUMNS`), the parser accepts several spellings of each, and
+  `POST /api/members/import` reads `.csv` or `.xlsx` (the browser converts the workbook, so no
+  upload endpoint is needed). Three details are what make that work rather than nearly work. A date
+  is written as **text** (`1990-04-17`), because SheetJS would otherwise write a serial number the
+  office has to fix by hand before the file reads properly — and the importer could not read it
+  back. A national ID keeps its leading zero for the same reason: as a number it would not have one,
+  and the ID is the key to a member's own record. And a cell starting `=`, `+`, `-` or `@` gets a
+  quote in front of it so Excel cannot run it as a formula (CWE-1236) — a guard the importer
+  **undoes**, because that quote is a character in the cell, not a formatting flag: a next-of-kin
+  phone of `+254712345678` would otherwise come back as `'+254712345678`, a contact number that does
+  not work, and a note of `-50 owed` would come back quoted. `test/xlsxRoundTrip.test.js` runs the
+  whole pipeline — write the workbook, read it back the way the browser does, parse it — and asserts
+  both halves at once: the file stays inert to open, and the data comes back as it went in. The
+  contributions template (`GET /api/contributions/bulk/template` + `POST /bulk`) is deliberately
+  API-only: the bulk weekly grid it was written for was retired in favour of logging member by
+  member, and it is kept for a scripted one-off backfill. Every other workbook — statements, fines,
+  performance, monthly, weekly reconciliation, audit trail — is a report to read, to hand to a
+  committee or to give an auditor. None of them is disguised as an import format.
 - **Public lookup — your own record, nobody else's:** exact ID match only, 5 requests/minute/IP
   (configurable via env), returning the member's masked phone, member-since date, what he holds
   today with the four figures it is made of, the rows he has logged since the cycle opened,
