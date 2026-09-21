@@ -10,6 +10,7 @@ const {
   assertMailConfigured,
   describeMailConfig,
   describeMailError,
+  mailFailure,
   sendMail,
   verifyMail,
   buildReminderEmail,
@@ -220,7 +221,9 @@ async function deliverReminders({
     await verifyMail();
   } catch (err) {
     logEvent('reminder_smtp_unavailable', { rid, error: describeMailError(err) }, 'error');
-    throw err;
+    // Written for a person and marked readable, so the batch is refused with the reason
+    // rather than with "Something went wrong".
+    throw mailFailure(err);
   }
 
   const skip = (member, reason) => {
@@ -385,15 +388,12 @@ async function sendTestEmail(req, res, next) {
     try {
       info = await sendMail({ to, subject, text, html });
     } catch (err) {
-      // A rejection carries a status only when it was written for a person (nothing
-      // configured); anything else is the provider's own answer, and that is what the
-      // person pressing this button needs to read. 535 names a revoked app password,
-      // ETIMEDOUT names a host that cannot reach the port at all — different fixes.
-      if (err.status) throw err;
-      const refused = new Error(`The mail server refused the test: ${describeMailError(err)}`);
-      refused.status = 503;
-      refused.expose = true;
-      throw refused;
+      // The provider's own answer, turned into the sentence an operator can act on: a
+      // revoked app password, a sender it will not accept, and a host whose outbound port
+      // is closed are three different fixes, and none is guessable from a generic message.
+      // A connection failure also names the address and port that were tried, because
+      // "Connection timeout" on its own tells nobody where to look.
+      throw mailFailure(err);
     }
 
     logEvent('test_email_sent', { rid: req.id, userId: String(req.user._id), to });

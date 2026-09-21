@@ -203,6 +203,62 @@ function describeMailError(err) {
   return code && !detail.includes(String(code)) ? `${code}: ${detail}` : detail;
 }
 
+// The failures that happened before the provider said anything: a socket that never
+// connected, whatever the library called it. Nothing about the credentials, the sender or
+// the message was tested, so the answer is at the network or the host — never in the
+// mailbox settings — and the sentence below says so instead of leaving somebody to
+// re-check an app password that was never the problem.
+const CONNECTION_CODES = new Set([
+  'ETIMEDOUT',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'ENOTFOUND',
+  'ESOCKET',
+  'ECONNECTION',
+  'EDNS',
+  'ETLS',
+]);
+
+function isConnectionFailure(err) {
+  const code = err && err.code;
+  return Boolean(code) && CONNECTION_CODES.has(String(code));
+}
+
+// Where the next send will actually go, as one line an operator can act on: the hostname
+// from the environment and the address the process resolved it to. Worth printing beside a
+// failure, because "Connection timeout" on its own does not say which address was tried,
+// and the first question is always whether it is the address or the port.
+function describeMailEndpoint() {
+  const hostname = process.env.SMTP_HOST;
+  if (!hostname) return null;
+
+  const port = Number(process.env.SMTP_PORT) || 587;
+  return `${hostname}:${port}${transportAddress ? ` (IPv4 ${transportAddress})` : ''}`;
+}
+
+// Every mail failure, turned into the sentence that gets shown to whoever asked for the
+// send — and marked as written for a person, because middleware/errorHandler hides the text
+// of a 5xx otherwise. One function, so the reminders screen, the weekly sweep and the test
+// button explain the same fault the same way.
+function mailFailure(err) {
+  // A rejection this module wrote itself (nothing configured) already reads as it should.
+  if (err && err.expose) return err;
+
+  const where = describeMailEndpoint();
+  const message = isConnectionFailure(err)
+    ? `Nothing answered at ${where || 'the mail server'}: ${describeMailError(err)}. ` +
+      'A host that cannot open that port most often has outbound SMTP switched off — ' +
+      'a provider that listens on port 2525, or an HTTPS mail API, works where 587 does not.'
+    : `The mail server refused the message: ${describeMailError(err)}${where ? ` (at ${where})` : ''}`;
+
+  const wrapped = new Error(message);
+  wrapped.status = 503;
+  wrapped.expose = true;
+  return wrapped;
+}
+
 // The settings, never the secret: the host, the port and the sending address are what
 // an operator checks when nothing arrives, and all three are already on the provider's
 // own dashboard. SMTP_USER and SMTP_PASS never leave this module.
@@ -350,6 +406,9 @@ module.exports = {
   assertMailConfigured,
   describeMailConfig,
   describeMailError,
+  isConnectionFailure,
+  describeMailEndpoint,
+  mailFailure,
   // Exported for the test, which checks the two decisions that make a message reachable
   // on a host without outbound IPv6 — the literal address and the TLS server name —
   // without opening a connection to anything.

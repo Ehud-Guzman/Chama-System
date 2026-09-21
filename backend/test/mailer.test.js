@@ -20,6 +20,9 @@ const {
   assertMailConfigured,
   describeMailConfig,
   describeMailError,
+  isConnectionFailure,
+  describeMailEndpoint,
+  mailFailure,
   resolveIpv4,
   transportOptions,
   sendMail,
@@ -30,6 +33,17 @@ const {
 
 const KEYS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_SECURE', 'MAIL_FROM', 'MAIL_REPLY_TO'];
 const SAVED = {};
+
+// The rejection this module writes when there is nothing to send with, which several
+// tests need: raised, caught, returned.
+function notConfiguredError() {
+  try {
+    assertMailConfigured();
+    return null;
+  } catch (err) {
+    return err;
+  }
+}
 
 const clearMailEnv = () => {
   for (const key of KEYS) delete process.env[key];
@@ -60,12 +74,7 @@ test('configured means both halves are present', () => {
 });
 
 test('with nothing configured, every sender refuses with an explanation', async () => {
-  let thrown = null;
-  try {
-    assertMailConfigured();
-  } catch (err) {
-    thrown = err;
-  }
+  const thrown = notConfiguredError();
 
   assert.ok(thrown, 'assertMailConfigured must throw when nothing is configured');
   assert.equal(thrown.status, 503);
@@ -145,6 +154,51 @@ test('the transport connects to the address it resolved, and still names the hos
   );
 
   clearMailEnv();
+});
+
+test('a failure before the provider spoke says where it tried, and what that means', () => {
+  process.env.SMTP_HOST = 'smtp.example.test';
+  process.env.SMTP_PORT = '587';
+
+  assert.equal(describeMailEndpoint(), 'smtp.example.test:587');
+
+  // The codes that mean "the socket never got there": nothing about the credentials, the
+  // sender or the message was ever tested.
+  assert.equal(isConnectionFailure(Object.assign(new Error('Connection timeout'), { code: 'ETIMEDOUT' })), true);
+  assert.equal(isConnectionFailure(Object.assign(new Error('x'), { code: 'ESOCKET' })), true);
+  assert.equal(isConnectionFailure(Object.assign(new Error('x'), { code: 'ENETUNREACH' })), true);
+  // And the ones that mean the provider answered: the credentials, the sender or the
+  // message are exactly what is being judged.
+  assert.equal(isConnectionFailure(Object.assign(new Error('x'), { responseCode: 535 })), false);
+  assert.equal(isConnectionFailure(new Error('x')), false);
+  assert.equal(isConnectionFailure(null), false);
+
+  // "Connection timeout" alone tells nobody where to look, and the port a host will not
+  // open is the one thing the office can do something about.
+  const timeout = mailFailure(Object.assign(new Error('Connection timeout'), { code: 'ETIMEDOUT' }));
+  assert.equal(timeout.status, 503);
+  assert.equal(timeout.expose, true);
+  assert.match(timeout.message, /Nothing answered at smtp\.example\.test:587/);
+  assert.match(timeout.message, /ETIMEDOUT/);
+  assert.match(timeout.message, /2525/);
+
+  // A rejection is a different sentence, because it has a different fix — and it must not
+  // send anybody off to look at firewalls.
+  const rejected = mailFailure(
+    Object.assign(new Error('Invalid login: 535-5.7.8 Username and Password not accepted'), {
+      responseCode: 535,
+    })
+  );
+  assert.match(rejected.message, /refused the message: Invalid login: 535/);
+  assert.equal(/2525/.test(rejected.message), false);
+
+  // The "nothing is set up" rejection already reads as it should, and is passed through
+  // rather than wrapped in a sentence about a connection it never attempted.
+  const notConfigured = notConfiguredError();
+  assert.equal(mailFailure(notConfigured), notConfigured);
+
+  clearMailEnv();
+  assert.equal(describeMailEndpoint(), null);
 });
 
 test('the status says where mail would go, and never the credentials', () => {

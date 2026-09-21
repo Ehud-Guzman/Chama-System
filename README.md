@@ -588,11 +588,19 @@ bundle as a foreign-looking URL).
   `MAIL_FROM` and the `CLOUDINARY_*` trio) — on the server they are silently disabled otherwise.
   Once they are set, press **Send a test email** on `/admin/reminders`: the values being present
   is not the same as the host being able to reach the provider, and the button says which of the
-  two is missing. If it reports `connect ENETUNREACH ...:587` instead, the host cannot reach the
-  provider's IPv6 address — the API resolves `SMTP_HOST` to IPv4 itself before handing it to
-  nodemailer, which picks an address family at random and treats IPv6 as usable whenever a local
-  interface carries an IPv6 address, true in a container with no route to one. A host that still
-  fails after that has the outbound port closed and needs a plan or provider that does not.
+  two is missing.
+- **Two host-side traps, both met for real.** `connect ENETUNREACH ...:587` is the host having no
+  route to the provider's IPv6 address — the API resolves `SMTP_HOST` to IPv4 itself before
+  handing it to nodemailer, which picks an address family at random and counts IPv6 as usable
+  whenever a local interface carries an IPv6 address, true in a container with no route to one.
+  Then `ETIMEDOUT: Connection timeout` on that IPv4 address means the port itself is dropped, and
+  that is the host's policy, not the app's: **Render's Free instances "can't send outbound
+  network traffic on ports 25, 465, or 587"**, their own words, which is why the group's Gmail
+  account could not send from one at all. Ways out, cheapest first: a transactional provider
+  offering SMTP on **port 2525** (Brevo, Mailgun, Mailjet, Postmark, SendGrid — no code change,
+  just `SMTP_HOST`/`SMTP_PORT` and a verified sender), an **HTTPS mail API** on 443 (a small
+  addition to `utils/mailer`, and the only one of the three that survives port policy changes),
+  or a **paid Render instance**, which is what the limitation is documented as belonging to.
 - Open a member's passbook from a phone on mobile data (not the office Wi-Fi) to confirm the
   public lookup and the gated PDF/Excel work over the real domain.
 
