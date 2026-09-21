@@ -968,9 +968,12 @@ worth knowing because they are the shape of every future win here:
   (`vite.config.js`) so the handshake happens while the bundle is still arriving.
 
 What is left is the honest floor of a React app: the framework chunk at 52.4 KB gzip, the one font at
-34.1 KB, and everything else in between. The font is the only large item that could go — a system
-font stack would remove 34.1 KB in one line — and that is a decision about the group's typeface, not
-a technical one.
+34.1 KB, and everything else in between. **The font stays.** It is 24% of what remains and a system
+font stack would remove all of it in one line, but the group's typeface is not a performance question:
+Archivo was chosen and keeping it is settled, so the 34 KB is the price of the app looking the way the
+group wants it to look. Nobody should re-open this by accident — it is recorded here as decided, which
+leaves the framework itself (Preact in place of React, roughly 40 KB, across every page) as the only
+large lever still on the table.
 
 **Touch.** Every control a finger is meant to hit is at least 44px (`min-h-11`, `h-11`,
 `min-h-12` for primary actions). Text links that do something — "Issue fine", "Week by
