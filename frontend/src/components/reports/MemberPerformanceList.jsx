@@ -50,7 +50,7 @@ export default function MemberPerformanceList({ members, onOpenChart }) {
             <dl className="mt-3 grid grid-cols-3 gap-2 border-t border-rule pt-3 text-xs">
               <div className="min-w-0">
                 <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-                  Weeks
+                  Weeks closed
                 </dt>
                 <dd className="amount mt-0.5">
                   {m.weeksPaid}/{m.weeksExpected}
@@ -78,6 +78,24 @@ export default function MemberPerformanceList({ members, onOpenChart }) {
                 </dd>
               </div>
             </dl>
+
+            {/* The week that is running, which nothing above can show: "weeks closed" counts
+                settled weeks only, so before the cycle's first Thursday has passed every member
+                reads 0/0 with a consistency of "—" while the money is coming in. Without this
+                line that reads as a broken report on the one day it is most likely to be read. */}
+            {m.runningWeek != null && (
+              <p className="amount mt-2 text-[11px] text-muted">
+                Week {m.runningWeek} (running):{' '}
+                {m.paidThisWeek > 0 ? (
+                  <span className="font-medium text-primary">{money(m.paidThisWeek)}</span>
+                ) : (
+                  'nothing yet'
+                )}
+                {m.weeklyAmount > 0 && m.paidThisWeek < m.weeklyAmount && m.paidThisWeek > 0 && (
+                  <span> of {money(m.weeklyAmount)}</span>
+                )}
+              </p>
+            )}
 
             <p className="amount mt-2 text-[11px] text-muted">
               Last paid {shortDate(m.lastContributionDate)}
@@ -114,7 +132,8 @@ export default function MemberPerformanceList({ members, onOpenChart }) {
             <tr className="border-b border-rule text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
               <th className="px-3 py-2">Member</th>
               <th className="px-3 py-2 text-right">Total (all-time)</th>
-              <th className="px-3 py-2 text-right">Weeks paid</th>
+              <th className="px-3 py-2 text-right">Weeks closed</th>
+              <th className="px-3 py-2 text-right">This week</th>
               <th className="px-3 py-2 text-right">Consistency</th>
               <th className="px-3 py-2 text-right">Fines owed</th>
               <th className="px-3 py-2 text-right">Last contribution</th>
@@ -154,6 +173,16 @@ export default function MemberPerformanceList({ members, onOpenChart }) {
                 <td className="amount px-3 py-2 text-right text-muted">
                   {m.weeksPaid}/{m.weeksExpected}
                   {m.weeksPartial > 0 ? ` (+${m.weeksPartial} partial)` : ''}
+                </td>
+
+                {/* The running week, which the ratio beside it cannot show: weeks closed is 0/0
+                    for everybody until the cycle's first Thursday has passed. */}
+                <td className="amount px-3 py-2 text-right">
+                  {m.runningWeek == null || m.paidThisWeek === 0 ? (
+                    <span className="text-muted">—</span>
+                  ) : (
+                    <span className="font-medium text-primary">{money(m.paidThisWeek)}</span>
+                  )}
                 </td>
 
                 <td

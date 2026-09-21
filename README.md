@@ -278,6 +278,18 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   copying the members to `backend/data/`). It also takes `--as-of=<time>` for the figures as they stood
   at that moment, `--from-backup=data/reset-backup-….json` for the roll-forward recomputed from the
   imported ledger, and `--member=<name>` to do one person.
+- **The performance report reads 0/0 for everybody until the first week has closed — and that is
+  correct.** Its "weeks closed" ratio counts only weeks that have closed and been scored, and by
+  design the opening week is the baseline (never scored) and the week running now is not scored
+  either (its Thursday is to come). So between the day a cycle opens and the first Thursday after
+  it, every member shows `0/0` with a consistency of `—` while the ledger and the passbook plainly
+  show money coming in — a report that looks broken on the day somebody is most likely to read it.
+  What answers the question then is **paid this week (running)**, on each row and in the workbook's
+  own column, and the screen says so in a line above the list rather than leaving it to be
+  discovered. The `0/0` is asserted, deliberately, in
+  `backend/test/integration/performance.test.js`: the tempting "fix" is to count the running week as
+  expected, which would mark every member late for money nobody has been asked for yet and put this
+  screen in disagreement with the passbook, the reminders and the ledger.
 - **"All time" carries the opening balances.** The reports headline, the per-member performance column
   and the public group page all count what the members and the funds already held when the books opened
   — read from the same `openingBalance` figures the ledger header shows — plus everything logged since

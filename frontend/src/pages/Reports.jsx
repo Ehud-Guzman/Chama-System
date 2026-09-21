@@ -763,11 +763,29 @@ export default function Reports() {
           )}
 
           <p className="mt-2 text-xs text-muted">
-            Consistency = weeks paid in full ÷ weeks expected since joining,
-            personal weekly contribution types only (group funds like Chai
-            aren't counted as individual effort). Tap a member to open their
-            contribution chart.
+            Consistency = weeks paid in full ÷ weeks expected, personal weekly
+            contribution types only (group funds like Chai aren&apos;t counted as
+            individual effort). Tap a member to open their contribution chart.
           </p>
+          {/* "Weeks expected" counts only weeks that have CLOSED, so between the day the cycle
+              opened and the first Thursday after it this report reads 0/0 for everybody with a
+              consistency of "—" — which looks like a fault and is not one. Said here, once, rather
+              than left for somebody to conclude the report is broken. */}
+          {performance?.length > 0 && performance.every((m) => m.weeksExpected === 0) && (
+            <p className="mt-2 rounded-xl border border-rule bg-surface px-4 py-3 text-xs leading-5 text-muted">
+              <strong className="font-semibold text-ink">No week has closed yet.</strong> The
+              consistency figures here count only weeks that have finished and been scored — the
+              opening week is the baseline (each member&apos;s money for it is already inside the
+              balance he carried in) and the week running now is not scored until its Thursday has
+              passed, because until then nobody has been asked for it. So the ratio reads 0/0 for
+              every member until the day after the first collection; the
+              {performance[0].runningWeek != null
+                ? ` “Week ${performance[0].runningWeek} (running)”`
+                : ' “This week”'}{' '}
+              figures below show what has come in so far, and the weeks that have closed will
+              appear here from the Friday after that Thursday.
+            </p>
+          )}
         </section>
       )}
 

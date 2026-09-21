@@ -67,6 +67,20 @@ async function computePerformance() {
     let weeksPaid = 0;
     let weeksPartial = 0;
     let weeksUnpaid = 0;
+    // And what he has put in against the week that is RUNNING.
+    //
+    // This exists because the figures above answer a different question, and for the first
+    // weeks of a cycle they answer nothing at all: `weeksExpected` counts only weeks that have
+    // closed and been scored, and by design the opening week is the baseline (never scored) and
+    // the week running now is not scored either (its Thursday is to come). So between go-live
+    // and the first Thursday after it, every member reads 0/0 with a consistency of "—" while
+    // the ledger and the passbook show money coming in — a report that looks broken on the one
+    // day somebody is most likely to be looking at it.
+    //
+    // The running week is the only week a member can pay into today, so it is the only figure
+    // that can answer "has he paid this week?".
+    let paidThisWeek = 0;
+    let runningWeek = null;
     for (const type of personalWeeklyTypes) {
       const typeContributions = own.filter((c) => String(c.typeId) === String(type._id));
       const weeks = buildWeeklySchedule(config, config.weeklyAmount, typeContributions);
@@ -76,6 +90,11 @@ async function computePerformance() {
       // expected of anybody yet either — its Thursday is to come — which is the
       // same rule the 1,400 and the tea follow.
       const scored = weeks.filter((w) => !w.isBaseline && !w.isCurrent);
+      const running = weeks.find((w) => w.isCurrent);
+      if (running) {
+        paidThisWeek += running.paid;
+        runningWeek = running.weekNumber;
+      }
       weeksExpected += scored.length;
       weeksPaid += scored.filter((w) => w.status === 'paid').length;
       weeksPartial += scored.filter((w) => w.status === 'partial').length;
@@ -97,6 +116,11 @@ async function computePerformance() {
       weeksPartial,
       weeksUnpaid,
       consistency,
+      // The week running now, and what he has put against it: the only figures that
+      // say anything about a member before the first Thursday of the cycle has passed.
+      paidThisWeek,
+      runningWeek,
+      weeklyAmount: config.weeklyAmount,
       pendingFines: finesMap.get(String(member._id)) || 0,
       lastContributionDate,
     };
@@ -305,6 +329,10 @@ async function exportPerformance(req, res, next) {
       'Reg number': r.regNumber || '',
       Phone: r.phone,
       'Total contributed': r.totalContributed,
+      // Before the cycle's first Thursday has passed there are no closed weeks at all, so
+      // "Weeks expected" and "Weeks paid" are 0 for everybody and consistency is blank. The
+      // running-week column is what says anything about a member in that window.
+      'Paid this week (running)': r.paidThisWeek,
       'Weeks expected': r.weeksExpected,
       'Weeks paid': r.weeksPaid,
       'Weeks partial': r.weeksPartial,
@@ -323,8 +351,10 @@ async function exportPerformance(req, res, next) {
         counts: [['Members', rows.length]],
         notes:
           'One line per active member. "Total contributed" includes the balance he carried in ' +
-          'when the books opened; consistency counts personal weekly weeks only, and the ' +
-          'opening week and the week still running are not scored.',
+          'when the books opened. "Weeks expected" and "Weeks paid" count only weeks that have ' +
+          'CLOSED and been scored - the opening week is the baseline and the week still running is ' +
+          'not scored either, so at the start of a cycle both are 0 for everybody and consistency ' +
+          'is blank; "Paid this week (running)" is the figure that says something then.',
       }),
       { name: 'Performance', rows: sheetRows },
       {
