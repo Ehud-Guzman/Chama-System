@@ -606,10 +606,12 @@ bundle as a foreign-looking URL).
   the only one of the three that no port policy can close, which makes it the road to use on a
   free host); or a **paid Render instance**, which is what the limitation is documented as
   belonging to. Whichever is chosen, **Send a test email** on `/admin/reminders` is the check:
-  on the API road it asks the provider whether the key is real without sending anything.
-- **Sending while the API cannot.** Where the host blocks 465/587 and no relay has been set up
-  yet, reminders still go out from any machine whose network can open those ports — the office PC,
-  which is where the Gmail app password already lives in `backend/.env`:
+  on the API road it asks the provider whether the key is real without sending anything. This
+  deployment took the middle one — Brevo's API over HTTPS, with the group's own address verified
+  as the sender there — and the button has sent from it since.
+- **Sending from a machine, when the host cannot.** A deployment whose host blocks 465/587 and has
+  no relay configured yet can still send from any machine whose network opens those ports — the
+  office PC, where the credentials already live in `backend/.env`:
 
   ```
   cd backend
@@ -622,9 +624,11 @@ bundle as a foreign-looking URL).
   job writes to whatever `MONGO_URI` `backend/.env` holds, so read the report before enabling
   sending; it emails **everyone** reachable who is behind rather than a hand-picked list, and the
   optional extra line is empty (a chosen few is what the screen is for, which needs the API
-  reachable); and `REMINDER_SWEEP_SEND` must stay **off on the host** — its own weekly sweep then
-  keeps working out and reporting who is behind instead of recording a failure it cannot avoid. If
-  it answers `Skipped: … lease`, the host holds the job lock: add `--force`.
+  reachable); and `REMINDER_SWEEP_SEND` should stay **off on a host that cannot send**, so its
+  weekly sweep keeps working out and reporting who is behind instead of recording a failure it
+  cannot avoid. On a host that can send — the API road above — switching it on is what makes the
+  reminders automatic, every Sunday at 18:00 EAT. If it answers `Skipped: … lease`, the host holds
+  the job lock: add `--force`.
 - Open a member's passbook from a phone on mobile data (not the office Wi-Fi) to confirm the
   public lookup and the gated PDF/Excel work over the real domain.
 
