@@ -10,7 +10,7 @@ const { logAudit, snapshot } = require('../utils/auditLogger');
 const { parseMembersCSV } = require('../utils/csvImport');
 const { typeBreakdown } = require('../utils/typeBreakdown');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
-const { resolveConfig, cycleHistory, weekNumberForDate } = require('../utils/weekCycle');
+const { resolveConfig, cycleHistory, weekNumberForDate, toEatDateString } = require('../utils/weekCycle');
 const { bucketForType } = require('../utils/ledgerTypes');
 const { computeMemberLedger } = require('../utils/memberLedger');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
@@ -816,7 +816,12 @@ const SIGNATURE_EXPORT_COLUMNS = [
 function isoDay(value) {
   if (!value) return '';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+  // Read back in EAT, the way the office wrote it. `toISOString().slice(0,10)` reads the instant in
+  // UTC instead, and a date of birth is not an instant: one entered as "17 Apr 1990" is stored at
+  // midnight in the server's own zone, which from a UTC server renders as the *16th* — a birth date
+  // exported a day early, and one the office would have no reason to doubt. This is the same helper
+  // the statements print their period labels with, so the two exports agree about what day it is.
+  return Number.isNaN(date.getTime()) ? '' : toEatDateString(date);
 }
 
 function approvalLabel(role) {
