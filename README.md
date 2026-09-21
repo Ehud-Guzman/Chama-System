@@ -404,7 +404,10 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   upload endpoint is needed). Three details are what make that work rather than nearly work. A date
   is written as **text** (`1990-04-17`), because SheetJS would otherwise write a serial number the
   office has to fix by hand before the file reads properly — and the importer could not read it
-  back. A national ID keeps its leading zero for the same reason: as a number it would not have one,
+  back. A date typed day-first (`17/04/1990`) is read **as the office writes it**, because
+  JavaScript reads a slash-separated date as American month-first and would have stored `05/04/1990`
+  as 4 May when the treasurer meant 5 April; a date that does not exist (`31/04/1990`) is refused
+  rather than rolled forward into May. A national ID keeps its leading zero for the same reason: as a number it would not have one,
   and the ID is the key to a member's own record. And a cell starting `=`, `+`, `-` or `@` gets a
   quote in front of it so Excel cannot run it as a formula (CWE-1236) — a guard the importer
   **undoes**, because that quote is a character in the cell, not a formatting flag: a next-of-kin

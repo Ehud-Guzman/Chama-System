@@ -61,10 +61,51 @@ function familyIsEmpty(family) {
 // A date of birth is the one personal field worth refusing: a member added with a
 // typo in the year would carry it for ever, and the form's whole point is that the
 // office can age-check a claim. Returns { value, error }.
+//
+// It is also the one field whose *format* has to be read carefully, because the office writes
+// dates the way Kenya writes them and JavaScript does not read them that way. The form posts
+// `YYYY-MM-DD`, which is unambiguous; a spreadsheet the office fills in is not. `17/04/1990` was
+// refused (there is no month 17, which is what gave the game away) but `05/04/1990` was read as
+// American month-first and silently stored as 4 May when the treasurer meant 5 April — a wrong
+// birth date on a record that is used to age-check a claim, with nothing to say so.
+//
+// So an all-numeric date is read day-first here, the way this group writes one. A two-digit year
+// is read as the century a birth date plausibly falls in, and anything that has no sensible
+// reading at all is still refused rather than guessed at.
+const TYPED_DATE = /^(\d{1,4})[/.-](\d{1,2})[/.-](\d{2}|\d{4})$/;
+
+// The instant midnight UTC on a date the office typed, or null if it is not one.
+function typedCalendarDate(text) {
+  const parts = TYPED_DATE.exec(text);
+  if (!parts) return null;
+
+  // Four digits in the first slot mean it is already the year, so the date is ISO.
+  const [, first, second, third] = parts;
+  const [day, month, year] = first.length === 4 ? [third, second, first] : [first, second, third];
+
+  const fullYear =
+    year.length === 4 ? Number(year) : Number(year) < 30 ? 2000 + Number(year) : 1900 + Number(year);
+  const d = Number(day);
+  const m = Number(month);
+  if (m < 1 || m > 12 || d < 1 || d > 31 || fullYear < 1000) return null;
+
+  // Constructed in UTC, matching what a bare 'YYYY-MM-DD' has always produced, so ISO input is
+  // untouched by this and a date does not move a day depending on the server's timezone.
+  const date = new Date(Date.UTC(fullYear, m - 1, d));
+  // A day that month does not have — 31 April — is a typo. JavaScript would roll it forward into
+  // May and hand back a date nobody wrote, which is exactly the kind of quiet wrong answer this
+  // function exists to prevent.
+  if (date.getUTCDate() !== d || date.getUTCMonth() !== m - 1) return null;
+  return date;
+}
+
 function cleanDateOfBirth(value) {
   if (value === undefined) return { value: undefined };
   if (value === null || value === '') return { value: null };
-  const date = new Date(value);
+  const typed = typeof value === 'string' ? typedCalendarDate(value.trim()) : null;
+  // Anything that is not an all-numeric date is left to the platform: a Date the API sent, or a
+  // spelled-out date like "17 Apr 1990".
+  const date = typed || new Date(value);
   if (Number.isNaN(date.getTime())) return { error: 'Enter a valid date of birth' };
   if (date.getTime() > Date.now()) return { error: 'Date of birth cannot be in the future' };
   if (date.getUTCFullYear() < 1900) return { error: 'Date of birth looks too far back' };
