@@ -849,6 +849,13 @@ Three rules keep it honest:
     id; reusing it would make the API treat the next, different payment as a duplicate of the
     queued one and silently drop it. That is the single way an outbox loses money instead of
     saving it.
+  * **What is stored is the request as the caller wrote it.** The queue keeps `config.data` and
+    replays it later, so the HTTP client hands over the caller's own object and serialises it only at
+    the moment of sending (`services/api.js`). It used to hand over axios's already-serialised string,
+    and `{...body}` on a string spreads it into `{"0":"{","1":"\""…}` — so a queued payment was stored
+    as something the API could never accept and discarded, unreadable, on the next flush. `queueRequest`
+    also parses a JSON string back if one ever arrives again, and refuses a body it cannot read rather
+    than storing something it knows it cannot send.
 
 The service worker caches **nothing under `/api/`** — not the ledger, and above all not the
 ID-gated documents, minutes or constitution. The API marks those `no-store`, and a worker that
@@ -935,13 +942,35 @@ be, and that another member's money cannot appear on one.
 5-inch iPhone on a good day of 4G. The following are not preferences — they are the
 things that make the difference between the passbook opening and not opening.
 
-**Weight.** The document, JavaScript, CSS and the one font that loads must stay under
-about **150 KB gzip** between them. `npm run build && npm run report:bundle` prints the
-current figure. Two rules keep it there: anything over ~50 KB is loaded with
-`await import()` at the moment it is used (`xlsx`, `docx`, `mammoth`, the Tiptap-based
-minute reader), and any new page goes into `App.jsx` as a `lazy()` route. The minute
-reader in particular must stay lazy — it is the rich-text editor's schema, and the
-members' page must never carry ProseMirror for somebody who came to see a balance.
+**Weight.** The document, JavaScript, CSS, the one font that loads **and the images the page draws**
+must stay under about **150 KB gzip** between them — currently **144.5 KB**. `npm run build && npm run
+report:bundle` prints the figure, and it is the number CI gates on. Two rules keep it there: anything
+over ~50 KB is loaded with `await import()` at the moment it is used (`xlsx`, `docx`, `mammoth`, the
+Tiptap-based minute reader), and any new page goes into `App.jsx` as a `lazy()` route. The minute
+reader in particular must stay lazy — it is the rich-text editor's schema, and the members' page must
+never carry ProseMirror for somebody who came to see a balance.
+
+That count used to leave images out, which made it a report that could not see the biggest thing on
+the page: an 87 KB logo, sitting on the critical path, in a budget whose whole subject is what a
+phone pays. It counts them now, and the three things that got the figure back under the line are
+worth knowing because they are the shape of every future win here:
+
+- **The splash image is a 29 KB WebP**, down from an 87 KB JPEG, for a mark drawn at most 320px wide
+  (`wazo-moja-logo.webp`, generated with Pillow from the master the group pasted in; the master stays
+  in `public/Logo/` for print and branding, and nothing downloads it). Formats were measured rather
+  than guessed: for this artwork lossy WebP beat JPEG by half, and PNG and lossless WebP were *worse*
+  than the original because JPEG noise across the white margins made them enormous.
+- **The HTTP client is `fetch`**, not axios. It was 17.7 KB on the wire for four things
+  (`services/api.js` keeps its call signatures and error shape, so no call site changed). A tenth of
+  the budget for a base URL, a token header, a timeout and an error shape.
+- **The logo is cached for 30 days** (`netlify.toml`), so a returning visitor paints the splash from
+  disk instead of revalidating it, and the API origin is `preconnect`ed at build time
+  (`vite.config.js`) so the handshake happens while the bundle is still arriving.
+
+What is left is the honest floor of a React app: the framework chunk at 52.4 KB gzip, the one font at
+34.1 KB, and everything else in between. The font is the only large item that could go — a system
+font stack would remove 34.1 KB in one line — and that is a decision about the group's typeface, not
+a technical one.
 
 **Touch.** Every control a finger is meant to hit is at least 44px (`min-h-11`, `h-11`,
 `min-h-12` for primary actions). Text links that do something — "Issue fine", "Week by

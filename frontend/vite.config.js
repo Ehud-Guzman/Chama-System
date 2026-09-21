@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
@@ -29,20 +29,65 @@ function preloadLatinFont() {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), tailwindcss(), preloadLatinFont()],
-  build: {
-    rollupOptions: {
-      output: {
-        // React and the HTTP client change far less often than the app's own code.
-        // Splitting them means a redeploy only invalidates the small page chunks
-        // instead of making every returning member re-download the framework.
-        manualChunks: {
-          react: ['react', 'react-dom', 'react-router-dom'],
-          vendor: ['axios'],
+// A phone should be able to shake hands with the API while the bundle is still downloading.
+//
+// The first screen an admin sees is decided by an API call (is this session still good?), and a
+// member's first lookup is one too. Both pay DNS, TCP and TLS to a different origin — around a third
+// of a second on Kenyan mobile data — and every one of those milliseconds is on top of the app
+// appearing. `preconnect` starts all three while the JavaScript is still arriving, so the request
+// that matters leaves immediately.
+//
+// Cloudinary gets only a `dns-prefetch`: the group's logo and members' photos live there, but not on
+// every page, and a full preconnect would open a TLS connection some visitors never use.
+function preconnectOrigins(apiOrigin) {
+  return {
+    name: 'preconnect-origins',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        const tags = [];
+        if (apiOrigin) {
+          tags.push(`<link rel="preconnect" href="${apiOrigin}" crossorigin>`);
+        }
+        tags.push('<link rel="dns-prefetch" href="https://res.cloudinary.com">');
+        return html.replace('</head>', `  ${tags.join('\n  ')}\n  </head>`);
+      },
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  // `loadEnv` rather than `process.env`: VITE_API_URL lives in .env, and the config runs before Vite
+  // would otherwise hand it over.
+  const env = loadEnv(mode, process.cwd(), '');
+  let apiOrigin = '';
+  try {
+    // Same-origin would make this a wasted connection, so it is only added when the API is elsewhere.
+    const url = env.VITE_API_URL ? new URL(env.VITE_API_URL) : null;
+    if (url) apiOrigin = url.origin;
+  } catch {
+    // A malformed VITE_API_URL is the deploy's problem to report, not a reason to fail the build.
+    apiOrigin = '';
+  }
+
+  return {
+    plugins: [react(), tailwindcss(), preloadLatinFont(), preconnectOrigins(apiOrigin)],
+    build: {
+      rollupOptions: {
+        output: {
+          // React and the router change far less often than the app's own code. Splitting them means
+          // a redeploy only invalidates the small page chunks instead of making every returning
+          // member re-download the framework.
+          //
+          // There used to be a second manual chunk for axios. It is gone with the dependency: the
+          // HTTP client is `fetch` now (services/api.js), 17.7 KB a visitor no longer downloads.
+          manualChunks: {
+            react: ['react', 'react-dom', 'react-router-dom'],
+          },
         },
       },
     },
-  },
+  };
 });
 

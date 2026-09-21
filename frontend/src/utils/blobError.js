@@ -1,4 +1,6 @@
-import { apiMessage } from '../services/api';
+// The extension is explicit so Node's resolver can follow it (test/api.test.js imports this module);
+// Vite does not care either way.
+import { apiMessage } from '../services/api.js';
 
 // Axios error responses arrive as a Blob (not parsed JSON) when the request was
 // made with responseType: 'blob' — unwrap it to get the real server message

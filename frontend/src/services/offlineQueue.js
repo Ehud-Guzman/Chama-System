@@ -110,10 +110,28 @@ export function subscribe(listener) {
   return () => listeners.delete(listener);
 }
 
+// A body that arrives as a JSON string is read back into an object first.
+//
+// The HTTP client used to hand this function axios's already-serialised body, and `{...body}` on a
+// string produces `{0:"{",1:'"'…}` — so a queued payment was stored as something the API could never
+// accept, and the next flush discarded it as a refusal. The client now passes the object itself
+// (see services/api.js), and this reads a string back anyway: an outbox whose whole job is not
+// losing money should not depend on its caller getting that right. A string that will not parse is
+// refused outright rather than stored, because keeping something unsendable only moves the loss
+// somewhere quieter.
+function normaliseBody(body) {
+  if (typeof body !== 'string') return { ...(body || {}) };
+  const parsed = JSON.parse(body);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('A queued request body must be a JSON object');
+  }
+  return { ...parsed };
+}
+
 // Queues one request. The idempotency key is generated here if the caller did not supply one, so
 // a write queued twice — or replayed after a reload — is still one write.
 export async function queueRequest({ url, method = 'post', body, label = '' }) {
-  const payload = { ...(body || {}) };
+  const payload = normaliseBody(body);
   if (!payload.clientRequestId) {
     payload.clientRequestId =
       typeof crypto !== 'undefined' && crypto.randomUUID
@@ -220,4 +238,4 @@ export async function flush(api) {
   return result;
 }
 
-export const __test = { classifyFailure, looksLikeDuplicate };
+export const __test = { classifyFailure, looksLikeDuplicate, normaliseBody };

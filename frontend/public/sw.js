@@ -25,9 +25,9 @@ const CACHE = 'chama-shell-v1';
 //
 // The logo is here because it is the first thing the page draws: without it in the cache, a launch
 // with no signal paints the splash's white background, its line of text and a broken image icon
-// where the group's mark should be — worse than no splash at all. In the cache it is 87 KB spent
-// once, and the splash a member sees offline is the one they see online.
-const PRECACHE = ['/', '/index.html', '/manifest.json', '/icon.svg', '/Logo/Wazo%20Moja%20logo.jpeg'];
+// where the group's mark should be — worse than no splash at all. It is a 29 KB WebP, spent once,
+// and the splash a member sees offline is the one they see online.
+const PRECACHE = ['/', '/index.html', '/manifest.json', '/icon.svg', '/Logo/wazo-moja-logo.webp'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

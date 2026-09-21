@@ -12,14 +12,25 @@ import { fileURLToPath } from 'node:url';
 const DIST = resolve(dirname(fileURLToPath(import.meta.url)), '../dist');
 
 const html = readFileSync(resolve(DIST, 'index.html'), 'utf8');
-const assets = [
-  ...html.matchAll(/(?:href|src)="\/assets\/([^"]+)"/g),
-].map((match) => match[1]);
+
+// Everything the browser has to have before the first screen is up: the scripts, the stylesheet, the
+// preloaded font — and the images the body draws, which the splash made part of the critical path.
+//
+// It used to count only `/assets/*`, which Vite fingerprints, and so it missed the splash logo
+// entirely: 87 KB of JPEG that the report insisted was not there, on a page whose whole budget claim
+// is about what a phone on Kenyan mobile data pays. A budget that cannot see the biggest item on the
+// page is a budget that says yes to anything.
+//
+// `<link rel="icon">` and the web-app manifest are deliberately *not* counted: the browser fetches
+// those for its own chrome (a tab, a home-screen icon), not to render the page.
+const refs = new Set();
+for (const match of html.matchAll(/(?:href|src)="\/assets\/([^"]+)"/g)) refs.add(`assets/${match[1]}`);
+for (const match of html.matchAll(/src="\/(?!assets\/)([^"]+)"/g)) refs.add(match[1]);
 
 let total = 0;
 
-for (const file of [...new Set(assets)]) {
-  const bytes = readFileSync(resolve(DIST, 'assets', file));
+for (const file of [...refs]) {
+  const bytes = readFileSync(resolve(DIST, file));
   const gzip = gzipSync(bytes).length;
   total += gzip;
   console.log(
@@ -34,7 +45,7 @@ const critical = (total + htmlGzip) / 1024;
 console.log('index.html'.padEnd(52), ''.padStart(7), `${(htmlGzip / 1024).toFixed(2).padStart(9)} KB gzip`);
 console.log('-'.repeat(76));
 console.log(
-  'CRITICAL PATH (document + js + css + font):'.padEnd(52),
+  'CRITICAL PATH (document + js + css + font + images):'.padEnd(52),
   `${critical.toFixed(1).padStart(20)} KB gzip`
 );
 

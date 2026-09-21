@@ -93,5 +93,7 @@ jobs:
 
       - name: Critical path stays inside its budget
         # The members' page is a phone on Kenyan mobile data. 150 KB gzip is the line the README
-        # draws; this is the step that makes it a line rather than a hope.
+        # draws; this is the step that makes it a line rather than a hope. The count includes the
+        # splash image now — before it did not, and the biggest item on the page was invisible to
+        # the number that was supposed to be policing it.
         run: npm run report:bundle -- --max=150

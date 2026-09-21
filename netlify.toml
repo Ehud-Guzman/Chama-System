@@ -39,6 +39,15 @@
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
 
+# Branding art is not fingerprinted — Vite does not build it, so its name cannot change with its
+# bytes — but it does not change often either, and revalidating the splash logo on every single visit
+# is a round trip a phone on a slow cell pays for nothing. Thirty days, and a new logo should arrive
+# as a new file name.
+[[headers]]
+  for = "/Logo/*"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
+
 # Headers for the pages Netlify serves (the API sets its own). HSTS is safe here
 # because the domain is HTTPS-only through Netlify's certificate, and includeSubDomains
 # assumes the whole zone stays HTTPS — which it should.
