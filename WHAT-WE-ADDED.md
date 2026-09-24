@@ -1021,7 +1021,9 @@ WHAT CHANGED, IN PLAIN ENGLISH
        * one form to record an expense: the fund it came from, the amount, the date,
          what it was for, THE VOUCHER OR RECEIPT NUMBER it is backed by, and a note for
          the M-Pesa message or the supplier's name. The fund picker shows each fund's
-         balance, so nobody spends money a fund does not have;
+         balance, leads with the fund holding the most (which is where the group's money
+         usually is), and groups the funds nothing has been collected into yet under a
+         heading of their own instead of standing beside it as equal choices;
        * every expense on the books, newest first, with its note and the person who
          logged it;
        * corrections (cash spent differs from the estimate) and deletions. A deletion

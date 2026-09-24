@@ -35,6 +35,16 @@ function emptyForm(date = todayISO()) {
   };
 }
 
+// One fund, as the picker writes it: what it is called, what it holds, and — for a fund
+// that has been spent past what it held — that it is overdrawn rather than showing a
+// negative "holds". A loan fund is named as one, because money paid out of it is owed
+// back rather than spent.
+function fundLabel(fund) {
+  const balance = Number(fund.balance) || 0;
+  const held = balance < 0 ? `overdrawn by ${money(-balance)}` : `holds ${money(balance)}`;
+  return `${fund.name} — ${held}${fund.isRecoverable ? ' (loan fund)' : ''}`;
+}
+
 export default function Expenses() {
   const toast = useToast();
   const [data, setData] = useState(null);
@@ -70,12 +80,30 @@ export default function Expenses() {
   const funds = data?.funds || [];
   const expenses = data?.expenses || [];
 
-  // The fund the form will spend from: whatever the treasurer picked, or the first
-  // fund that tracks expenses. Chosen here rather than in an effect so a reload after
-  // saving never moves the selection out from under him.
+  // The funds ordered by what they hold. An expense almost always comes out of the pot
+  // holding the money, and a fund nothing has been collected into yet is not a choice
+  // worth standing beside it as an equal — so the ones with money come first, and the
+  // empty ones are grouped under their own heading in the picker.
+  const fundsByBalance = useMemo(
+    () => [...funds].sort((a, b) => (Number(b.balance) || 0) - (Number(a.balance) || 0)),
+    [funds]
+  );
+  const inCredit = useMemo(
+    () => fundsByBalance.filter((f) => (Number(f.balance) || 0) > 0),
+    [fundsByBalance]
+  );
+  const empty = useMemo(
+    () => fundsByBalance.filter((f) => (Number(f.balance) || 0) <= 0),
+    [fundsByBalance]
+  );
+
+  // The fund the form will spend from: whatever was picked, or — on a fresh form — the
+  // fullest fund, because that is where the group's money actually is. Chosen here
+  // rather than in an effect so a reload after saving never moves the selection out from
+  // under the treasurer.
   const selectedFund = useMemo(
-    () => funds.find((f) => f.id === form.typeId) || funds[0] || null,
-    [funds, form.typeId]
+    () => funds.find((f) => f.id === form.typeId) || inCredit[0] || fundsByBalance[0] || null,
+    [funds, fundsByBalance, inCredit, form.typeId]
   );
 
   function set(field, value) {
@@ -313,13 +341,28 @@ export default function Expenses() {
                   onChange={(e) => set('typeId', e.target.value)}
                   className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
                 >
-                  {funds.map((f) => (
+                  {/* Ordered by what they hold, so the pot the money is actually in comes
+                      first and the funds nothing has been collected into yet sit under a
+                      heading of their own instead of standing beside it as equals. */}
+                  {inCredit.map((f) => (
                     <option key={f.id} value={f.id}>
-                      {f.name} — holds {money(f.balance)}
-                      {f.isRecoverable ? ' (loan fund)' : ''}
+                      {fundLabel(f)}
                     </option>
                   ))}
+                  {empty.length > 0 && (
+                    <optgroup label="Nothing collected into these yet">
+                      {empty.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {fundLabel(f)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
+                <p className="amount mt-1 text-[11px] leading-4 text-muted">
+                  The group's funds hold {money(groupFund.holds)} altogether. Spending comes off
+                  the fund picked here.
+                </p>
               </div>
               <div>
                 <label htmlFor="expense-amount" className="mb-1 block text-xs font-medium">
