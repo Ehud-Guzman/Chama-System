@@ -227,6 +227,10 @@ async function expenseSummary(req, res, next) {
       expenses: report.rows,
       funds: spendingFunds(position),
       money: report.money,
+      // The group's own funds added up, spending already off them — the total a
+      // meeting means by "the fund". Sent on its own as well as inside `money` so a
+      // screen does not have to know its way around the report.
+      groupFund: report.money.groupFund,
       summary: report.summary,
       byFund: report.byFund,
       byMonth: report.byMonth,

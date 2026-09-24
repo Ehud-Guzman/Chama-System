@@ -89,9 +89,10 @@ and reports on all of it
 - ✅ **Fund spending** (`/admin/finance/expenses`): every expense on the books, the form that records
   one — fund, amount, date, what it was for, the voucher or receipt number — plus corrections,
   deletions and the spending report as a **PDF** or an **Excel** workbook. Each expense is deducted
-  from the fund and from the group's all-time total the moment it is saved, and the screen shows the
-  arithmetic (`utils/moneyPosition`, the same function the reports summary uses). A fund flagged as
-  a loan fund (`isRecoverable`) is listed but not deducted — that money is still owed back.
+  from the fund it came from, from the **group's total fund** (all the funds added up, spending
+  already off them) and from the group's all-time total the moment it is saved, and the screen shows
+  the arithmetic (`utils/moneyPosition`, the same function the reports summary uses). A fund flagged
+  as a loan fund (`isRecoverable`) is listed but not deducted — that money is still owed back.
 - ✅ **The member register**: add, edit and resign members, import a sheet of them, export the
   register, keep member photographs, and print any member's statement
 - ✅ Record contributions, and create/edit/delete expenses; create/edit contribution types

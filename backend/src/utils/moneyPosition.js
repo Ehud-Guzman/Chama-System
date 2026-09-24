@@ -103,8 +103,52 @@ async function computeMoneyPosition() {
     totalExpenses,
     netBalance: totalContributed - totalExpenses,
     funds,
+    // The group's own money, added up: see groupFundTotals below.
+    groupFund: groupFundTotals(funds),
     teaIncome,
   };
 }
 
-module.exports = { computeMoneyPosition };
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+// What the group's own funds hold, all of them together — the "group total fund".
+//
+// The members' carried-in balances are deliberately NOT in it: that money is held for
+// them, not owned by the group, and rolling it into a figure called "the group's fund"
+// is how a chama convinces itself it is richer than it is. It is computed from the same
+// per-fund balances the funds list shows, so the total and its rows cannot disagree.
+//
+// Everything spent out of a fund has already come off its balance. The two reasons money
+// has left are named separately anyway, because only one of them is gone for good:
+//
+//   in  -  spent (bought, paid out, gone)  -  onLoan (a loan or advance, owed back)  =  holds
+//
+// so a reader can check the arithmetic instead of trusting the bottom line.
+function groupFundTotals(funds = []) {
+  const rows = Array.isArray(funds) ? funds : [];
+  const sum = (pick) => round2(rows.reduce((total, fund) => total + (Number(pick(fund)) || 0), 0));
+
+  const holds = sum((f) => f.balance);
+  const spent = sum((f) => (f.isRecoverable ? 0 : f.spent));
+  const onLoan = sum((f) => (f.isRecoverable ? f.spent : 0));
+  const carriedIn = sum((f) => f.carriedIn);
+  const collected = sum((f) => f.collected);
+  const derived = sum((f) => f.derived);
+
+  return {
+    // What has come into those funds: their one-time carry-in, what was paid in since,
+    // and the income the ledger derives (the automatic tea).
+    in: round2(carriedIn + collected + derived),
+    carriedIn,
+    collected,
+    derived,
+    // Money that has left and is not coming back — the figure taken off the group total.
+    spent,
+    // Money that has left but is still owed back to the group.
+    onLoan,
+    holds,
+    funds: rows.length,
+  };
+}
+
+module.exports = { computeMoneyPosition, groupFundTotals };

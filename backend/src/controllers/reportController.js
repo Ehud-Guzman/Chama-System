@@ -249,6 +249,10 @@ async function summary(req, res, next) {
       // expense-tracking funds (e.g. Chai) — the group's money on hand. It is
       // the all-time total that answers that question, not the row total.
       netBalance,
+      // The group's own funds added up — spending already taken off each of them, and
+      // the members' carried-in balances deliberately not in it (that money is held for
+      // them). The same figure the spending screen and its report quote.
+      groupFund: position.groupFund,
       thisWeekTotal: thisWeekAgg[0]?.total || 0,
       contributionCount: totalCount,
       activeMembers,

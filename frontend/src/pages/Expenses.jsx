@@ -198,6 +198,10 @@ export default function Expenses() {
   }
 
   const holding = data?.money || { totalContributed: 0, totalExpenses: 0, netBalance: 0 };
+  // The group's own funds added up, spending already off them. Named separately from
+  // "the group holds now" (which also carries the members' own carried-in money): this
+  // is the figure a meeting means by "what does the fund hold".
+  const groupFund = data?.groupFund || { in: 0, spent: 0, onLoan: 0, holds: 0 };
   const totalSpent = data?.summary?.total || 0;
   const byFund = data?.byFund || [];
   const byMonth = data?.byMonth || [];
@@ -237,25 +241,34 @@ export default function Expenses() {
         </div>
       </header>
 
-      {/* The three figures in the order they are worked out. The middle one is the
-          deduction: what has been spent is taken off what the members put in. */}
-      <section className="grid gap-3 sm:grid-cols-3">
+      {/* The four figures in the order they are worked out, ending in what the group's
+          own funds hold now: everything that came into them, less what has been spent
+          from them (and, named separately, less anything out on loan, which is still
+          owed back rather than gone). */}
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           label="Money in, all time"
           value={money(holding.totalContributed)}
           hint="Members and funds, carry-in included"
         />
         <Stat
+          label="Group funds hold"
+          value={money(groupFund.holds)}
+          hint={`${money(groupFund.in)} came in − ${money(groupFund.spent)} spent${
+            groupFund.onLoan > 0 ? ` − ${money(groupFund.onLoan)} out on loan` : ''
+          }`}
+          accent
+        />
+        <Stat
           label="Spent out of the funds"
           value={`− ${money(holding.totalExpenses)}`}
-          hint="Deducted from the total. Loans and advances are not — that money is owed back"
+          hint="Deducted from the funds, and from the total. Loans and advances are not — that money is owed back"
           alert
         />
         <Stat
           label="The group holds now"
           value={money(holding.netBalance)}
-          hint="Everything in, less everything spent"
-          accent
+          hint="Everything in (members' money included), less everything spent"
         />
       </section>
 

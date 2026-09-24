@@ -162,6 +162,7 @@ test('recording an expense moves the fund and the group total, and the money com
   const fundBefore = before.body.funds.find((f) => f.id === String(chai._id));
   assert.ok(fundBefore, 'the Tea Fund should be offered as a fund money can be spent from');
   const heldBefore = before.body.money.netBalance;
+  const fundTotalBefore = before.body.groupFund.holds;
 
   const created = await json(
     await call(tokens.treasurer, 'POST', '/api/expenses', {
@@ -187,6 +188,11 @@ test('recording an expense moves the fund and the group total, and the money com
   // And the group holds 500 less than it did, because spending is deducted.
   assert.equal(after.body.money.totalExpenses, before.body.money.totalExpenses + 500);
   assert.equal(after.body.money.netBalance, heldBefore - 500);
+  // The group's own funds — all of them added up — are 500 lighter too, and the 500 is
+  // named as spent rather than merely gone from the bottom line.
+  assert.equal(after.body.groupFund.holds, fundTotalBefore - 500);
+  assert.equal(after.body.groupFund.spent, before.body.groupFund.spent + 500);
+  assert.equal(after.body.groupFund.onLoan, before.body.groupFund.onLoan);
   assert.equal(after.body.expenses.length, 1);
   assert.equal(after.body.expenses[0].amount, 500);
   assert.equal(after.body.expenses[0].voucher ?? after.body.expenses[0].reference, 'VOUCHER 014');
@@ -201,6 +207,7 @@ test('recording an expense moves the fund and the group total, and the money com
   assert.equal(corrected.status, 200);
   const afterCorrection = await json(await call(tokens.treasurer, 'GET', '/api/expenses/summary'));
   assert.equal(afterCorrection.body.money.totalExpenses, before.body.money.totalExpenses + 450);
+  assert.equal(afterCorrection.body.groupFund.holds, fundTotalBefore - 450, 'the total fund follows the correction');
 
   // Deleting it puts the money back and leaves the trail behind.
   const removed = await json(await call(tokens.treasurer, 'DELETE', `/api/expenses/${expenseId}`));
@@ -209,6 +216,7 @@ test('recording an expense moves the fund and the group total, and the money com
   assert.equal(afterDelete.body.expenses.length, 0);
   assert.equal(afterDelete.body.money.totalExpenses, before.body.money.totalExpenses);
   assert.equal(afterDelete.body.money.netBalance, heldBefore);
+  assert.equal(afterDelete.body.groupFund.holds, fundTotalBefore, 'and the fund total is whole again');
 
   const trail = await AuditLog.find({ entityType: 'Expense', entityId: expenseId })
     .sort({ createdAt: 1 })
@@ -251,6 +259,12 @@ test('a loan fund is listed but not deducted from the group total', { skip }, as
   // ...and NOT taken off what the group holds.
   assert.equal(after.body.money.totalExpenses, before.body.money.totalExpenses);
   assert.equal(after.body.money.netBalance, before.body.money.netBalance);
+  // The group's funds are still 1,000 lighter — the money did leave — but it is named as
+  // out on loan rather than spent, which is the difference between a group that has
+  // helped a member and a group that has spent its fund.
+  assert.equal(after.body.groupFund.holds, before.body.groupFund.holds - 1000);
+  assert.equal(after.body.groupFund.spent, before.body.groupFund.spent);
+  assert.equal(after.body.groupFund.onLoan, before.body.groupFund.onLoan + 1000);
 });
 
 test('only the office may record or read spending, and only against a real fund', { skip }, async () => {

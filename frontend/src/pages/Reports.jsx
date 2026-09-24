@@ -515,9 +515,27 @@ export default function Reports() {
 
         {summary?.funds?.length > 0 && (
           <section className="mt-5">
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-              What each fund holds
-            </h2>
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
+                What each fund holds
+              </h2>
+              {/* The funds added up, with the spending already off them — the figure
+                  somebody means by "the group's fund" when they ask it in a meeting,
+                  and the same one the spending screen quotes. */}
+              {summary.groupFund && (
+                <p className="amount text-sm font-semibold">
+                  {money(summary.groupFund.holds)}{" "}
+                  <span className="text-xs font-normal text-muted">
+                    all funds together ({money(summary.groupFund.in)} in −{" "}
+                    {money(summary.groupFund.spent)} spent
+                    {summary.groupFund.onLoan > 0
+                      ? ` − ${money(summary.groupFund.onLoan)} out on loan`
+                      : ""}
+                    )
+                  </span>
+                </p>
+              )}
+            </div>
             <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-rule bg-surface">
               {summary.funds.map((fund) => (
                 <li key={fund.name} className="px-4 py-3">

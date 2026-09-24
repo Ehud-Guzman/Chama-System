@@ -573,7 +573,11 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   reports summary, so the screen and `GET /api/reports/summary` can never disagree); a fund flagged
   `isRecoverable` is a loan, so its payouts are listed but not deducted — that money is still owed
   back. `GET /api/expenses/summary` is the screen's data, and `GET /api/expenses/export?format=pdf|xlsx`
-  is the same record as a document. Separately, a fine writes two emails on its own — one to the
+  is the same record as a document. Spending is deducted from **the fund it came from, the group's
+  total fund, and the group's all-time total** — the funds are added up into one figure
+  (`moneyPosition.groupFund`: what came in, less what was spent, less what is out on loan and owed
+  back), so "what does the fund hold?" is answered with the spending already off it, on the spending
+  screen, under the reports totals and in both documents. Separately, a fine writes two emails on its own — one to the
   member when it is issued, one when money clears it (including a contribution that pays it down under
   `autoSettleFines`) — off the same fine records the screens show. Neither can fail the write that
   caused it, both are skipped for a member with no address or `emailNotifications: false`, and

@@ -1039,9 +1039,24 @@ WHAT CHANGED, IN PLAIN ENGLISH
      time, including what was carried in from the paper ledger), money spent out of the
      funds, and what the group holds now.
 
+     THE GROUP'S TOTAL FUND IS ONE OF THE FIGURES NOW. The funds are added up into a
+     single "Group funds hold" figure, with the spending already off it, so the question a
+     meeting actually asks - what does the fund hold? - has one answer instead of a list to
+     add up by hand:
+
+       in  -  spent (bought and paid out, gone)  -  out on loan (owed back)  =  holds
+
+     That figure is on the spending screen, beside the reports totals under "What each fund
+     holds", and in both documents (the PDF's summary block and the workbook's Summary
+     sheet). It deliberately does NOT include the members' brought-forward balances: that
+     money is held for them, not owned by the group, and folding it in is how a chama
+     convinces itself it is richer than it is. The funds' rows and the total come from the
+     same per-fund balances, so they cannot disagree.
+
      One deliberate exception, carried over from the ledger: a fund marked as a LOAN or
-     advance fund is listed but NOT deducted. That money left the fund, but it is owed
-     back, so counting it as spent would make a healthy group look like a deficit.
+     advance fund is listed but NOT deducted from the group's spending. That money left the
+     fund - the fund is genuinely lighter by it, and the group total says so - but it is
+     owed back, so counting it as spent would make a healthy group look like a deficit.
 
   3. THE SPENDING REPORT, AS A DOCUMENT
 
@@ -1089,8 +1104,9 @@ WHAT THIS LOOKS LIKE ON THE GROUND
 
   Committee meeting, the treasurer is asked what the tea money has bought:
 
-    1. Finance -> Expenses. Three figures at the top: money in all time, spent out of the
-       funds, the group holds now. Below them, each fund with what came in and what left.
+    1. Finance -> Expenses. Four figures at the top: money in all time, what the group's
+       funds hold with the spending already off them, what has been spent out of the funds,
+       and what the group holds now. Below them, each fund with what came in and what left.
     2. "Every expense (23)" - press PDF and hand the page round. Every line carries its
        voucher number, and the M-Pesa message where there was one.
     3. Somebody queries one line. Press Excel instead if they want to sort it, or open
@@ -1105,11 +1121,12 @@ WHAT THIS LOOKS LIKE ON THE GROUND
 
 HOW THIS WAS PROVED
 
-  Backend        262 checks, 195 passing and 0 failing; 67 skip themselves without a
-                 database, as they always do. Fifteen are new: seven on the spending
-                 report (the deduction, the loan exception that is listed but not
-                 deducted, a fund the ledger no longer lists, the month cut, the workbook
-                 sheets, an empty group, and the PDF itself), and eight on the two fine
+  Backend        264 checks, 197 passing and 0 failing; 67 skip themselves without a
+                 database, as they always do. Seventeen are new: nine on the spending
+                 report (the deduction, the group's funds added up with the spending off
+                 them, the loan exception that is listed but not deducted, a fund the
+                 ledger no longer lists, the month cut, the workbook sheets, an empty
+                 group, and the PDF itself), and eight on the two fine
                  emails (the switch and its default, each reason a member is skipped, in
                  the order that helps the office, the figures and wording of both
                  messages, and that a member's own name or a fine's reason cannot become
@@ -1122,14 +1139,14 @@ HOW THIS WAS PROVED
                  does, so the two cannot behave differently.
   Rehearsal      67 checks against a real MongoDB across 10 suites, all passing -
                  including the 5 new ones in expenses.test.js, which record an expense
-                 through the API and check that the fund's balance and the group's total
-                 both move, that a correction moves the deduction, that a deletion puts
-                 the money back while the audit trail keeps all three steps, that a loan
-                 fund is listed but not deducted, that a secretary is refused a read and
-                 a write, that tomorrow's date and a personal weekly type are refused,
-                 and that the PDF and the workbook come back as real files. The runner
-                 sets FINE_EMAILS=off, so a rehearsal on a machine with a working mail
-                 configuration emails nobody.
+                 through the API and check that the fund's balance, the group's total
+                 fund and the group's total all move by it, that a correction moves them
+                 and a deletion puts them back, that a loan fund is listed, leaves the
+                 fund lighter, and is named as owed back rather than spent, that a
+                 secretary is refused a read and a write, that tomorrow's date and a
+                 personal weekly type are refused, and that the PDF and the workbook come
+                 back as real files. The runner sets FINE_EMAILS=off, so a rehearsal on a
+                 machine with a working mail configuration emails nobody.
   Data check     check:data passes - no spreadsheet or dump is tracked.
 
 WHAT IS STILL OPEN FOR THE COMMITTEE

@@ -239,3 +239,56 @@ test('a group that has spent nothing still gets a report, not an empty screen', 
   assert.equal(report.byFund[0].balance, 18_400);
   assert.equal(report.money.netBalance, 3_444_800);
 });
+
+test('the group\u2019s own funds add up to a figure with the spending already off it', () => {
+  const { groupFundTotals } = require('../src/utils/moneyPosition');
+
+  const total = groupFundTotals([
+    // A fund money is bought out of.
+    {
+      name: 'Chai',
+      isRecoverable: false,
+      carriedIn: 5000,
+      collected: 12_000,
+      derived: 1400,
+      spent: 4000,
+      balance: 14_400,
+    },
+    // A loan fund: its payouts left the fund, but they are owed back, so they are not
+    // part of what the group has spent.
+    {
+      name: 'Welfare loan',
+      isRecoverable: true,
+      carriedIn: 0,
+      collected: 3000,
+      derived: 0,
+      spent: 1000,
+      balance: 2000,
+    },
+  ]);
+
+  assert.equal(total.in, 21_400, '5,000 + 12,000 + 1,400 + 3,000 came into the funds');
+  assert.equal(total.spent, 4000, 'only the Chai spending is money gone');
+  assert.equal(total.onLoan, 1000, 'the loan is named separately');
+  assert.equal(total.holds, 16_400, '14,400 + 2,000 is what the two funds hold');
+  assert.equal(total.funds, 2);
+  // The line a reader checks: money in, less what is gone, less what is owed back.
+  assert.equal(total.in - total.spent - total.onLoan, total.holds);
+});
+
+test('the report states the group fund total, and the workbook carries it', () => {
+  const report = buildExpenseReport({ expenses: FIXTURES, position: position({ funds: [CHAI] }) });
+  const gf = report.money.groupFund;
+
+  assert.equal(gf.holds, 14_400, 'what the funds hold, spending already off');
+  assert.equal(gf.in, 18_400, '5,000 carried in + 12,000 paid in + 1,400 automatic tea');
+  assert.equal(gf.spent, 4000);
+  assert.equal(gf.onLoan, 0);
+
+  const summary = Object.fromEntries(
+    expenseReportSheets(report, 'Wazo Moja Self-Help Group')[0].rows.map((r) => [r.Field, r.Value])
+  );
+  assert.equal(summary['Group funds hold (all funds together)'], 14_400);
+  assert.equal(summary['Group funds - spent and gone'], 4000);
+});
+

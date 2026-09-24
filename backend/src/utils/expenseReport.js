@@ -1,5 +1,6 @@
 const PDFDocument = require('pdfkit');
 const { CHAMA_NAME } = require('../data/branding');
+const { groupFundTotals } = require('./moneyPosition');
 
 // What the group has spent, as a document.
 //
@@ -149,6 +150,10 @@ function buildExpenseReport({ expenses, position, preparedBy = '' }) {
       // members contributed.
       totalExpenses: Number(held.totalExpenses) || 0,
       netBalance: Number(held.netBalance) || 0,
+      // The group's own funds added up, spending already netted off each of them. The
+      // fallback matters because this builder is also called with a position assembled
+      // for a test: the total is then worked out from the same fund rows.
+      groupFund: held.groupFund || groupFundTotals(held.funds),
     },
     preparedBy,
     generatedAt: new Date(),
@@ -213,10 +218,18 @@ function renderExpenseReportPdf(res, report, chamaName) {
 
   // ------------------------------------------------------------- the money
   let y = sectionTitle(doc, doc.y, 'What the group holds');
+  const gf = report.money.groupFund || {};
   const summaryLines = [
     ['Money in, all time (members and funds)', money(report.money.totalContributed)],
     ['of which carried in from the paper ledger', money(report.money.carriedIn)],
     ['of which paid in since the books opened', money(report.money.collected)],
+    // The group's own money with the spending already taken off it — what a meeting
+    // means when it asks what the fund holds. The members' carried-in balances are not
+    // in it: that money is held for them.
+    ['Group funds hold (all funds together)', money(gf.holds)],
+    ['  of the money that came into them', money(gf.in)],
+    ['  spent from them, and gone', money(gf.spent)],
+    ['  out on loan, still owed back', money(gf.onLoan)],
     ['Spent out of the funds (loans and advances excluded)', money(report.money.totalExpenses)],
     ['Held by the group now', money(report.money.netBalance)],
     [
@@ -359,6 +372,10 @@ function expenseReportSheets(report, chamaName) {
     { Field: 'Paid in since the books opened', Value: report.money.collected },
     { Field: 'Spent out of the funds (deducted)', Value: report.money.totalExpenses },
     { Field: 'Held by the group now', Value: report.money.netBalance },
+    { Field: 'Group funds hold (all funds together)', Value: report.money.groupFund?.holds },
+    { Field: 'Group funds - came in', Value: report.money.groupFund?.in },
+    { Field: 'Group funds - spent and gone', Value: report.money.groupFund?.spent },
+    { Field: 'Group funds - out on loan (owed back)', Value: report.money.groupFund?.onLoan },
     { Field: 'Expenses on this report', Value: report.summary.count },
     { Field: 'Spent on this report', Value: report.summary.total },
     { Field: 'Still owed back (loans and advances)', Value: report.summary.advances },
