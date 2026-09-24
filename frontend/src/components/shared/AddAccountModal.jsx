@@ -20,10 +20,16 @@ export default function AddAccountModal({ isOpen, onClose, onAdded }) {
   const [busy, setBusy] = useState(false);
   const containerRef = useModal(isOpen, onClose);
 
-  // Super admins can create any role. Regular admins can only create secretary/treasurer/disciplinary
+  // Who this dialog may create. The super admin may create any of the four staff
+  // roles; a plain admin may only create the two record-keeping ones.
+  //
+  // Treasurer used to be offered to a plain admin, and the API refused it — and the
+  // refusal was confusing, because a role it does not serve was quietly turned into
+  // 'admin' and then refused as an admin account. Both halves are fixed: the list
+  // below is what the API accepts, and the server now names the role it refuses.
   const availableRoles = isSuperAdmin
     ? ['secretary', 'treasurer', 'disciplinary', 'admin']
-    : ['secretary', 'treasurer', 'disciplinary'];
+    : ['secretary', 'disciplinary'];
 
   async function onSubmit(e) {
     e.preventDefault();

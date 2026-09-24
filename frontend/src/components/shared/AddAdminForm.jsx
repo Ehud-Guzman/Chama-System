@@ -18,9 +18,15 @@ export default function AddAdminForm() {
   const [resetValue, setResetValue] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // A plain admin can manage secretary/treasurer/disciplinary accounts, not other admins.
+  // A plain admin can manage secretary and disciplinary accounts only: not other
+  // admins, and not the treasurer either. The API has always refused those two (403
+  // "You can only manage secretary and disciplinary accounts"), but this list used to
+  // include treasurer, so the buttons were offered for an account whose deactivate and
+  // reset-password calls could only fail.
+  const MANAGEABLE_ROLES = ['secretary', 'disciplinary'];
+
   function canManage(admin) {
-    return isSuperAdmin || ['secretary', 'treasurer', 'disciplinary'].includes(admin.role);
+    return isSuperAdmin || MANAGEABLE_ROLES.includes(admin.role);
   }
 
   async function loadAdmins() {

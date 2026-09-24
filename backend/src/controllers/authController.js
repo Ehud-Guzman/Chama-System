@@ -287,18 +287,37 @@ async function listAdmins(req, res, next) {
   }
 }
 
-// POST /api/auth/admins (super_admin, admin) — super_admin may create an
-// 'admin', 'secretary' or 'disciplinary'; a plain admin may only create a
-// 'secretary' or 'disciplinary' account.
+// POST /api/auth/admins (super_admin, admin) — the super admin may create any of
+// the four staff roles; a plain admin may only create a 'secretary' or
+// 'disciplinary' account.
+//
+// Two things about the role, both of which used to be wrong. A role this endpoint
+// does not serve is now *named* rather than quietly turned into an admin — and a
+// requested 'treasurer' used to be one of those: it fell through to 'admin', so the
+// super admin's own Add-account dialog created an account with admin rights while
+// its toast said "Treasurer added". The 'admin' and 'treasurer' roles are the two
+// that carry authority over money, and both are the super admin's to hand out.
+const CREATABLE_ROLES = ['admin', 'treasurer', 'secretary', 'disciplinary'];
+const OPEN_TO_ADMINS = ['secretary', 'disciplinary'];
+
 async function createAdmin(req, res, next) {
   try {
     const { name, email, password } = req.body || {};
-    const role = ['secretary', 'disciplinary'].includes(req.body?.role) ? req.body.role : 'admin';
+    // No role at all is an admin, which is what this endpoint has always done.
+    const requested = req.body?.role;
+    const role = requested === undefined || requested === null || requested === '' ? 'admin' : String(requested);
     if (!name || !String(name).trim() || !email || !password) {
       return res.status(400).json({ message: 'Name, email and password are required' });
     }
-    if (role === 'admin' && req.user.role !== 'super_admin') {
-      return res.status(403).json({ message: 'Only the super admin can create an admin account' });
+    if (!CREATABLE_ROLES.includes(role)) {
+      return res
+        .status(400)
+        .json({ message: 'Role must be one of admin, treasurer, secretary or disciplinary' });
+    }
+    if (!OPEN_TO_ADMINS.includes(role) && req.user.role !== 'super_admin') {
+      return res
+        .status(403)
+        .json({ message: 'Only the super admin can create an admin or treasurer account' });
     }
     const weakMessage = weakPasswordMessage(password);
     if (weakMessage) {

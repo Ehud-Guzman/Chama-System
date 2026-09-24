@@ -22,6 +22,7 @@ const { sendWorkbook } = require('../utils/xlsxExport');
 const { cleanEmail, isValidEmail } = require('../utils/mailer');
 const { destroyImage } = require('../utils/cloudinary');
 const { nextOfKinList, nextOfKinListError } = require('../utils/nextOfKin');
+const { credentialChangeRefused } = require('../utils/memberCredentials');
 const {
   APPROVAL_ROLES,
   APPROVAL_LABELS,
@@ -262,8 +263,22 @@ async function listMembers(req, res, next) {
       ];
     }
 
+    // The disciplinary officer reads the register for one reason: to pick the right member and
+    // issue a fine. His screen needs a name to recognise, a phone and a registration number to
+    // tell two people apart, and the ID to search by — so that, and nothing else, is what this
+    // endpoint returns to him. A member's family, his next of kin, his notes, his photograph and
+    // his money are not his to read: a screen that does not show them is not a permission, and the
+    // register is the one collection here that holds everybody.
+    const identityOnly = req.user.role === 'disciplinary';
+
+    const membersQuery = Member.find(filter)
+      .sort({ name: 1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+    if (identityOnly) membersQuery.select('name phone regNumber nationalId active');
+
     const [members, total] = await Promise.all([
-      Member.find(filter).sort({ name: 1 }).skip((page - 1) * limit).limit(limit).lean(),
+      membersQuery.lean(),
       Member.countDocuments(filter),
     ]);
 
@@ -277,6 +292,21 @@ async function listMembers(req, res, next) {
       active: true,
       nationalId: { $not: /^(?=.*\d)[A-Z0-9]{5,20}$/ },
     });
+
+    // A disciplinary officer's screen shows none of the figures below, so none of them are
+    // computed for him: no contribution rows are read and the cycle is not resolved. He gets the
+    // page, the count, and the same "how many members have no usable ID" line the office's list
+    // carries — which is a number, not a member's record.
+    if (identityOnly) {
+      res.json({
+        members,
+        total,
+        page,
+        pages: Math.ceil(total / limit) || 1,
+        withoutNationalId,
+      });
+      return;
+    }
 
     // Everything the cards show — what he has paid, when, and his balance — comes
     // from the rows this page needs plus the group cycle, so the two per-member
@@ -426,6 +456,10 @@ async function createMember(req, res, next) {
     const details = detailsFromBody(req.body || {});
     if (details.error) return res.status(400).json({ message: details.error });
 
+    // No credential guard on creation, deliberately: this is a new record, so the ID, the phone
+    // number and the next of kin are being *recorded*, not replaced — and recording them is the
+    // office's work whoever is doing it. utils/memberCredentials refuses only a replacement.
+
     // The ID is the member's key to his own record, so it has to be his alone.
     const clash = await nationalIdClash(details.nationalId);
     if (clash) return res.status(409).json({ message: idClashMessage(clash) });
@@ -491,6 +525,38 @@ async function updateMember(req, res, next) {
     const before = snapshot(member);
 
     const { name, phone, email, regNumber, notes, active, joinDate, photoUrl, photoPublicId, nextOfKin, emailNotifications } = req.body || {};
+
+    // The admission form's fields, read once here rather than further down: the credential guard
+    // below has to see the same values the assignments are about to write, and a second read of
+    // the body is a second chance for the two to disagree.
+    const details = detailsFromBody(req.body || {});
+    if (details.error) return res.status(400).json({ message: details.error });
+
+    // A member's ID, phone number and next of kin are not a description of him — they are the key
+    // to his own record, the office's line to him, and somebody else's contact details. Recording
+    // what is missing is the office's ordinary work (the register is full of records entered from
+    // a name and a phone number, and the office is chasing the members who have no ID); replacing
+    // a value that is already there is an admin's decision. The treasurer keeps the rest of the
+    // register — this is the one corner of it that is not his. See utils/memberCredentials.
+    const credentialRefusal = credentialChangeRefused(req.user.role, [
+      {
+        field: 'nationalId',
+        before: member.nationalId,
+        after: req.body.nationalId === undefined ? member.nationalId : details.nationalId,
+      },
+      {
+        field: 'phone',
+        before: member.phone,
+        after: phone === undefined ? member.phone : normalizePhone(String(phone)),
+      },
+      {
+        field: 'nextOfKin',
+        before: nextOfKinList(member.nextOfKin),
+        after: nextOfKin === undefined ? nextOfKinList(member.nextOfKin) : nextOfKinList(nextOfKin),
+      },
+    ]);
+    if (credentialRefusal) return res.status(403).json({ message: credentialRefusal });
+
     if (name !== undefined) {
       if (!String(name).trim()) return res.status(400).json({ message: 'Name cannot be empty' });
       member.name = String(name).trim();
@@ -539,8 +605,6 @@ async function updateMember(req, res, next) {
 
     // The admission form's fields. Each is only touched when the caller sent it, so
     // saving the notes box does not wipe a date of birth nobody repeated.
-    const details = detailsFromBody(req.body || {});
-    if (details.error) return res.status(400).json({ message: details.error });
     if (details.dateOfBirth !== undefined) member.dateOfBirth = details.dateOfBirth;
     if (req.body.nationalId !== undefined) {
       // Editing one member must not hand him a number that already opens another

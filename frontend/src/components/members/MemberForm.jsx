@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import api, { apiMessage } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { useModal } from '../../hooks/useModal';
 import Modal from '../shared/Modal';
 import { todayISO } from '../../utils/format';
@@ -97,8 +98,33 @@ function hasFamilyContent(input) {
   );
 }
 
+// Whether a member already has contacts on file, whichever shape the API sent back.
+// An empty list means the office is still filling this in — which is the difference
+// between a field a treasurer may write and one he may not.
+function kinOnFile(value) {
+  const list = Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : [];
+  return list.some((kin) => kin?.name || kin?.phone || kin?.email);
+}
+
 // Create/edit member form, rendered inside a modal sheet.
 export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
+  const { user } = useAuth();
+
+  // Three fields on this form are an admin's, not the treasurer's, once the record
+  // already holds a value: the ID number (the member's key to his own record), the
+  // phone number, and the next of kin (somebody else's contact details). Recording
+  // what is missing stays open to whoever is holding the phone — most of the register
+  // was entered from a name and a phone number, and the office chases the members who
+  // have no ID — and the server refuses only a replacement
+  // (backend/src/utils/memberCredentials.js). Locking the input when the value is
+  // already there is how the form says so before the request is sent, rather than
+  // after it is refused.
+  const isTreasurer = user?.role === 'treasurer';
+  const idLocked = isTreasurer && Boolean(initial?.nationalId);
+  const phoneLocked = isTreasurer && Boolean(initial?.phone);
+  const kinLocked = isTreasurer && kinOnFile(initial?.nextOfKin);
+  const adminOnlyHint = 'An admin changes this once it is on the record.';
+
   const [form, setForm] = useState({
     name: initial?.name || '',
     phone: initial?.phone || '',
@@ -341,8 +367,10 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
             placeholder="07XX XXX XXX"
             value={form.phone}
             onChange={set('phone')}
-            className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm"
+            disabled={phoneLocked}
+            className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm disabled:bg-elevation disabled:text-muted"
           />
+          {phoneLocked && <p className="mt-1 text-xs text-muted">{adminOnlyHint}</p>}
         </div>
         <div>
           <label htmlFor="m-email" className="mb-1 block text-sm font-medium">
@@ -416,11 +444,13 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
               type="text"
               value={form.nationalId}
               onChange={set('nationalId')}
-              className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm"
+              disabled={idLocked}
+              className="amount h-12 w-full rounded-xl border border-rule px-4 text-sm disabled:bg-elevation disabled:text-muted"
             />
             <p className="mt-1 text-xs text-muted">
               What he types to open his own record, the documents and the constitution. Spaces and
               slashes are fine. Without it he cannot look himself up at all.
+              {idLocked && ` ${adminOnlyHint}`}
             </p>
           </div>
         </div>
@@ -462,6 +492,7 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
           <p className="text-xs text-muted">
             Add as many as you need — spouse, children, in-laws. Each one needs a name
             and a phone number or an email.
+            {kinLocked && ` ${adminOnlyHint}`}
           </p>
 
           <ul className="mt-2 space-y-3">
@@ -479,7 +510,8 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
                   <button
                     type="button"
                     onClick={() => removeKin(index)}
-                    className="min-h-11 rounded-lg px-2 text-sm font-medium text-alert"
+                    disabled={kinLocked}
+                    className="min-h-11 rounded-lg px-2 text-sm font-medium text-alert disabled:text-muted"
                   >
                     Remove
                   </button>
@@ -496,7 +528,8 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
                       placeholder="Name"
                       value={kin.name}
                       onChange={setKin(index, 'name')}
-                      className="h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm"
+                      disabled={kinLocked}
+                      className="h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm disabled:bg-elevation disabled:text-muted"
                     />
                   </div>
 
@@ -511,7 +544,8 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
                       placeholder="Relationship — spouse, daughter, in-law…"
                       value={kin.relationship}
                       onChange={setKin(index, 'relationship')}
-                      className="h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm"
+                      disabled={kinLocked}
+                      className="h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm disabled:bg-elevation disabled:text-muted"
                     />
                   </div>
 
@@ -526,7 +560,8 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
                       placeholder="07XX XXX XXX"
                       value={kin.phone}
                       onChange={setKin(index, 'phone')}
-                      className="amount h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm"
+                      disabled={kinLocked}
+                      className="amount h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm disabled:bg-elevation disabled:text-muted"
                     />
                   </div>
 
@@ -540,7 +575,8 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
                       placeholder="Email (optional)"
                       value={kin.email}
                       onChange={setKin(index, 'email')}
-                      className="amount h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm"
+                      disabled={kinLocked}
+                      className="amount h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm disabled:bg-elevation disabled:text-muted"
                     />
                   </div>
                 </div>
@@ -560,7 +596,8 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
                 key={relationship}
                 type="button"
                 onClick={() => addKin(relationship)}
-                className="min-h-11 rounded-lg border border-rule bg-surface px-3 text-xs font-medium text-primary"
+                disabled={kinLocked}
+                className="min-h-11 rounded-lg border border-rule bg-surface px-3 text-xs font-medium text-primary disabled:opacity-50"
               >
                 + {relationship}
               </button>
@@ -569,7 +606,8 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
             <button
               type="button"
               onClick={() => addKin()}
-              className="min-h-11 rounded-lg border border-rule bg-surface px-3 text-xs font-medium"
+              disabled={kinLocked}
+              className="min-h-11 rounded-lg border border-rule bg-surface px-3 text-xs font-medium disabled:opacity-50"
             >
               + Another contact
             </button>
