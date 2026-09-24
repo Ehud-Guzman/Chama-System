@@ -124,7 +124,11 @@ export default function BottomNav() {
               More
             </p>
 
-            <ul className="p-2">
+            {/* The items scroll, the heading and Close do not: an admin's sheet holds
+                seven destinations, which is taller than a small phone's screen, and a
+                sheet whose last row — or whose Close button — sits below the bottom edge
+                is a sheet with no way out of it. */}
+            <ul className="max-h-[70dvh] overflow-y-auto overscroll-contain p-2">
               {overflow.map((item) => (
                 <li key={item.to}>
                   <NavLink

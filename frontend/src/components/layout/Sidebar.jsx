@@ -10,13 +10,23 @@ export default function Sidebar() {
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-rule bg-surface pl-[env(safe-area-inset-left)] md:flex">
-      <div className="border-b border-rule px-5 py-5">
+      <div className="shrink-0 border-b border-rule px-5 py-5">
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">
           {CHAMA_NAME_TOP}
         </p>
         <p className="font-bold">{CHAMA_NAME_BOTTOM}</p>
       </div>
-      <nav aria-label="Main" className="flex-1 px-3 py-4">
+      {/* The list scrolls on its own, and only the list.
+          An admin now has eleven destinations — the Fines desk and the spending screen
+          joined the nine — and eleven rows are taller than a laptop screen. This panel is
+          fixed to the viewport, so without a scroll of its own the overflow pushed
+          everything below it (My account, then Sign out) past the bottom edge, where
+          scrolling the page does not reach it: the page scrolls, the panel does not.
+          `min-h-0` is what lets a flex child shrink far enough to scroll at all. */}
+      <nav
+        aria-label="Main"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4"
+      >
         <ul className="space-y-1">
           {items.map((item) => (
             <li key={item.to}>
@@ -41,7 +51,9 @@ export default function Sidebar() {
           ))}
         </ul>
       </nav>
-      <div className="border-t border-rule px-5 py-4">
+      {/* Pinned to the foot of the panel and never scrolled away: signing out is not a
+          destination to go looking for. */}
+      <div className="shrink-0 border-t border-rule px-5 py-4">
         <p className="truncate text-sm font-medium">{user?.name}</p>
         <p className="truncate text-xs text-muted">{user?.email}</p>
         {/* The account screen is a destination like any other, but it does not belong
