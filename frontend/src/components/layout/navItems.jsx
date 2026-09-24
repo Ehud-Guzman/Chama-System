@@ -1,10 +1,18 @@
 // Admin destinations, shared by BottomNav (mobile) and Sidebar (desktop).
 // `roles` restricts visibility; omit it to show to every authenticated role.
 // Icons are inline SVG — no icon library.
+//
+// `group` is which section of the desktop sidebar a destination belongs to
+// (components/layout/navGroups.js). The order of this list does two jobs: it sets the order
+// inside each group, and the bottom bar takes the first four visible items as its tabs — so
+// the four busiest screens are simply listed first, and that ordering stays in one place
+// instead of being duplicated in the bar.
 export const NAV_ITEMS = [
+  // ------------------------------------------------------------ the four tabs (a phone)
   {
     to: '/admin/dashboard',
     label: 'Dashboard',
+    group: 'Money',
     roles: ['super_admin', 'admin', 'treasurer'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -18,6 +26,7 @@ export const NAV_ITEMS = [
   {
     to: '/admin/members',
     label: 'Members',
+    group: 'Records',
     roles: ['super_admin', 'admin', 'treasurer'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -31,6 +40,7 @@ export const NAV_ITEMS = [
   {
     to: '/admin/finance',
     label: 'Finance',
+    group: 'Money',
     roles: ['super_admin', 'admin', 'treasurer'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -44,6 +54,7 @@ export const NAV_ITEMS = [
   {
     to: '/admin/reports',
     label: 'Reports',
+    group: 'Records',
     roles: ['super_admin', 'admin', 'treasurer', 'secretary'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -55,8 +66,46 @@ export const NAV_ITEMS = [
     ),
   },
   {
+    to: '/admin/finance/expenses',
+    label: 'Expenses',
+    group: 'Money',
+    roles: ['super_admin', 'admin', 'treasurer'],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 2v20" />
+        <path d="M17 6.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.6 5 3.2 5 1.4 5 3.3-2.2 3-5 3-5-1.1-5-3" />
+      </svg>
+    ),
+  },
+  {
+    to: '/admin/fines',
+    label: 'Fines',
+    group: 'Money',
+    roles: ['super_admin', 'admin'],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 2 3 6v6c0 5 3.8 8.7 9 10 5.2-1.3 9-5 9-10V6z" />
+        <path d="M12 8v5" />
+        <path d="M12 16h.01" />
+      </svg>
+    ),
+  },
+  {
+    to: '/admin/reminders',
+    label: 'Reminders',
+    group: 'Money',
+    roles: ['super_admin', 'admin', 'treasurer'],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+        <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+      </svg>
+    ),
+  },
+  {
     to: '/admin/minutes',
     label: 'Minutes',
+    group: 'Records',
     roles: ['super_admin', 'admin', 'secretary'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -68,19 +117,9 @@ export const NAV_ITEMS = [
     ),
   },
   {
-    to: '/admin/reminders',
-    label: 'Reminders',
-    roles: ['super_admin', 'admin', 'treasurer'],
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-        <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-      </svg>
-    ),
-  },
-  {
     to: '/admin/documents',
     label: 'Docs',
+    group: 'Records',
     roles: ['super_admin', 'admin', 'treasurer', 'secretary'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -93,6 +132,7 @@ export const NAV_ITEMS = [
   {
     to: '/admin/audit',
     label: 'Audit',
+    group: 'Administration',
     roles: ['super_admin', 'admin', 'treasurer', 'secretary'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -102,31 +142,9 @@ export const NAV_ITEMS = [
     ),
   },
   {
-    to: '/admin/finance/expenses',
-    label: 'Expenses',
-    roles: ['super_admin', 'admin', 'treasurer'],
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 2v20" />
-        <path d="M17 6.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.6 5 3.2 5 1.4 5 3.3-2.2 3-5 3-5-1.1-5-3" />
-      </svg>
-    ),
-  },
-  {
-    to: '/admin/fines',
-    label: 'Fines',
-    roles: ['super_admin', 'admin'],
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 2 3 6v6c0 5 3.8 8.7 9 10 5.2-1.3 9-5 9-10V6z" />
-        <path d="M12 8v5" />
-        <path d="M12 16h.01" />
-      </svg>
-    ),
-  },
-  {
     to: '/admin/disciplinary',
     label: 'Discipline',
+    group: 'Administration',
     roles: ['super_admin', 'admin', 'disciplinary'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

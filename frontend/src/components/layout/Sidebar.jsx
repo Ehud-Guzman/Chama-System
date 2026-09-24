@@ -1,12 +1,16 @@
 import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS } from './navItems';
+import { groupNavItems } from './navGroups';
 import { useAuth } from '../../context/AuthContext';
 import { warmRoute } from '../../services/prefetch';
 import { CHAMA_NAME_TOP, CHAMA_NAME_BOTTOM } from '../../utils/branding';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
-  const items = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user?.role));
+  // Grouped, not a flat list: eleven rows in one column said nothing about what belongs
+  // with what. The bottom bar is unaffected — it still takes the first four destinations
+  // as its tabs, from the same array (see navItems).
+  const groups = groupNavItems(NAV_ITEMS, user?.role);
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-rule bg-surface pl-[env(safe-area-inset-left)] md:flex">
@@ -27,29 +31,38 @@ export default function Sidebar() {
         aria-label="Main"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4"
       >
-        <ul className="space-y-1">
-          {items.map((item) => (
-            <li key={item.to}>
-              <NavLink
-                to={item.to}
-                // Warm the destination while the pointer is over the link: the
-                // page's chunk is already loaded, and on the two screens that
-                // show the ledger its figures are already in the cache, so the
-                // click has nothing left to wait for.
-                onMouseEnter={() => warmRoute(item.to)}
-                onPointerDown={() => warmRoute(item.to)}
-                className={({ isActive }) =>
-                  `flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium ${
-                    isActive ? 'bg-primary/10 text-primary' : 'text-ink hover:bg-canvas'
-                  }`
-                }
-              >
-                <span className="[&>svg]:h-5 [&>svg]:w-5">{item.icon}</span>
-                {item.label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+        {groups.map((group, index) => (
+          <div key={group.title} className={index === 0 ? '' : 'mt-4'}>
+            {/* The heading is the only thing separating the sections, so it is small, quiet
+                and aligned with the row labels rather than with the panel edge. */}
+            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">
+              {group.title}
+            </p>
+            <ul className="space-y-1">
+              {group.items.map((item) => (
+                <li key={item.to}>
+                  <NavLink
+                    to={item.to}
+                    // Warm the destination while the pointer is over the link: the
+                    // page's chunk is already loaded, and on the two screens that
+                    // show the ledger its figures are already in the cache, so the
+                    // click has nothing left to wait for.
+                    onMouseEnter={() => warmRoute(item.to)}
+                    onPointerDown={() => warmRoute(item.to)}
+                    className={({ isActive }) =>
+                      `flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium ${
+                        isActive ? 'bg-primary/10 text-primary' : 'text-ink hover:bg-canvas'
+                      }`
+                    }
+                  >
+                    <span className="[&>svg]:h-5 [&>svg]:w-5">{item.icon}</span>
+                    {item.label}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </nav>
       {/* Pinned to the foot of the panel and never scrolled away: signing out is not a
           destination to go looking for. */}

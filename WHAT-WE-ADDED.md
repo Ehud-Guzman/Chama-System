@@ -1152,12 +1152,16 @@ HOW THIS WAS PROVED
                  the order that helps the office, the figures and wording of both
                  messages, and that a member's own name or a fine's reason cannot become
                  markup in the email).
-  Frontend       25 checks, all passing. Two new screens build clean as their own lazily
+  Frontend       29 checks, all passing. Two new screens build clean as their own lazily
                  loaded chunks (Fund spending 13.8 KB / 4.3 KB gzipped, Fines 11.0 KB /
                  3.7 KB gzipped) - a member's page pays nothing for either. The fines desk
                  is UI over endpoints that were already there and already covered: issuing,
                  settling and voiding call the same three API calls the member's own page
-                 does, so the two cannot behave differently.
+                 does, so the two cannot behave differently. Four of the checks are new and
+                 cover the menu's grouping (navGroups.test.js): a role sees only what it may
+                 open, an empty section is left out rather than shown as a bare heading, and
+                 a destination whose section is misspelled or missing still appears instead
+                 of silently vanishing from the menu.
   Rehearsal      69 checks against a real MongoDB across 10 suites, all passing -
                  including the 7 new ones in expenses.test.js, which record an expense
                  through the API and check that the fund's balance, the group's total
@@ -1216,6 +1220,30 @@ WHAT IS STILL OPEN FOR THE COMMITTEE
      The dashboard also carries the figure now: "Fines owed" sits beside the week's figures
      with one tap into that screen, so the question "how much are we owed?" is answered
      where the rest of the week is.
+
+  6. THE MENU IS GROUPED, AND SIGN OUT CANNOT BE PUSHED OFF THE SCREEN
+
+     Two small things that came out of using the system rather than reading it.
+
+     The desktop menu had grown to eleven destinations in one flat column, where Members sat
+     between Finance and Reports and Discipline sat under Audit. It is now three sections -
+     MONEY (Dashboard, Finance, Expenses, Fines, Reminders), RECORDS (Members, Reports,
+     Minutes, Docs) and ADMINISTRATION (Audit, Discipline) - the same three words the
+     dashboard's own "Go to" panel uses, so the two menus describe the work the same way. A
+     role only ever sees the sections it may open: a secretary gets Records and
+     Administration, a disciplinary officer gets Administration alone, and no heading is ever
+     left standing over an empty list.
+
+     The menu also could not scroll. It is a panel fixed to the height of the window, so once
+     the list grew taller than a laptop screen it pushed MY ACCOUNT and SIGN OUT past the
+     bottom edge - and scrolling the page could not reach them, because the page scrolls and
+     the panel does not. On a 768-pixel-tall laptop the panel wanted about 815 pixels of
+     content. The list now scrolls and only the list; the brand at the top and the account
+     row with Sign out at the foot stay where they are, at any window height. The phone's
+     More sheet had the shape of the same problem and got the same treatment.
+
+     The phone is unchanged: still four tabs and a More sheet, still taking the four busiest
+     destinations - Dashboard, Members, Finance, Reports - from the same list.
 
 END OF DOCUMENT
 ===============

@@ -225,6 +225,16 @@ set it to the deployed API URL.
   This is the only place money is logged or spent — the admin dashboard shows the same list,
   `/admin/log` redirects here, and the old weekly grid and per-type/expense panels are gone.
 
+**The navigation itself.** One list of destinations feeds both shells
+(`frontend/src/components/layout/navItems.jsx`), and the role on the account decides what is in
+it — a screen `RoleGuard` would refuse never appears, so the menu has no dead ends. Its order does
+two jobs: the sections are `Money` · `Records` · `Administration`, and **a phone takes the first
+four destinations as its tabs** (Dashboard, Members, Finance, Reports) with the rest in a **More**
+sheet, so the busiest screens are simply listed first (`navGroups.js`, covered by
+`frontend/test/navGroups.test.js`). The desktop sidebar scrolls its list and pins **My account**
+and **Sign out** to the foot of the panel — eleven destinations are taller than a laptop screen, and
+a fixed panel that cannot scroll hides whatever sits below it, permanently.
+
 Admin accounts are managed from Settings → Accounts, which is open to admins and the super admin:
 the super admin creates any of the four staff roles, and a plain admin creates and manages the
 secretary and disciplinary accounts (never an admin or a treasurer — those two roles carry authority
