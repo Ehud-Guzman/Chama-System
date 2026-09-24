@@ -166,6 +166,22 @@ fines oldest-first, on both the ledger's own log endpoint and `/api/contribution
 or by hand from the member's page — **Fines → Pay**. Voiding a fine is for a fine
 that should never have been issued, not for one that has been paid.
 
+**"Who owes what" is a list you work, not one you read** (`components/fines/WhoOwesWhat.jsx`,
+used by Reports → Fines and by the discipline screen, so the two cannot describe the same debts
+differently). It leads with the three figures a meeting asks for — how many members owe, how much
+between them, and how far back the oldest unpaid debt goes — then a search that finds a member by
+name, registration number or phone number typed any way the office writes one (`0712 345 678`,
+`+254 712 345 678`, `254712345678` are the same number), and a choice of order: most owed, most
+fines, longest owing, or name. Every member's own row carries both ways of reaching him and the
+date of his oldest unpaid fine, and opens **what for** — his debt split by fine type, biggest line
+first, each with its own date. `/api/reports/fines` carries the per-member breakdown and the group's
+true count of members owing; the list is capped at 500 names and the screen says so when the cap
+bites, rather than a truncated list reading as the whole answer. Both the fixture-covered logic
+(`utils/finesOwed.js`, `test/finesOwed.test.js`) and the report's own cut
+(`test/fineReport.test.js`, `test/integration/finesReport.test.js`) are tested, including that the
+workbook's *By member* sheet stays readable — a nested breakdown written straight into a sheet is a
+cell reading `[object Object]`.
+
 ### Frontend
 
 ```bash
@@ -186,6 +202,10 @@ set it to the deployed API URL.
 - `/admin/login` — admin sign in
 - `/admin/dashboard` · `/admin/members` · `/admin/reports` · `/admin/minutes` ·
   `/admin/reminders` · `/admin/documents` · `/admin/disciplinary` · `/admin/audit` — protected
+- `/admin/account` — **My account**, reachable by every signed-in role: change your own password and
+  enrol your own second factor. It exists because those two panels otherwise live on the dashboard
+  (money roles only) and on `/admin/settings` (admins only), which left the treasurer, secretary and
+  disciplinary officer with no screen for either.
 - `/admin/audit` — the audit trail: every change, filtered by category, who, when and what, with the
   unusual entries flagged and an export of the view on screen. Its own destination because it is the
   screen somebody opens when a figure needs explaining.
@@ -194,7 +214,10 @@ set it to the deployed API URL.
   dashboard shows the same list, `/admin/log` redirects here, and the old weekly grid and
   per-type/expense panels are gone.
 
-Admin accounts are managed from the Dashboard (visible to the super admin only).
+Admin accounts are managed from Settings → Accounts, which is open to admins and the super admin:
+the super admin creates any of the four staff roles, and a plain admin creates and manages the
+secretary and disciplinary accounts (never an admin or a treasurer — those two roles carry authority
+over money, and the API refuses them). Nobody can deactivate the super admin account, or his own.
 
 ## Key behaviors
 
@@ -423,6 +446,21 @@ Admin accounts are managed from the Dashboard (visible to the super admin only).
   from a spreadsheet — the CSV import already reads a `nationalId` column.
   One ID belongs to one member: create, edit and import refuse a duplicate, and if two records ever
   end up sharing one the gate answers 409 rather than showing the wrong passbook.
+- **The ID, the phone number and the next of kin are an admin's to *replace*.** The treasurer keeps
+  the register — adding members, editing them, resigning them, importing a sheet of them, printing
+  their statements — but those three fields are more than a description of a member: the ID is the
+  key to his own record, the phone number is the office's line to him, and his next of kin is
+  somebody else's contact details. Recording a value that is missing stays open to whoever is
+  holding the phone (most of the register was entered from a name and a phone number, and the office
+  chases the members who have no ID); replacing one that is already on the record answers 403 for a
+  treasurer, and the member form locks the field so the refusal is not the first he hears of it
+  (`utils/memberCredentials.js`, `test/memberCredentials.test.js`).
+- **The disciplinary officer's member list is narrowed on the server, not on his screen.** The list
+  endpoint is shared, so `GET /api/members` answers that role with five fields — name, phone number,
+  registration number, national ID and whether the member is active — which is what it takes to pick
+  the right person and issue a fine. A member's family, contacts, notes, photograph and money never
+  reach him, and the per-member figures are not even computed for him. A screen that does not show
+  something is not a permission; the register is the one collection here that holds everybody.
 - **The spreadsheets are meant to be edited, and the members one comes back in.** Every export is a
   real `.xlsx` (`utils/xlsxExport`), and the member register is the one that round-trips: the
   export, the blank import template and the importer share one table of headings
@@ -793,7 +831,7 @@ above. (2) Money is stored as two-decimal numbers rather than integer cents; exa
 two places, which is what the shilling needs, but integer cents would be exact beyond
 it if the group ever trades in fractions of a shilling.
 
-**Admin accounts can have a second factor — switched off by default.** `/admin/settings`
+**Staff accounts can have a second factor — switched off by default.** `/admin/settings`
 → **Security** has a master switch that only the super admin can flip: **two-factor
 authentication is off for the group until he turns it on**. Off means off for everybody,
 including accounts that had already enrolled — nobody is asked for a code and nobody can
@@ -801,6 +839,14 @@ enrol, and their setup is kept rather than deleted so turning it back on restore
 what was there. An account can still turn its own second factor off while the group has it
 off, because the switch must not trap anybody. It is built and tested and waiting; turn it
 on when the committee has decided who will use it.
+
+**Every role can enrol, not only the admins.** `/admin/account` — "My account", from the
+Account link in the top bar or the sidebar — carries the password form and the security
+panel, and it is open to every signed-in role. Before it existed those two panels sat on the
+dashboard (open to the three money roles) and on `/admin/settings` (admin-only), so a
+treasurer could not enrol a second factor at all and a secretary or disciplinary officer could
+neither that nor change his own password. Turning the group's switch on now protects every
+account that enrols, which is the point of having a switch.
 
 Once it is on: an admin enrols from the same screen, with an authenticator app — the same
 RFC 6238 standard every one of them implements, so nothing needs installing that the admin

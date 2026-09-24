@@ -877,6 +877,129 @@ ONE ITEM NEEDS A DECISION - TWO, IN FACT:
    not durable.
 
 
+ADDENDUM - 22 SEPTEMBER 2026: PERMISSIONS TIGHTENED, ONE SCREEN ADDED
+====================================================================
+
+The documentation for the roles was read back against the code, and six places disagreed
+with what the system actually does. Five were fixed in the code; the sixth was a note that
+had gone stale.
+
+WHAT CHANGED, IN PLAIN ENGLISH
+
+  1. MY ACCOUNT - A NEW SCREEN EVERY ROLE CAN OPEN
+     Until now the "change my password" form lived on the dashboard (which only the
+     chairman/admin, the treasurer and the super admin can open) and the two-factor
+     setup lived on the Settings page (admin only). That meant a treasurer could not
+     set up a second factor at all, and a secretary or disciplinary officer could do
+     neither that nor change his own password.
+
+     There is now one screen, "My account", reachable by every signed-in role from the
+     Account link at the top of a phone screen or the sidebar. Same two things on it:
+     your password, and your second factor.
+
+     Why it matters: two-factor authentication is a decision for the whole group. With
+     the old arrangement, switching it on would have protected the admins' accounts
+     and nobody else's.
+
+  2. A MEMBER'S ID, PHONE NUMBER AND NEXT OF KIN ARE AN ADMIN'S TO CHANGE
+     The treasurer keeps the whole register - adding members, editing them, resigning
+     them, importing a spreadsheet of them, printing their statements. But those three
+     fields are more than a description of a member: the ID is the key to his own
+     record and to the members' area, the phone number is how the office reaches him,
+     and his next of kin is somebody else's contact details.
+
+     So: a treasurer (or anyone without admin rights) can still FILL IN a field that is
+     empty - which is most of what the office is doing, since many members have no ID on
+     their record yet - but cannot REPLACE one that is already there. The form locks
+     the box and says so, and the server refuses it if the screen is bypassed.
+
+     Where the committee stands: the register's day-to-day work is unchanged for the
+     treasurer. The one act that has moved is re-keying a member's door.
+
+  3. THE DISCIPLINARY OFFICER NO LONGER RECEIVES WHOLE MEMBER FILES
+     His screen only ever showed a name and a phone number, but the list it reads was
+     sending every member's family, next of kin, notes, photograph and balance along
+     with it. The server now sends him the four fields his screen uses, and nothing
+     else - and stops computing the money figures for him altogether.
+
+  4. "ADD ACCOUNT" NOW OFFERS ONLY WHAT THE SERVER ACCEPTS
+     The dialog offered a Treasurer to a plain admin, and the server refused it. Worse,
+     a request it did not recognise was quietly treated as "admin", so a Treasurer
+     created by the super admin's own dialog was in fact an Admin account with full
+     admin rights, while the message on screen said "Treasurer added". That is fixed:
+     the super admin can create a treasurer properly, an admin is offered only the
+     secretary and disciplinary accounts it may create and manage, and a role the
+     endpoint does not serve is named in the refusal instead of being turned into an
+     admin.
+
+  5. THE ROLE DOCUMENT WAS CORRECTED
+     ROLES_AND_PERMISSIONS.md said the treasurer could not manage member accounts, that
+     the secretary could not manage the minutes, and that the disciplinary officer saw
+     names and phone numbers only. All three were wrong about the code. It has been
+     rewritten against what the system actually does, and it now carries a short list of
+     the corrections so nobody re-finds them.
+
+  6. "WHO OWES WHAT" BECAME A LIST YOU CAN WORK
+     On Reports -> Fines it was a plain list of names and amounts, with no search and no
+     way to change the order, and on the discipline screen it stopped at the ten biggest
+     debtors without saying so.
+
+     It now leads with the three figures a meeting asks for - how many members owe, how
+     much between them, and how far back the oldest unpaid debt goes - and then gives the
+     office what it needs to act on them:
+
+       * search a member by name, registration number or phone number, however the
+         number is written (0712 345 678, +254 712 345 678 and 254712345678 all find the
+         same person);
+       * order the list by most owed, most fines, longest owing, or name;
+       * each member's row shows both his registration number and his phone number - the
+         line somebody reads out before a telephone call - and the date of his oldest
+         unpaid fine;
+       * tap a member and his row opens into WHAT FOR: his debt split by fine type,
+         biggest line first, each with its own date. Deciding who to chase no longer
+         needs a second screen;
+       * both screens show the same list, so the office and the disciplinary officer
+         cannot describe the same debt differently;
+       * the workbook export carries the same columns - phone, owing since, what for -
+         and the sheet stays readable.
+
+     The list is capped at 500 names, and when that bites the screen says so instead of
+     letting a cut list read as the whole answer.
+
+HOW THIS WAS PROVED
+
+  Backend        242 checks, 180 passing and 0 failing; 62 skip themselves without a
+                 database, as they always do. Nine new checks cover the credential rule
+                 on its own (utils/memberCredentials), and six more cover the fines
+                 report's "who owes what" (fineReport.test.js).
+  Rehearsal      62 checks against a real MongoDB across 9 suites, all passing, including
+                 the 9 in memberAccess.test.js (the treasurer's access to the register,
+                 the refusals, the disciplinary officer's narrowed list, who may create
+                 which account) and the 5 in finesReport.test.js (the report's dates and
+                 breakdown, the totals, the cap, the discipline screen's own report, and
+                 that the workbook's By member sheet stays readable). (Running it first
+                 found three mistakes in the new tests themselves - one tried to change an
+                 ID it had just recorded, one expected the oldest debtor to also be the
+                 biggest, and one used a password the group's own policy rejects - which
+                 is the reason it is worth running.)
+  Frontend       25 checks, all passing, including 9 new ones for the "who owes what"
+                 list's searching and ordering (finesOwed.test.js).
+  Build          builds clean, with a new lazily-loaded page for My account. The
+                 members' page download is 145.3 KB gzip against the 150 KB limit.
+  Data check     check:data passes - no spreadsheet or dump is tracked.
+
+WHAT IS STILL OPEN FOR THE COMMITTEE
+
+  * The treasurer can still ADD and EDIT members and their statements - that was the
+    committee's choice in this round (the alternative was to make the register read-only
+    for that role). If that is revisited, it is a short change.
+  * Two-factor authentication remains switched off. With this change, every role can
+    now enrol - so when the committee decides to turn it on, it protects everybody who
+    does.
+  * The fines list is capped at 500 members on screen. A group this size will never reach
+    it; if it ever did, the export carries every member.
+
+
 END OF DOCUMENT
 ===============
 
