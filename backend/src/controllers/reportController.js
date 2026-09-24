@@ -886,11 +886,17 @@ async function trend(req, res, next) {
 }
 
 
+// How many members the "who owes what" list carries. A report payload should not be
+// unbounded, but a silently truncated list is worse than a long one — the office would
+// read the first hundred names as the whole answer. The count of members owing is sent
+// separately and the screen says so when the two disagree.
+const BY_MEMBER_LIST_LIMIT = 500;
+
 // The group's fines, in the three cuts the office asks for by name: what has been
 // issued and what is still owed in total, which fine types carry the debt, who owes
 // it, and how it has moved month by month.
 async function computeFinesReport() {
-  const [totals, byType, byMember, byMonth] = await Promise.all([
+  const [totals, byType, byMemberRaw, byMonth, owing, unpaid] = await Promise.all([
     Fine.aggregate([
       { $match: { deleted: false } },
       {
@@ -927,9 +933,40 @@ async function computeFinesReport() {
       },
       { $sort: { outstanding: -1, issued: -1 } },
     ]),
+    // Who owes it — and, because "who owes what" always leads to "what for", each
+    // member's own debt split by fine type, with the date of his oldest unpaid fine.
     Fine.aggregate([
       { $match: { deleted: false, remaining: { $gt: 0 } } },
-      { $group: { _id: '$memberId', outstanding: { $sum: '$remaining' }, fines: { $sum: 1 } } },
+      {
+        $group: {
+          _id: { member: '$memberId', type: '$typeId' },
+          issued: { $sum: '$amount' },
+          outstanding: { $sum: '$remaining' },
+          count: { $sum: 1 },
+          oldest: { $min: '$date' },
+        },
+      },
+      { $lookup: { from: 'finetypes', localField: '_id.type', foreignField: '_id', as: 'typeDoc' } },
+      { $unwind: { path: '$typeDoc', preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: '$_id.member',
+          issued: { $sum: '$issued' },
+          outstanding: { $sum: '$outstanding' },
+          fines: { $sum: '$count' },
+          oldestUnpaid: { $min: '$oldest' },
+          newestUnpaid: { $max: '$oldest' },
+          types: {
+            $push: {
+              name: { $ifNull: ['$typeDoc.name', 'Fine'] },
+              category: { $ifNull: ['$typeDoc.category', ''] },
+              outstanding: '$outstanding',
+              count: '$count',
+              oldest: '$oldest',
+            },
+          },
+        },
+      },
       { $lookup: { from: 'members', localField: '_id', foreignField: '_id', as: 'member' } },
       { $unwind: '$member' },
       {
@@ -940,12 +977,16 @@ async function computeFinesReport() {
           regNumber: '$member.regNumber',
           phone: '$member.phone',
           active: '$member.active',
+          issued: 1,
           outstanding: 1,
           fines: 1,
+          oldestUnpaid: 1,
+          newestUnpaid: 1,
+          types: 1,
         },
       },
-      { $sort: { outstanding: -1 } },
-      { $limit: 100 },
+      { $sort: { outstanding: -1, fines: -1, name: 1 } },
+      { $limit: BY_MEMBER_LIST_LIMIT },
     ]),
     Fine.aggregate([
       { $match: { deleted: false } },
@@ -963,9 +1004,29 @@ async function computeFinesReport() {
       { $sort: { month: -1 } },
       { $limit: 24 },
     ]),
+    // How many members owe something at all, counted rather than inferred from a list
+    // that may have been cut off at BY_MEMBER_LIST_LIMIT.
+    Fine.aggregate([
+      { $match: { deleted: false, remaining: { $gt: 0 } } },
+      { $group: { _id: '$memberId' } },
+      { $count: 'membersOwing' },
+    ]),
+    // The oldest debt still standing — not the oldest fine ever issued, which is a
+    // different date and a different sentence in a meeting.
+    Fine.aggregate([
+      { $match: { deleted: false, remaining: { $gt: 0 } } },
+      { $group: { _id: null, oldestUnpaid: { $min: '$date' } } },
+    ]),
   ]);
 
+  // Biggest line first on every member's own breakdown, so a row reads top-down.
+  const byMember = byMemberRaw.map((row) => ({
+    ...row,
+    types: [...(row.types || [])].sort((a, b) => b.outstanding - a.outstanding),
+  }));
+
   const head = totals[0] || { issued: 0, outstanding: 0, count: 0, pendingCount: 0 };
+  const membersOwing = owing[0]?.membersOwing || 0;
 
   return {
     totals: {
@@ -975,9 +1036,15 @@ async function computeFinesReport() {
       count: head.count,
       pendingCount: head.pendingCount,
       clearedCount: head.count - head.pendingCount,
+      membersOwing,
+      oldestUnpaid: unpaid[0]?.oldestUnpaid || null,
     },
     byType,
     byMember,
+    // Stated rather than hidden: the screen says "showing the largest N of M" when the
+    // list had to be cut, instead of letting a truncated list read as the whole answer.
+    byMemberLimit: BY_MEMBER_LIST_LIMIT,
+    byMemberTruncated: membersOwing > byMember.length,
     byMonth,
   };
 }
@@ -1017,7 +1084,23 @@ async function exportFinesReport(req, res, next) {
         ],
       },
       { name: 'By fine type', rows: report.byType },
-      { name: 'By member', rows: report.byMember.map(({ memberId, ...row }) => row) },
+      {
+        // Built field by field rather than by spreading the row: each member now carries
+        // a nested breakdown of what he owes, and a nested object in a sheet is a cell
+        // reading "[object Object]". "What for" flattens it into the words a person reads.
+        name: 'By member',
+        rows: report.byMember.map((m) => ({
+          Member: m.name,
+          'Reg number': m.regNumber || '',
+          Phone: m.phone || '',
+          'Fines owed': m.fines,
+          'Amount issued': m.issued,
+          'Still owed': m.outstanding,
+          'Owing since': m.oldestUnpaid ? new Date(m.oldestUnpaid).toISOString().slice(0, 10) : '',
+          'What for': (m.types || []).map((t) => `${t.name} (${t.count})`).join('; '),
+          Status: m.active === false ? 'Resigned' : 'Active',
+        })),
+      },
       { name: 'By month', rows: report.byMonth },
     ]);
   } catch (err) {

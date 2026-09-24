@@ -430,10 +430,44 @@ function buildFineGroupReport({ fines, scopeLabel }) {
       issued: 0,
       outstanding: 0,
       fines: 0,
+      // The two questions the office asks straight after "who owes what": how long has
+      // he owed it, and what for. Both are answered from the rows already in hand, so
+      // the list can say "owing since 12 Mar" and open up a member's own breakdown
+      // without a second request.
+      oldestUnpaid: null,
+      newestUnpaid: null,
+      types: [],
     };
     member.issued += row.amount;
     member.outstanding += row.remaining;
     member.fines += 1;
+
+    if (row.outstanding) {
+      const at = row.date ? new Date(row.date) : null;
+      const dated = at && !Number.isNaN(at.getTime()) ? at : null;
+      if (dated) {
+        if (!member.oldestUnpaid || dated < member.oldestUnpaid) member.oldestUnpaid = dated;
+        if (!member.newestUnpaid || dated > member.newestUnpaid) member.newestUnpaid = dated;
+      }
+
+      // What he owes, by fine type. The biggest line first, so the row reads as its own
+      // little statement of account rather than a second list to work through.
+      const owing = member.types.find((t) => t.name === row.type && t.category === row.category);
+      if (owing) {
+        owing.outstanding += row.remaining;
+        owing.count += 1;
+        if (dated && (!owing.oldest || dated < owing.oldest)) owing.oldest = dated;
+      } else {
+        member.types.push({
+          name: row.type,
+          category: row.category,
+          outstanding: row.remaining,
+          count: 1,
+          oldest: dated,
+        });
+      }
+    }
+
     byMemberMap.set(row.memberId, member);
 
     if (row.month) {
@@ -448,6 +482,12 @@ function buildFineGroupReport({ fines, scopeLabel }) {
   const issued = rows.reduce((sum, r) => sum + r.amount, 0);
   const outstanding = rows.reduce((sum, r) => sum + r.remaining, 0);
   const dates = rows.map((r) => new Date(r.date).getTime()).filter((t) => !Number.isNaN(t));
+  // The debts that are still standing, separately from every fine ever issued: "oldest
+  // owed" is the line a meeting reacts to, and it is not the same as the oldest fine.
+  const unpaidDates = rows
+    .filter((r) => r.outstanding)
+    .map((r) => new Date(r.date).getTime())
+    .filter((t) => !Number.isNaN(t));
 
   return {
     scopeLabel: scopeLabel || 'Fines',
@@ -462,9 +502,15 @@ function buildFineGroupReport({ fines, scopeLabel }) {
       membersOwing: [...byMemberMap.values()].filter((m) => m.outstanding > 0).length,
       firstDate: dates.length ? new Date(Math.min(...dates)) : null,
       lastDate: dates.length ? new Date(Math.max(...dates)) : null,
+      oldestUnpaid: unpaidDates.length ? new Date(Math.min(...unpaidDates)) : null,
+      newestUnpaid: unpaidDates.length ? new Date(Math.max(...unpaidDates)) : null,
     },
     byType: [...byTypeMap.values()].sort((a, b) => b.outstanding - a.outstanding || b.issued - a.issued),
-    byMember: [...byMemberMap.values()].sort((a, b) => b.outstanding - a.outstanding || b.issued - a.issued),
+    byMember: [...byMemberMap.values()]
+      // Each member's own types, biggest line first, so the breakdown reads top-down.
+      .map((m) => ({ ...m, types: [...m.types].sort((a, b) => b.outstanding - a.outstanding) }))
+      .filter((m) => m.fines > 0)
+      .sort((a, b) => b.outstanding - a.outstanding || b.issued - a.issued || a.name.localeCompare(b.name)),
     byMonth: [...byMonthMap.values()].sort((a, b) => (a.month < b.month ? 1 : -1)),
     generatedAt: new Date(),
   };

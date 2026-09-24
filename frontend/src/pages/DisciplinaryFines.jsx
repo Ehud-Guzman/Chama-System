@@ -5,6 +5,7 @@ import { money, shortDate, todayISO } from '../utils/format';
 import { blobErrorMessage } from '../utils/blobError';
 import Loader from '../components/shared/Loader';
 import BackLink from '../components/shared/BackLink';
+import WhoOwesWhat from '../components/fines/WhoOwesWhat';
 
 // Disciplinary officer's one screen: pick a member, pick an infraction type,
 // pick a date, done. Amount is prefilled from the type's default penalty but
@@ -584,50 +585,20 @@ export default function DisciplinaryFines() {
                 </div>
               )}
 
-              {/* The biggest debtors first, because that is the list a meeting
-                  works down. Capped so a phone screen is not an endless scroll;
-                  the full list is in the export. */}
+              {/* The same list the office reads on the reports screen: searchable, in the
+                  order needed today, and every member's own breakdown on a tap. It used
+                  to stop at ten names here, which is the wrong answer on the morning a
+                  committee asks for the whole list. */}
               {group.byMember.some((m) => m.outstanding > 0) && (
                 <div className="border-b border-rule px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Who owes what
                   </p>
-                  <ul className="mt-2 space-y-2">
-                    {group.byMember
-                      .filter((m) => m.outstanding > 0)
-                      .slice(0, 10)
-                      .map((m) => (
-                        <li
-                          key={m.memberId}
-                          className="flex items-baseline justify-between gap-3 text-sm"
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate">
-                              {m.name}
-                              {m.active === false && (
-                                <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
-                                  resigned
-                                </span>
-                              )}
-                            </span>
-                            <span className="amount block text-[11px] text-muted">
-                              {m.regNumber || m.phone} · {m.fines}{' '}
-                              {m.fines === 1 ? 'fine' : 'fines'}
-                            </span>
-                          </span>
-                          <span className="amount shrink-0 font-semibold text-alert">
-                            {money(m.outstanding)}
-                          </span>
-                        </li>
-                      ))}
-                  </ul>
-                  {group.byMember.filter((m) => m.outstanding > 0).length > 10 && (
-                    <p className="mt-2 text-[11px] text-muted">
-                      Showing the 10 largest of{' '}
-                      {group.byMember.filter((m) => m.outstanding > 0).length} members owing —
-                      the export lists every one, with their phone numbers.
-                    </p>
-                  )}
+                  <WhoOwesWhat
+                    members={group.byMember}
+                    totals={group.totals}
+                    note="Every member in this category of fines. Settling one is the office's job, from the member's page."
+                  />
                 </div>
               )}
 

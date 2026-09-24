@@ -11,6 +11,7 @@ import ErrorState from "../components/shared/ErrorState";
 import MemberPerformanceList from "../components/reports/MemberPerformanceList";
 import MemberChartModal from "../components/reports/MemberChartModal";
 import ContributionChart from "../components/reports/ContributionChart";
+import WhoOwesWhat from "../components/fines/WhoOwesWhat";
 
 // Month keys arrive as 'YYYY-MM' (the group's own calendar month). A fixed list
 // rather than a locale call: the same label on every device, in any language.
@@ -631,38 +632,13 @@ export default function Reports() {
                   <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
                     Who owes what
                   </h2>
-                  {fines.byMember.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-rule px-5 py-6 text-center text-sm text-muted">
-                      Nobody owes a fine — every one issued has been cleared.
-                    </p>
-                  ) : (
-                    <ul className="divide-y divide-rule overflow-hidden rounded-xl border border-rule bg-surface">
-                      {fines.byMember.map((row) => (
-                        <li
-                          key={row.memberId}
-                          className="flex items-baseline justify-between gap-3 px-4 py-2.5"
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm">
-                              {row.name}
-                              {!row.active && (
-                                <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
-                                  resigned
-                                </span>
-                              )}
-                            </span>
-                            <span className="amount block text-[11px] text-muted">
-                              {row.regNumber || row.phone} · {row.fines}{" "}
-                              {row.fines === 1 ? "fine" : "fines"}
-                            </span>
-                          </span>
-                          <span className="amount shrink-0 text-sm font-semibold text-alert">
-                            {money(row.outstanding)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <WhoOwesWhat
+                    members={fines.byMember}
+                    totals={fines.totals}
+                    truncated={fines.byMemberTruncated}
+                    limit={fines.byMemberLimit}
+                    note="Tap a member to see what he owes it for. The export carries every one, with the phone numbers."
+                  />
                 </div>
 
                 <div>
