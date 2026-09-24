@@ -37,6 +37,15 @@ export const WORKSPACE_GROUPS = [
         hint: 'Email whoever is behind',
         roles: MONEY_ROLES,
       },
+      {
+        // The office's fines desk: the debt list, issuing one, collecting one, and the
+        // document. Not shown to the treasurer or the disciplinary officer, because the
+        // API refuses them a financial fine — the menu never offers a dead end.
+        to: '/admin/fines',
+        label: 'Fines',
+        hint: 'Issue one, record a payment, who owes what',
+        roles: ['super_admin', 'admin'],
+      },
     ],
   },
   {

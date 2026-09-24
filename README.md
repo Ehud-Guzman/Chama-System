@@ -99,10 +99,13 @@ npm run report:bundle -- --max=150   # the critical path in gzip KB, and fails i
 
 `npm test` needs no database and no `.env`. `npm run test:integration` is the rehearsal: it starts
 the API against a scratch MongoDB, signs in, logs a payment, checks a duplicate submit is not
-counted twice, issues and settles a fine, watches the quarter-drop guard refuse a save, takes a
-backup through the real endpoint and restores it into a second database — then writes audit entries,
-edits one *behind the API's back* and checks the chain notices, drives the job runner, and writes a
-real backup file and reads it back. CI runs it against a `mongo:7` service container.
+counted twice, issues and settles a fine, records an expense and checks it is deducted from the fund
+and the group's total (and that a loan fund is listed but not deducted), watches the quarter-drop
+guard refuse a save, takes a backup through the real endpoint and restores it into a second database
+— then writes audit entries, edits one *behind the API's back* and checks the chain notices, drives
+the job runner, and writes a real backup file and reads it back. CI runs it against a `mongo:7`
+service container. The runner switches the two fine emails off (`FINE_EMAILS=off`) so a rehearsal on
+a machine with a working mail configuration cannot email anybody.
 
 ```bash
 docker run -d --name chama-rehearsal -p 27017:27017 mongo:7   # once
@@ -201,7 +204,14 @@ set it to the deployed API URL.
   against a member, and there is no public link to it.
 - `/admin/login` — admin sign in
 - `/admin/dashboard` · `/admin/members` · `/admin/reports` · `/admin/minutes` ·
-  `/admin/reminders` · `/admin/documents` · `/admin/disciplinary` · `/admin/audit` — protected
+  `/admin/reminders` · `/admin/documents` · `/admin/disciplinary` · `/admin/fines` ·
+  `/admin/audit` — protected
+- `/admin/fines` — **Fines**, the office's desk for them (admin and super admin; the API refuses a
+  financial fine to anybody else): the totals, the list filtered owed/cleared/all/voided, issuing a
+  fine to a member found by search, recording a payment or voiding a wrong one on the row it belongs
+  to, "who owes what" with each member's own breakdown, and the group's fines record as a PDF or a
+  workbook. Issuing a fine and clearing one both email the member (see Key behaviors). The
+  disciplinary officer's `/admin/disciplinary` screen stays separate and narrowed to his category.
 - `/admin/account` — **My account**, reachable by every signed-in role: change your own password and
   enrol your own second factor. It exists because those two panels otherwise live on the dashboard
   (money roles only) and on `/admin/settings` (admins only), which left the treasurer, secretary and
@@ -209,10 +219,11 @@ set it to the deployed API URL.
 - `/admin/audit` — the audit trail: every change, filtered by category, who, when and what, with the
   unusual entries flagged and an export of the view on screen. Its own destination because it is the
   screen somebody opens when a figure needs explaining.
-- `/admin/finance` · `/admin/finance/setup` · `/admin/finance/:id` — the ledger: the member list,
-  one member's page, and the go-live figures. This is the only place money is logged — the admin
-  dashboard shows the same list, `/admin/log` redirects here, and the old weekly grid and
-  per-type/expense panels are gone.
+- `/admin/finance` · `/admin/finance/setup` · `/admin/finance/expenses` · `/admin/finance/:id` — the
+  ledger: the member list, one member's page, the go-live figures, and **Fund spending** — every
+  expense on the books, the form that records one, and the spending report as a PDF or workbook.
+  This is the only place money is logged or spent — the admin dashboard shows the same list,
+  `/admin/log` redirects here, and the old weekly grid and per-type/expense panels are gone.
 
 Admin accounts are managed from Settings → Accounts, which is open to admins and the super admin:
 the super admin creates any of the four staff roles, and a plain admin creates and manages the
@@ -553,6 +564,20 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   with "valid sender email required". Every send is audit-logged, members can be opted out
   individually (`emailNotifications`), and a member with no address is listed as un-emailable
   rather than silently skipped.
+- **Fund spending, and the fines that email themselves:** `/admin/finance/expenses` (admins, the
+  treasurer and the super admin) is where money leaves the funds. An expense carries the fund it
+  came from, the amount, the date, what it was for, the voucher or receipt number it is backed by
+  and a free-text note for an M-Pesa message — every write is audit-logged, and deleting one is a
+  soft delete that returns the money to the fund and stays in the trail. Spending is deducted from
+  the all-time contribution total the moment it is saved (`utils/moneyPosition`, shared with the
+  reports summary, so the screen and `GET /api/reports/summary` can never disagree); a fund flagged
+  `isRecoverable` is a loan, so its payouts are listed but not deducted — that money is still owed
+  back. `GET /api/expenses/summary` is the screen's data, and `GET /api/expenses/export?format=pdf|xlsx`
+  is the same record as a document. Separately, a fine writes two emails on its own — one to the
+  member when it is issued, one when money clears it (including a contribution that pays it down under
+  `autoSettleFines`) — off the same fine records the screens show. Neither can fail the write that
+  caused it, both are skipped for a member with no address or `emailNotifications: false`, and
+  `FINE_EMAILS=off` switches them off for a deployment.
 - **Member records:** each member carries an email address, a profile photo, a next of kin
   (name, relationship, phone, email) and an email-reminders switch. Next of kin and notes stay
   on the admin side; only the photo and public passbook fields are exposed publicly.
@@ -704,6 +729,7 @@ bundle as a foreign-looking URL).
 | `AUDIT_HEAD_EMAIL` | Where the weekly audit check sends the chain's head. Defaults to `MAIL_REPLY_TO`, then `MAIL_FROM` |
 | `REMINDER_SWEEP_SEND` | `true` lets the weekly sweep actually email members who are behind. Off by default |
 | `REMINDER_SWEEP_MAX` | Most members one sweep will email, default 200 |
+| `FINE_EMAILS` | `off` stops the emails a fine sends on its own — the one that tells a member a fine has been recorded and the one that acknowledges his payment. On by default, because both are triggered by somebody recording or settling a fine, not by a schedule. Needs a mail configuration either way; a member with no address or with email reminders switched off is skipped |
 | `SYSTEM_ACTOR_EMAIL` | Which account automatic writes are credited to in the audit trail. Defaults to the earliest super admin |
 
 ## Environment variables (frontend)

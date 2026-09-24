@@ -13,6 +13,9 @@ const {
   recordFineSettlements,
   reverseFineSettlements,
 } = require('../utils/fineAllocation');
+// A payment that clears fines is acknowledged by email, once per payment. The module
+// never throws, so a broken mail server cannot fail a contribution.
+const { announceFinesPaid, paymentsFromAllocations } = require('../utils/fineEmails');
 
 const METHODS = ['cash', 'bank', 'mobile', 'other'];
 const DUPLICATE_WINDOW_MS = 10 * 1000;
@@ -110,6 +113,9 @@ async function createContribution(req, res, next) {
     }
 
     let contribution;
+    // Kept outside the transaction so the acknowledgement email is sent after it has
+    // committed, where a mail failure cannot touch the money.
+    let settledAllocations = [];
     // Paying fines out of a contribution is the group's own policy and it is off
     // unless somebody has turned it on (Settings.autoSettleFines). Off, the books
     // behave exactly as they did before: the payment is contribution in full.
@@ -145,6 +151,7 @@ async function createContribution(req, res, next) {
         if (allocations.length) {
           await recordFineSettlements(allocations, created._id, session);
         }
+        settledAllocations = allocations;
         return created;
       });
     } catch (err) {
@@ -168,6 +175,24 @@ async function createContribution(req, res, next) {
       performedBy: req.user._id,
       after: snapshot(contribution),
     });
+
+    // Told after the payment is committed, never from inside the transaction, and not
+    // awaited: see utils/fineEmails. One email, naming every fine the money cleared.
+    if (settledAllocations.length > 0) {
+      const settledTotal = settledAllocations.reduce((sum, a) => sum + (Number(a.applied) || 0), 0);
+      paymentsFromAllocations(settledAllocations)
+        .then((payments) =>
+          announceFinesPaid({
+            payments,
+            member,
+            totalPaid: settledTotal,
+            paidAt: date ? new Date(date) : new Date(),
+            performedBy: req.user._id,
+            rid: req.id,
+          })
+        )
+        .catch(() => {});
+    }
 
     const populated = await Contribution.findById(contribution._id)
       .populate('memberId', 'name phone regNumber')
@@ -247,6 +272,10 @@ async function bulkCreateContributions(req, res, next) {
         ? `${clientRequestId}:${member._id}:${type._id}`
         : undefined;
 
+      // Reset per entry: this is the money that cleared a fine for THIS member, and it
+      // is what the acknowledgement at the bottom of the loop reports.
+      let settledAllocations = [];
+
       try {
         if (entryClientId) {
           const existing = await Contribution.findOne({ clientRequestId: entryClientId }).select('_id');
@@ -296,6 +325,7 @@ async function bulkCreateContributions(req, res, next) {
           if (allocations.length) {
             await recordFineSettlements(allocations, created._id, session);
           }
+          settledAllocations = allocations;
           return created;
         });
 
@@ -306,6 +336,28 @@ async function bulkCreateContributions(req, res, next) {
           performedBy: req.user._id,
           after: snapshot(contribution),
         });
+
+        // Per entry, because each entry is one member's payment and clears whatever of
+        // his fines it covers — the same acknowledgement the member panel sends.
+        if (settledAllocations.length > 0) {
+          const settledTotal = settledAllocations.reduce(
+            (sum, a) => sum + (Number(a.applied) || 0),
+            0
+          );
+          paymentsFromAllocations(settledAllocations)
+            .then((payments) =>
+              announceFinesPaid({
+                payments,
+                member,
+                totalPaid: settledTotal,
+                paidAt: parsedDate,
+                performedBy: req.user._id,
+                rid: req.id,
+              })
+            )
+            .catch(() => {});
+        }
+
         createdIds.push(contribution._id);
       } catch (err) {
         // A single bad row (e.g. a duplicate-key race on entryClientId)

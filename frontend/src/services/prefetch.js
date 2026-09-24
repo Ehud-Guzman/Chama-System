@@ -24,11 +24,15 @@ const CHUNKS = {
   '/admin/settings': () => import('../pages/AdminSettings.jsx'),
   '/admin/members': () => import('../pages/MembersList.jsx'),
   '/admin/finance': () => import('../pages/FinanceLedger.jsx'),
+  // Registered before the '/admin/finance/' prefix rule below, so hovering Expenses
+  // warms its own chunk rather than a member's ledger.
+  '/admin/finance/expenses': () => import('../pages/Expenses.jsx'),
   '/admin/finance/setup': () => import('../pages/FinanceSetup.jsx'),
   '/admin/reports': () => import('../pages/Reports.jsx'),
   '/admin/minutes': () => import('../pages/Minutes.jsx'),
   '/admin/documents': () => import('../pages/Documents.jsx'),
   '/admin/reminders': () => import('../pages/Reminders.jsx'),
+  '/admin/fines': () => import('../pages/Fines.jsx'),
   '/admin/disciplinary': () => import('../pages/DisciplinaryFines.jsx'),
 };
 

@@ -10,6 +10,12 @@ const ExpenseSchema = new Schema(
     amount: { type: Number, required: true, set: moneySetter, min: MONEY_MIN, max: MONEY_MAX },
     date: { type: Date, required: true, default: Date.now },
     description: { type: String, default: '', maxlength: 500 },
+    // The number on the paperwork this money left against — a petty-cash voucher, a
+    // receipt, an LPO, a supplier's invoice. Free text on purpose: the group's own
+    // numbering is not this system's to define, and a treasurer who writes
+    // "VOUCHER 014" is doing exactly the right thing. It is what makes an expense
+    // arguable in a meeting rather than merely recorded.
+    reference: { type: String, default: '', maxlength: 120 },
     // Same free-text field contributions carry — where the treasurer pastes the
     // M-Pesa/bank message or receipt line a cashless payment came with, so the
     // evidence lives on the entry it belongs to instead of in a side file.

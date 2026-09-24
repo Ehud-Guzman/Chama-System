@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import api, { apiMessage } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import { useToast } from "../components/shared/Toast";
 import {
   money,
@@ -57,6 +59,10 @@ function MonthFunds({ byType }) {
 
 export default function Reports() {
   const toast = useToast();
+  const { user } = useAuth();
+  // Whether this role may work a fine (issue, settle, void) rather than only read the
+  // report — the same two roles the route guard and the API allow.
+  const mayWorkFines = ['super_admin', 'admin'].includes(user?.role);
   const [tab, setTab] = useState("summary"); // summary | weekly | performance | monthly | fines
   const [summary, setSummary] = useState(null);
   const [trend, setTrend] = useState(null);
@@ -536,6 +542,19 @@ export default function Reports() {
 
       {tab === "fines" && (
         <section className="space-y-4">
+          {/* The report says what is owed; the desk at /admin/fines is where it is
+              worked — but only for the roles the API lets work it, so a treasurer or a
+              secretary is not sent to a screen that would refuse him. */}
+          {mayWorkFines && (
+            <div className="flex justify-end">
+              <Link
+                to="/admin/fines"
+                className="min-h-11 rounded-xl border border-rule bg-surface px-4 text-sm font-semibold leading-[2.75rem] text-primary"
+              >
+                Issue or collect →
+              </Link>
+            </div>
+          )}
           {!fines ? (
             <Loader />
           ) : fines.totals.count === 0 ? (

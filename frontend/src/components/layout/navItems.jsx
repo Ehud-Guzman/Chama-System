@@ -102,6 +102,29 @@ export const NAV_ITEMS = [
     ),
   },
   {
+    to: '/admin/finance/expenses',
+    label: 'Expenses',
+    roles: ['super_admin', 'admin', 'treasurer'],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 2v20" />
+        <path d="M17 6.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.6 5 3.2 5 1.4 5 3.3-2.2 3-5 3-5-1.1-5-3" />
+      </svg>
+    ),
+  },
+  {
+    to: '/admin/fines',
+    label: 'Fines',
+    roles: ['super_admin', 'admin'],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 2 3 6v6c0 5 3.8 8.7 9 10 5.2-1.3 9-5 9-10V6z" />
+        <path d="M12 8v5" />
+        <path d="M12 16h.01" />
+      </svg>
+    ),
+  },
+  {
     to: '/admin/disciplinary',
     label: 'Discipline',
     roles: ['super_admin', 'admin', 'disciplinary'],

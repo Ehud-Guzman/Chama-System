@@ -26,6 +26,9 @@ const {
   allocateFinePayment,
   recordFineSettlements,
 } = require('../utils/fineAllocation');
+// When a payment clears fines, the member is told — one email naming every fine the
+// money touched. utils/fineEmails never throws, so a mail server cannot fail a payment.
+const { announceFinesPaid, paymentsFromAllocations } = require('../utils/fineEmails');
 const { logEvent } = require('../middleware/requestLogger');
 
 const METHODS = ['cash', 'bank', 'mobile', 'other'];
@@ -348,6 +351,9 @@ async function createLog(req, res, next) {
     let contribution;
     let fineDeducted = 0;
     let netAmount = value;
+    // Kept outside the transaction so the acknowledgement email can be sent after it
+    // has committed — never from inside, where a mail failure could roll money back.
+    let settledAllocations = [];
     try {
       contribution = await withOptionalTransaction(async (session) => {
         const split =
@@ -379,6 +385,7 @@ async function createLog(req, res, next) {
 
         fineDeducted = split.fineDeducted;
         netAmount = split.netAmount;
+        settledAllocations = split.allocations;
         return row;
       });
     } catch (err) {
@@ -399,6 +406,32 @@ async function createLog(req, res, next) {
       performedBy: req.user._id,
       after: snapshot(contribution),
     });
+
+    // The acknowledgement, after the payment is safely committed. One email for the
+    // payment naming every fine it cleared, rather than one per fine: that is how the
+    // money arrived and how the member remembers it. Not awaited — the screen has
+    // already been told the payment is in, and the send's outcome goes to the request
+    // log (utils/fineEmails logs fine_email_sent / _skipped / _failed).
+    if (settledAllocations.length > 0) {
+      paymentsFromAllocations(settledAllocations)
+        .then((payments) =>
+          announceFinesPaid({
+            payments,
+            member,
+            totalPaid: fineDeducted,
+            paidAt: when,
+            performedBy: req.user._id,
+            rid: req.id,
+          })
+        )
+        .catch((err) => {
+          // Reading the fines back failed, so the member is not emailed. The payment is
+          // recorded either way; the log line is what says the acknowledgement did not
+          // go out.
+          logEvent('fine_email_lookup_failed', { rid: req.id, error: err.message }, 'error');
+        });
+    }
+
     res.status(201).json({
       entry: contribution,
       kind,

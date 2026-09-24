@@ -728,9 +728,19 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
           )}
 
           <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-              Fund spending{teaFund ? ` — Tea Fund holds ${money(teaFund.balance)}` : ''}
-            </h2>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
+                Fund spending{teaFund ? ` — Tea Fund holds ${money(teaFund.balance)}` : ''}
+              </h2>
+              {/* The group's whole spending record, where an expense is a row of its own
+                  rather than something attached to this member. */}
+              <Link
+                to="/admin/finance/expenses"
+                className="-mr-2 -my-1 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary"
+              >
+                All spending
+              </Link>
+            </div>
             {expenses.length === 0 ? (
               <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
                 Nothing spent from the funds yet.

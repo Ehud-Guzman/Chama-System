@@ -2,19 +2,19 @@ const Contribution = require('../models/Contribution');
 const Member = require('../models/Member');
 const ContributionType = require('../models/ContributionType');
 const Fine = require('../models/Fine');
-const { carriedInTotals } = require('../utils/carriedIn');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
 const { resolveConfig, scoredWeeks } = require('../utils/weekCycle');
-const { bucketForType } = require('../utils/ledgerTypes');
-const { fundBalance } = require('../utils/fundBalance');
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { totalFinesCollected } = require('../utils/finesCollected');
 const { computeWeeklyReconciliation } = require('../utils/weeklyReconciliation');
 const { computeBackupHealth } = require('../utils/backupHealth');
 const { aboutSheet } = require('../utils/aboutSheet');
-const Expense = require('../models/Expense');
+// What the group took in, what it spent out of the funds and what that leaves — the
+// same function the expenses screen and its report use, so the figure under this
+// headline and the figure on the spending report are one calculation, not two.
+const { computeMoneyPosition } = require('../utils/moneyPosition');
 
 // Shared by /performance and /performance/export: per active member, personal
 // total, weekly-schedule consistency (personal weekly types only — group
@@ -149,7 +149,7 @@ async function performance(req, res, next) {
 async function summary(req, res, next) {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected, expensesAgg, settings] =
+    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected, position] =
       await Promise.all([
         Contribution.aggregate([
           { $match: { deleted: false } },
@@ -170,30 +170,20 @@ async function summary(req, res, next) {
           { $group: { _id: null, total: { $sum: '$amount' } } },
         ]),
         totalFinesCollected(),
-        Expense.aggregate([
-          { $match: { deleted: false } },
-          { $group: { _id: '$typeId', total: { $sum: '$amount' } } },
-          { $lookup: { from: 'contributiontypes', localField: '_id', foreignField: '_id', as: 'type' } },
-          { $unwind: '$type' },
-          { $match: { 'type.isRecoverable': { $ne: true } } },
-          { $group: { _id: null, total: { $sum: '$total' } } },
-        ]),
-        // The cycle's own figures, for the Tea Fund's derived income below.
-        getOrCreateSettings(),
+        // Everything down to the net balance: money in (all time, carry-in included),
+        // money spent out of the funds, and what is left. Shared with the expenses
+        // screen and its report (utils/moneyPosition).
+        computeMoneyPosition(),
       ]);
 
-    const totalContributed = byMethod.reduce((sum, m) => sum + m.total, 0);
     const totalCount = byMethod.reduce((sum, m) => sum + m.count, 0);
-    const totalExpenses = expensesAgg[0]?.total || 0;
 
-    // What the members put in before this ledger existed. It is real money —
-    // the paper ledger's own totals, verified member by member at go-live — so
-    // the all-time figure has to carry it; the rows only know what has been
-    // logged since. `collected` is the row total kept apart, because the
+    // What the members put in before this ledger existed is real money — the paper
+    // ledger's own totals, verified member by member at go-live — so the all-time
+    // figure carries it. `collected` is the row total kept apart, because the
     // per-method and per-type breakdowns below it are rows and nothing else.
-    const carriedIn = await carriedInTotals();
-    const collected = totalContributed;
-    const allTime = collected + carriedIn.total;
+    const { carriedIn, collected, totalContributed: allTime, totalExpenses, netBalance, funds } =
+      position;
 
     const contributingActive = await Member.countDocuments({
       _id: { $in: contributingIds },
@@ -203,7 +193,7 @@ async function summary(req, res, next) {
     // The office's fines position, all time. Kept beside the contribution figures
     // because a committee asks the three questions together: what came in, what is
     // in the funds, and what is still owed in fines.
-    const [fineAgg, fineByType, fundTypes] = await Promise.all([
+    const [fineAgg, fineByType] = await Promise.all([
       Fine.aggregate([
         { $match: { deleted: false } },
         {
@@ -233,7 +223,6 @@ async function summary(req, res, next) {
         },
         { $sort: { remaining: -1 } },
       ]),
-      ContributionType.find().select('name isGroupFund tracksExpenses openingBalance active').lean(),
     ]);
 
     const finesSummary = {
@@ -247,44 +236,6 @@ async function summary(req, res, next) {
       byType: fineByType,
     };
 
-    // What each fund holds, as the office's own setup screen works it out — with
-    // the Tea Fund's automatic income included, because this is the office's copy
-    // and a fund list that disagrees with the ledger is worse than none.
-    const config = resolveConfig(settings);
-    const chaiType = fundTypes.find((t) => bucketForType(t) === 'chai') || null;
-    const teaBeforeCycle = chaiType
-      ? await Contribution.aggregate([
-          { $match: { deleted: false, typeId: chaiType._id, date: { $lt: config.anchorDate } } },
-          { $group: { _id: null, total: { $sum: { $ifNull: ['$grossAmount', '$amount'] } } } },
-        ])
-      : [];
-    const teaIncome = config.chaiAmount * scoredWeeks(config) * activeMembers + (teaBeforeCycle[0]?.total || 0);
-
-    const funds = await Promise.all(
-      fundTypes
-        .filter((t) => t.active !== false && (t.isGroupFund || t.tracksExpenses))
-        .map(async (t) => {
-          const derived = bucketForType(t) === 'chai' ? teaIncome : 0;
-          const balance = await fundBalance(t._id, {
-            carriedIn: t.openingBalance,
-            extraIncome: derived,
-          });
-          return {
-            name: t.name,
-            tracksExpenses: Boolean(t.tracksExpenses),
-            // The part of the balance the ledger derives rather than reads from a
-            // row — today only the automatic tea — so a list can name it.
-            derived,
-            ...balance,
-            // fundBalance() folds the carry-in and the derived income into
-            // totalContributed, so what actually came in as logged rows has to be
-            // named separately for a screen that shows its work.
-            collected: balance.totalContributed - balance.carriedIn - derived,
-            spent: balance.totalExpenses,
-          };
-        })
-    );
-
     res.json({
       totalContributed: allTime,
       // Named parts, so a screen can show what the total is made of rather than
@@ -297,7 +248,7 @@ async function summary(req, res, next) {
       // Everything raised, all time, less what has been spent from
       // expense-tracking funds (e.g. Chai) — the group's money on hand. It is
       // the all-time total that answers that question, not the row total.
-      netBalance: allTime - totalExpenses,
+      netBalance,
       thisWeekTotal: thisWeekAgg[0]?.total || 0,
       contributionCount: totalCount,
       activeMembers,

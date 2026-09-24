@@ -5,6 +5,10 @@ const { logAudit, snapshot } = require('../utils/auditLogger');
 const { getOrCreateSettings } = require('../utils/settings');
 const { readMoney } = require('../utils/money');
 const { sendWorkbook } = require('../utils/xlsxExport');
+// The member is told as the fine is written, and told again when he pays it. Neither
+// send can fail this request: utils/fineEmails catches everything and writes the
+// outcome to the request log.
+const { announceFineIssued, announceFinesPaid } = require('../utils/fineEmails');
 const { buildFineReport, renderFineReportPdf, fineReportSheets,
   buildFineGroupReport, renderFineGroupReportPdf, fineGroupReportSheets,
 } = require('../utils/fineReport');
@@ -190,6 +194,12 @@ async function createFine(req, res, next) {
       .populate('memberId', 'name phone regNumber')
       .populate('typeId', 'name')
       .lean();
+
+    // The member is told his own fine exists, as it is written rather than at the next
+    // meeting. Not awaited on purpose: recording a fine must not depend on a mail
+    // server answering in time, and the send's outcome goes to the request log.
+    announceFineIssued({ fine: populated, member, performedBy: req.user._id, rid: req.id });
+
     res.status(201).json({ fine: populated });
   } catch (err) {
     next(err);
@@ -243,6 +253,37 @@ async function settleFine(req, res, next) {
     });
 
     await fine.populate('typeId', 'name category');
+
+    // The member is told what was received and what is left on the fine. Not awaited:
+    // the settlement is already written and audited, and a slow mail server must not
+    // hold up the office's screen.
+    if (applied > 0) {
+      Member.findById(fine.memberId)
+        .select('name email emailNotifications')
+        .lean()
+        .then((member) =>
+          announceFinesPaid({
+            payments: [
+              {
+                label: fine.reason || fine.typeId?.name || 'Fine',
+                amount: applied,
+                remaining: fine.remaining,
+              },
+            ],
+            member,
+            totalPaid: applied,
+            paidAt,
+            performedBy: req.user._id,
+            rid: req.id,
+          })
+        )
+        .catch(() => {
+          // Nothing to do about a failure to read the member here: the payment is
+          // recorded either way, and the log line the send would have written is
+          // replaced by nothing at all rather than by a broken request.
+        });
+    }
+
     res.json({ fine: toFineJson(fine) });
   } catch (err) {
     next(err);

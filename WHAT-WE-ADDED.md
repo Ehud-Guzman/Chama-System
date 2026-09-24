@@ -1000,6 +1000,182 @@ WHAT IS STILL OPEN FOR THE COMMITTEE
     it; if it ever did, the export carries every member.
 
 
+ADDENDUM - 24 SEPTEMBER 2026: SPENDING AND FINES GET THEIR OWN DESKS
+===================================================================
+
+Three things asked for by the committee, all about money nobody had to press a button
+to account for, or had to hunt through three screens to find.
+
+WHAT CHANGED, IN PLAIN ENGLISH
+
+  1. MONEY OUT NOW HAS ITS OWN SCREEN
+
+     Spending used to be recorded from a member's own page - which read as though it were
+     something done to him rather than something done with the group's money - and there
+     was nowhere to see all of it together, and nothing to hand over when a meeting asked
+     "what has the Tea Fund spent this year?".
+
+     Finance -> Expenses (/admin/finance/expenses, for the admin, the treasurer and the
+     super admin) is that screen:
+
+       * one form to record an expense: the fund it came from, the amount, the date,
+         what it was for, THE VOUCHER OR RECEIPT NUMBER it is backed by, and a note for
+         the M-Pesa message or the supplier's name. The fund picker shows each fund's
+         balance, so nobody spends money a fund does not have;
+       * every expense on the books, newest first, with its note and the person who
+         logged it;
+       * corrections (cash spent differs from the estimate) and deletions. A deletion
+         returns the money to the fund and stays in the audit trail - this system never
+         erases a money record, it only marks it dead;
+       * a date in the future is refused, because that is almost always a mistyped year
+         and it would put the spending in a month that has not happened.
+
+  2. SPENDING IS DEDUCTED FROM THE CONTRIBUTIONS, ON EVERY SCREEN
+
+     The reports screen has always subtracted what was spent from the totals. The new
+     screen does the same arithmetic - and both now come from one function
+     (utils/moneyPosition), so the figure on the spending screen and the figure under the
+     reports headline can never drift apart. The screen shows its working: money in (all
+     time, including what was carried in from the paper ledger), money spent out of the
+     funds, and what the group holds now.
+
+     One deliberate exception, carried over from the ledger: a fund marked as a LOAN or
+     advance fund is listed but NOT deducted. That money left the fund, but it is owed
+     back, so counting it as spent would make a healthy group look like a deficit.
+
+  3. THE SPENDING REPORT, AS A DOCUMENT
+
+     Two buttons on the screen, and two endpoints behind them:
+
+       * a PDF page for a meeting: what the group holds, how each fund stands, spending
+         by month, and every expense with its voucher number and note;
+       * an Excel workbook with the same content in four sheets - Summary, Expenses,
+         By fund, By month - each with a total row, for the office to sort and total.
+
+     Both are built from the same rows the screen shows, so the paper and the screen are
+     the same record.
+
+  4. A FINE NOW EMAILS THE MEMBER - TWICE
+
+     Members found out about a fine at the next meeting, or did not find out at all, and a
+     payment that was never acknowledged is a payment somebody makes again. Two emails now
+     send themselves:
+
+       * WHEN A FINE IS ISSUED: the group, the fine, the reason it was given, the amount,
+         what is still owed, and what to do if he believes it is wrong;
+       * WHEN MONEY CLEARS A FINE: what was paid, which fines it cleared, and what is
+         still owed. One email per payment, listing every fine the money touched, rather
+         than one per fine - that is how the money arrived and how the member will
+         remember it. This covers a settlement recorded by the office AND a weekly payment
+         that pays down a fine automatically (when the super admin has switched that
+         setting on).
+
+     Two rules make this safe to have automatic:
+
+       * IT CANNOT FAIL THE ENTRY. The fine or the payment is written and audited first;
+         the email goes out afterwards and is deliberately not waited on. A mail server
+         that is down, or not set up at all, cannot leave the office unable to record a
+         fine. Every attempt - sent, skipped or failed - leaves a line in the request log,
+         so "were those emails sent?" has an answer on the server.
+       * IT IS ON BY DEFAULT, WITH ONE SETTING TO SWITCH IT OFF. That is the opposite of
+         the weekly reminder sweep, which stays off until somebody turns it on - and for a
+         good reason: the sweep emails the whole membership on its own, while these two are
+         triggered by a person deliberately recording or settling a fine on one member's
+         record. A committee that does not want them sets FINE_EMAILS=off. Nothing is sent
+         at all without a mail configuration, and a member with no address, or who has
+         email reminders switched off, is skipped - with the reason recorded.
+
+WHAT THIS LOOKS LIKE ON THE GROUND
+
+  Committee meeting, the treasurer is asked what the tea money has bought:
+
+    1. Finance -> Expenses. Three figures at the top: money in all time, spent out of the
+       funds, the group holds now. Below them, each fund with what came in and what left.
+    2. "Every expense (23)" - press PDF and hand the page round. Every line carries its
+       voucher number, and the M-Pesa message where there was one.
+    3. Somebody queries one line. Press Excel instead if they want to sort it, or open
+       Audit -> Money and read the entry that recorded it, with who and when.
+
+  A member is fined for arriving late:
+
+    1. The admin records the fine on the member's page, exactly as before.
+    2. The member's email that evening: the fine, the amount, the reason, what he owes.
+    3. He sends the money. The treasurer logs it; the fine is paid down.
+    4. A second email: Ksh X received, this fine cleared, nothing outstanding.
+
+HOW THIS WAS PROVED
+
+  Backend        262 checks, 195 passing and 0 failing; 67 skip themselves without a
+                 database, as they always do. Fifteen are new: seven on the spending
+                 report (the deduction, the loan exception that is listed but not
+                 deducted, a fund the ledger no longer lists, the month cut, the workbook
+                 sheets, an empty group, and the PDF itself), and eight on the two fine
+                 emails (the switch and its default, each reason a member is skipped, in
+                 the order that helps the office, the figures and wording of both
+                 messages, and that a member's own name or a fine's reason cannot become
+                 markup in the email).
+  Frontend       25 checks, all passing. Two new screens build clean as their own lazily
+                 loaded chunks (Fund spending 13.8 KB / 4.3 KB gzipped, Fines 11.0 KB /
+                 3.7 KB gzipped) - a member's page pays nothing for either. The fines desk
+                 is UI over endpoints that were already there and already covered: issuing,
+                 settling and voiding call the same three API calls the member's own page
+                 does, so the two cannot behave differently.
+  Rehearsal      67 checks against a real MongoDB across 10 suites, all passing -
+                 including the 5 new ones in expenses.test.js, which record an expense
+                 through the API and check that the fund's balance and the group's total
+                 both move, that a correction moves the deduction, that a deletion puts
+                 the money back while the audit trail keeps all three steps, that a loan
+                 fund is listed but not deducted, that a secretary is refused a read and
+                 a write, that tomorrow's date and a personal weekly type are refused,
+                 and that the PDF and the workbook come back as real files. The runner
+                 sets FINE_EMAILS=off, so a rehearsal on a machine with a working mail
+                 configuration emails nobody.
+  Data check     check:data passes - no spreadsheet or dump is tracked.
+
+WHAT IS STILL OPEN FOR THE COMMITTEE
+
+  * FINE_EMAILS is on. If the group would rather fines were only discussed face to face,
+    set FINE_EMAILS=off on the server, and nothing else changes.
+  * Spending has no period filter yet. The report covers everything recorded and splits it
+    by month; "the quarter the committee is arguing about" is a later request, if wanted.
+  * A receipt can be typed in as a voucher number and pasted in as a note, but a scan of it
+    is not attached yet. The Documents screen is where a scan would live.
+  * The fines desk collects one fine at a time. Cash handed over at a meeting for several
+    members' fines is still recorded member by member (or as one contribution each on the
+    ledger). A batch collect, like the one-time week collection on Finance -> Setup, is a
+    later change if the committee wants it.
+
+  5. A FINES DESK, INSTEAD OF THREE PLACES TO GO
+
+     Everything a fine needs already existed, and every piece was somewhere else. The debt
+     list lived on Reports -> Fines. Issuing a fine, recording a payment and voiding a
+     wrong one were reachable only from inside a single member's record - so working a
+     meeting's list meant opening a member, going back, opening the next one.
+
+     Fines (/admin/fines, for the admin and the super admin) is one screen that works in
+     the order a meeting does:
+
+       * the figures first: still owed, paid off, how many members owe and how far back
+         the oldest unpaid fine goes;
+       * ISSUE A FINE: search the member, then the same form a member's own page opens -
+         type, amount, reason, date. He is emailed as it is recorded;
+       * the list, filtered to WHAT IS OWED (where it opens), CLEARED, ALL or VOIDED, with
+         every fine's member, type, reason, date and both its issued and outstanding
+         figures. PAY and VOID sit on the row the fine is on, and the member's own record
+         is one tap away for anything deeper;
+       * WHO OWES WHAT beside it - the same working list Reports shows, with the search,
+         the ordering and each member's own breakdown of what he owes;
+       * the group's fines record as a PDF or a workbook, off the same records as the
+         screen.
+
+     Paying a fine from here says the money came in; voiding says the fine should never
+     have been issued. The two are deliberately different words, and the screen asks which
+     one is meant rather than guessing.
+
+     The dashboard also carries the figure now: "Fines owed" sits beside the week's figures
+     with one tap into that screen, so the question "how much are we owed?" is answered
+     where the rest of the week is.
+
 END OF DOCUMENT
 ===============
 

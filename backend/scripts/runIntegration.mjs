@@ -34,7 +34,20 @@ for (const suite of suites) {
   // them together would have two suites dropping the same scratch database mid-test.
   const result = spawnSync(process.execPath, ['--test', suite], {
     stdio: 'inherit',
-    env: { ...process.env, TEST_MONGO_URI: uri },
+    // The rehearsal must never send mail to anybody. The machine it runs on may hold a
+    // working mail configuration of its own in backend/.env, and the suites issue and settle
+    // fines — which now email the member they belong to. The rehearsal's members carry
+    // `@example.com` addresses, so a send would fail at the provider rather than reach a
+    // person, but a rehearsal that tries to send at all is one whose result depends on
+    // somebody's mailbox: `FINE_EMAILS=off` makes every run identical, with or without mail
+    // configured. The weekly sweep is off unless REMINDER_SWEEP_SEND says otherwise, and
+    // maintenance.test.js clears the mail variables before it runs the sweep by hand.
+    env: {
+      ...process.env,
+      TEST_MONGO_URI: uri,
+      FINE_EMAILS: 'off',
+      REMINDER_SWEEP_SEND: 'false',
+    },
   });
   if (result.status !== 0) status = result.status ?? 1;
 }

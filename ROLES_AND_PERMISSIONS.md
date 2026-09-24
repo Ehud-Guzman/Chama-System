@@ -47,7 +47,11 @@ thing — his verdict on a chapter of the constitution.
 **Key Permissions:**
 - ✅ Everything the treasurer can do, and everything the secretary can do
 - ✅ Record contributions; create, edit and delete expenses
-- ✅ Create, settle and void fines (both categories)
+- ✅ Create, settle and void fines (both categories) — all of it in one place, **Fines**
+  (`/admin/fines`): the totals, the list filtered owed/cleared/all/voided, issuing a fine to a member
+  found by search, recording a payment or voiding a wrong one on the row itself, "who owes what", and
+  the group's fines record as a **PDF** or an **Excel** workbook. The dashboard shows what is owed in
+  fines beside the week's figures, with one tap into that screen
 - ✅ Add, edit and resign members, import a sheet of them, print a statement, keep photographs
 - ✅ **Change a member's ID number, phone number or next of kin once the record holds one** — the
   fields the treasurer may only fill in while they are blank (see A member's three guarded fields)
@@ -82,6 +86,12 @@ and reports on all of it
   each with a free-text note for pasting an M-Pesa or bank message
 - ✅ **Week cycle and opening balances** (`/admin/finance/setup`): the weekly amount, the tea
   amount, the week number and each member's carry-forward balance
+- ✅ **Fund spending** (`/admin/finance/expenses`): every expense on the books, the form that records
+  one — fund, amount, date, what it was for, the voucher or receipt number — plus corrections,
+  deletions and the spending report as a **PDF** or an **Excel** workbook. Each expense is deducted
+  from the fund and from the group's all-time total the moment it is saved, and the screen shows the
+  arithmetic (`utils/moneyPosition`, the same function the reports summary uses). A fund flagged as
+  a loan fund (`isRecoverable`) is listed but not deducted — that money is still owed back.
 - ✅ **The member register**: add, edit and resign members, import a sheet of them, export the
   register, keep member photographs, and print any member's statement
 - ✅ Record contributions, and create/edit/delete expenses; create/edit contribution types
@@ -89,6 +99,10 @@ and reports on all of it
 - ✅ View the audit trail and export it
 - ✅ View chama documents (title deeds, certificates) — read only, not upload or remove
 - ✅ Reminder emails to members who are behind
+- ✅ **Fine emails send themselves** — a payment he logs that clears a member's fine emails the
+  member the acknowledgement without anybody pressing anything (that path needs `autoSettleFines`
+  switched on, which is the super admin's setting). Issuing a fine emails the member as well, but
+  issuing one is the admin's and the super admin's act, not his.
 - ✅ **Fill in a member's ID number, phone number or next of kin while the record holds none**
 - ❌ **Cannot change a member's ID number, phone number or next of kin once one is on the record**
   (403: *"Only an admin can change a member's …"*). Recording a value that is missing is the
@@ -200,8 +214,8 @@ phone numbers are no longer accepted anywhere on the public side.
 | **Finance ledger** (`/admin/finance`) | R/W | R/W | R/W | ❌ | ❌ |
 | **Week cycle & opening balances** | R/W | R/W | R/W | ❌ | ❌ |
 | **Contributions** | R/W | R/W | R/W | ❌ | ❌ |
-| **Expenses** | R/W | R/W | R/W | ❌ | ❌ |
-| **Fines** | R/W | R/W | ❌ | ❌ | C (disciplinary category) |
+| **Expenses** (`/admin/finance/expenses`) | R/W | R/W | R/W | ❌ | ❌ |
+| **Fines** (`/admin/fines`) | R/W | R/W | ❌ | ❌ | C (disciplinary category) |
 | **Members** | R/W | R/W | R/W | ❌ | R (four identity fields) |
 | **A member's ID / phone / next of kin** | R/W | R/W | C (blank → value only) | ❌ | ❌ |
 | **Types** (contribution/fine) | R/W | R/W | C contribution types | ❌ | ❌ |
@@ -219,6 +233,15 @@ phone numbers are no longer accepted anywhere on the public side.
 | **Group 2FA switch** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 **Legend:** R = Read, W = Write, C = Create Only, R/W = Read & Write, ✅ = Yes, ❌ = No Access
+
+**Two things happen without anybody pressing anything.** A fine emails the member when it is issued
+and again when money clears it — a settlement, or a payment logged against his page that pays it down
+when `autoSettleFines` is on. That is the fine's own record speaking, so the roles differ only in who
+triggers it (a fine: admin and super admin; a payment: admin and treasurer). Neither email can fail
+the entry that caused it, a member with no address or with email reminders switched off is skipped,
+and a deployment that does not want them sets `FINE_EMAILS=off`. Spending from a fund is deducted
+from the group's all-time contribution total the moment it is recorded, on every screen, because the
+reports summary and the spending screen share one calculation (`utils/moneyPosition`).
 
 ---
 

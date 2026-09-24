@@ -10,12 +10,20 @@ export default function FinanceLedger() {
     <MemberLedgerList
       showHeader
       action={
-        <Link
-          to="/admin/finance/setup"
-          className="min-h-11 rounded-lg border border-rule bg-surface px-4 text-sm font-medium leading-[2.75rem]"
-        >
-          Setup
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            to="/admin/finance/expenses"
+            className="min-h-11 rounded-lg border border-rule bg-surface px-4 text-sm font-medium leading-[2.75rem]"
+          >
+            Expenses
+          </Link>
+          <Link
+            to="/admin/finance/setup"
+            className="min-h-11 rounded-lg border border-rule bg-surface px-4 text-sm font-medium leading-[2.75rem]"
+          >
+            Setup
+          </Link>
+        </div>
       }
     />
   );

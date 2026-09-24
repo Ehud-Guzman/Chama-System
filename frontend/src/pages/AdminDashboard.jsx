@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import ChangePasswordForm from '../components/shared/ChangePasswordForm';
 import MemberLedgerList from '../components/ledger/MemberLedgerList';
 import WorkspaceNav from '../components/layout/WorkspaceNav';
+import FinesSummaryCard from '../components/fines/FinesSummaryCard';
 
 // How many names the dashboard opens with. The full list is /admin/finance — the
 // same component without a cap — so a dashboard that shows everybody is not adding
@@ -65,7 +66,12 @@ export default function AdminDashboard() {
 
         {/* The second navigation. Below the list on a phone, a sticky rail beside it
             once there is room for one. */}
-        <WorkspaceNav className="xl:sticky xl:top-6" />
+        <div className="min-w-0 space-y-4">
+          {/* What the group is owed in fines, with a tap into the screen that works
+              them. Draws nothing for a role that may not read a financial fine. */}
+          <FinesSummaryCard />
+          <WorkspaceNav className="xl:sticky xl:top-6" />
+        </div>
       </div>
 
       {/* Everybody can change their own password; it needs no grouping, so it stays

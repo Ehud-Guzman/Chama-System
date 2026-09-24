@@ -2,6 +2,7 @@ const dns = require('dns');
 const net = require('net');
 const nodemailer = require('nodemailer');
 const { logEvent } = require('../middleware/requestLogger');
+const { CHAMA_NAME } = require('../data/branding');
 
 // One email concern per place: validation helpers here, sending below, and the
 // reminder template at the bottom. Nothing in this module throws on import —
@@ -681,6 +682,148 @@ function buildReminderEmail({ chamaName, member, lateWeeks = [], fines = [], not
   return { subject, text, html };
 }
 
+// -----------------------------------------------------------------------------
+// Fine emails
+// -----------------------------------------------------------------------------
+//
+// A fine is issued, or a fine is paid. Both are things the member has to be told: a
+// fine he never heard about becomes an argument at the next meeting, and a payment
+// that is never acknowledged is a payment he may make twice. These are the group's own
+// fine records speaking — the same figures the fines screen shows — not a second
+// version of them.
+//
+// The two messages share one shape (the group, the member's own name, the figure, the
+// reason, what happens next), so a member reading them a fortnight apart recognises
+// the second as the same conversation as the first.
+
+function fineDate(value) {
+  if (!value) return '';
+  return new Date(value).toLocaleDateString('en-KE', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+// One fine, just issued.
+function buildFineIssuedEmail({ chamaName, member, fine = {} }) {
+  const group = chamaName || CHAMA_NAME;
+  const firstName = String(member?.name || '').split(' ')[0] || 'member';
+  const typeName = fine.typeName || 'Fine';
+  const reason = String(fine.reason || '').trim();
+  const amount = Number(fine.amount) || 0;
+  const remaining = Number(fine.remaining ?? amount) || 0;
+  const issued = fineDate(fine.date);
+
+  const lines = [
+    `Hi ${firstName},`,
+    '',
+    `A fine has been recorded against you by ${group}.`,
+    '',
+    `  • ${typeName}${reason ? ` — ${reason}` : ''}: ${money(amount)}`,
+    issued ? `  • Dated: ${issued}` : '',
+    '',
+    `What is still owed: ${money(remaining)}.`,
+    '',
+    'You can settle it at the next meeting, or by sending the amount to the group with',
+    'the reference of this fine. If you believe it was recorded in error, speak to the',
+    'office before paying.',
+    '',
+    'Thank you,',
+    group,
+  ];
+
+  const html = `
+  <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.6;color:#1b2b24">
+    <p>Hi ${escapeHtml(firstName)},</p>
+    <p>A fine has been recorded against you by <strong>${escapeHtml(group)}</strong>.</p>
+    <p style="margin:16px 0 4px;font-weight:700">${escapeHtml(typeName)}${
+      reason ? ` — ${escapeHtml(reason)}` : ''
+    }</p>
+    <p style="margin:0">Amount: <strong>${money(amount)}</strong>${
+      issued ? ` &middot; dated ${escapeHtml(issued)}` : ''
+    }</p>
+    <p style="margin:16px 0 0">Still owed: <strong>${money(remaining)}</strong></p>
+    <p style="margin:16px 0 0">You can settle it at the next meeting, or by sending the amount to
+    the group with the reference of this fine. If you believe it was recorded in error, speak to
+    the office before paying.</p>
+    <p style="margin:16px 0 0">Thank you,<br>${escapeHtml(group)}</p>
+  </div>`;
+
+  return {
+    subject: `${group}: a fine of ${money(amount)} has been recorded`,
+    text: lines.join('\n'),
+    html,
+  };
+}
+
+// A fine — or several, when one payment cleared more than one — just paid. One email
+// per payment rather than per fine, because that is how the money arrived and how the
+// member will remember it.
+function buildFineSettledEmail({ chamaName, member, payments = [], totalPaid = 0, paidAt, note = '' }) {
+  const group = chamaName || CHAMA_NAME;
+  const firstName = String(member?.name || '').split(' ')[0] || 'member';
+  const paid = Number(totalPaid) || payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const when = fineDate(paidAt);
+  const outstanding = payments.reduce((sum, p) => sum + (Number(p.remaining) || 0), 0);
+
+  const lines = [
+    `Hi ${firstName},`,
+    '',
+    `Thank you — your fine payment has been received by ${group}.`,
+    '',
+    `  Amount paid: ${money(paid)}${when ? ` (${when})` : ''}`,
+    ...payments.map(
+      (p) =>
+        `  • ${p.label || 'Fine'}: ${money(p.amount)}${
+          Number(p.remaining) > 0 ? ` — ${money(p.remaining)} still owed` : ' — cleared'
+        }`
+    ),
+    '',
+    outstanding > 0
+      ? `You still owe ${money(outstanding)} on the fine${payments.length === 1 ? '' : 's'} above.`
+      : 'Nothing is outstanding on this fine.',
+    note ? `\n${note}` : '',
+    '',
+    'Thank you,',
+    group,
+  ];
+
+  const items = payments
+    .map(
+      (p) =>
+        `<li>${escapeHtml(p.label || 'Fine')}: <strong>${money(p.amount)}</strong>${
+          Number(p.remaining) > 0
+            ? ` — ${money(p.remaining)} still owed`
+            : ' — cleared'
+        }</li>`
+    )
+    .join('');
+
+  const html = `
+  <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.6;color:#1b2b24">
+    <p>Hi ${escapeHtml(firstName)},</p>
+    <p>Thank you — your fine payment has been received by <strong>${escapeHtml(group)}</strong>.</p>
+    <p style="margin:16px 0 4px">Amount paid: <strong>${money(paid)}</strong>${
+      when ? ` &middot; ${escapeHtml(when)}` : ''
+    }</p>
+    ${items ? `<ul style="margin:0;padding-left:18px">${items}</ul>` : ''}
+    ${
+      outstanding > 0
+        ? `<p style="margin:16px 0 0">You still owe <strong>${money(outstanding)}</strong>.</p>`
+        : '<p style="margin:16px 0 0">Nothing is outstanding on this fine.</p>'
+    }
+    ${note ? `<p style="margin:16px 0 0">${escapeHtml(note)}</p>` : ''}
+    <p style="margin:16px 0 0">Thank you,<br>${escapeHtml(group)}</p>
+  </div>`;
+
+  return {
+    subject: `${group}: fine payment of ${money(paid)} received`,
+    text: lines.join('\n'),
+    html,
+  };
+}
+
 module.exports = {
   cleanEmail,
   isValidEmail,
@@ -705,4 +848,9 @@ module.exports = {
   sendMail,
   verifyMail,
   buildReminderEmail,
+  // The two fine messages, exported for the test: what a member is told when a fine is
+  // recorded against him and when his payment for it arrives is decided here, with no
+  // mail server involved.
+  buildFineIssuedEmail,
+  buildFineSettledEmail,
 };

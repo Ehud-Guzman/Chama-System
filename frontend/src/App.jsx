@@ -20,6 +20,8 @@ const MembersList = lazy(() => import('./pages/MembersList.jsx'));
 const MemberDetail = lazy(() => import('./pages/MemberDetail.jsx'));
 const FinanceLedger = lazy(() => import('./pages/FinanceLedger.jsx'));
 const FinanceMemberLedger = lazy(() => import('./pages/FinanceMemberLedger.jsx'));
+const Expenses = lazy(() => import('./pages/Expenses.jsx'));
+const Fines = lazy(() => import('./pages/Fines.jsx'));
 const FinanceSetup = lazy(() => import('./pages/FinanceSetup.jsx'));
 const Reports = lazy(() => import('./pages/Reports.jsx'));
 const Minutes = lazy(() => import('./pages/Minutes.jsx'));
@@ -109,6 +111,14 @@ export default function App() {
                 }
               />
               <Route
+                path="/admin/finance/expenses"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
+                    <Expenses />
+                  </RoleGuard>
+                }
+              />
+              <Route
                 path="/admin/finance/:id"
                 element={
                   <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
@@ -149,6 +159,14 @@ export default function App() {
                 element={
                   <RoleGuard roles={['super_admin', 'admin', 'treasurer', 'secretary']}>
                     <Documents />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/admin/fines"
+                element={
+                  <RoleGuard roles={['super_admin', 'admin']}>
+                    <Fines />
                   </RoleGuard>
                 }
               />
