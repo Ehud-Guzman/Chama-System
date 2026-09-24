@@ -1,4 +1,5 @@
 import BottomNav from './BottomNav';
+import { Link } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import CreditLine from '../shared/CreditLine';
 import { useAuth } from '../../context/AuthContext';
@@ -10,18 +11,29 @@ export default function AdminLayout({ children }) {
   return (
     <div className="min-h-dvh md:pl-56">
       <Sidebar />
-      {/* Mobile top bar: brand + sign out (sidebar hidden). Sticky so signing out —
-          or just knowing which screen you are on — does not mean scrolling back up
-          a long member record. The top inset keeps the brand clear of the notch. */}
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-rule bg-surface px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:hidden">
+      {/* Mobile top bar: brand, the account screen and sign out (sidebar hidden).
+          Sticky so signing out — or just knowing which screen you are on — does not
+          mean scrolling back up a long member record. The top inset keeps the brand
+          clear of the notch. "Account" is here rather than in the tab bar because
+          every role needs it and only four tabs fit; it is where a secretary or a
+          disciplinary officer changes his own password. */}
+      <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-rule bg-surface px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:hidden">
         <p className="min-w-0 truncate text-sm font-bold">{CHAMA_NAME}</p>
-        <button
-          type="button"
-          onClick={logout}
-          className="min-h-11 shrink-0 rounded-lg px-3 text-sm font-medium text-muted hover:bg-elevation"
-        >
-          Sign out
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Link
+            to="/admin/account"
+            className="flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-primary"
+          >
+            Account
+          </Link>
+          <button
+            type="button"
+            onClick={logout}
+            className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted hover:bg-elevation"
+          >
+            Sign out
+          </button>
+        </div>
       </header>
       <main className="mx-auto w-full max-w-3xl px-4 pb-40 pt-6 md:max-w-6xl md:px-8 md:pb-10">
         {children}

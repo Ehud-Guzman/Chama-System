@@ -27,6 +27,7 @@ const Documents = lazy(() => import('./pages/Documents.jsx'));
 const Reminders = lazy(() => import('./pages/Reminders.jsx'));
 const DisciplinaryFines = lazy(() => import('./pages/DisciplinaryFines.jsx'));
 const AuditTrail = lazy(() => import('./pages/AuditTrail.jsx'));
+const MyAccount = lazy(() => import('./pages/MyAccount.jsx'));
 
 export default function App() {
   // Take down the splash that index.html painted.
@@ -169,6 +170,11 @@ export default function App() {
                   </RoleGuard>
                 }
               />
+              {/* Every signed-in role reaches this one, so it carries no RoleGuard:
+                  it is where a treasurer, secretary or disciplinary officer changes
+                  his own password and enrols his own second factor, since neither
+                  Settings nor the dashboard is his to open. */}
+              <Route path="/admin/account" element={<MyAccount />} />
             </Route>
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />

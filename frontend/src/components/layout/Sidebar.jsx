@@ -44,10 +44,22 @@ export default function Sidebar() {
       <div className="border-t border-rule px-5 py-4">
         <p className="truncate text-sm font-medium">{user?.name}</p>
         <p className="truncate text-xs text-muted">{user?.email}</p>
+        {/* The account screen is a destination like any other, but it does not belong
+            in the list above: every role has it, and it is not part of the day's work. */}
+        <NavLink
+          to="/admin/account"
+          className={({ isActive }) =>
+            `mt-3 flex min-h-11 items-center rounded-lg px-3 text-sm font-medium ${
+              isActive ? 'bg-primary/10 text-primary' : 'text-ink hover:bg-canvas'
+            }`
+          }
+        >
+          My account
+        </NavLink>
         <button
           type="button"
           onClick={logout}
-          className="mt-3 min-h-11 w-full rounded-lg border border-rule text-sm font-medium hover:bg-canvas"
+          className="mt-1 min-h-11 w-full rounded-lg border border-rule text-sm font-medium hover:bg-canvas"
         >
           Sign out
         </button>
