@@ -54,6 +54,7 @@ const { fridayOf } = require('../../src/utils/weekCycle');
 let server;
 let base;
 let tokens = {};
+let memberPayer;
 let chai;
 let weekly;
 let loanFund;
@@ -113,7 +114,7 @@ test.before(async () => {
     active: true,
   });
 
-  await Member.create({
+  memberPayer = await Member.create({
     name: 'Rehearsal Payer',
     phone: '0712000010',
     regNumber: 'R/010',
@@ -265,6 +266,93 @@ test('a loan fund is listed but not deducted from the group total', { skip }, as
   assert.equal(after.body.groupFund.holds, before.body.groupFund.holds - 1000);
   assert.equal(after.body.groupFund.spent, before.body.groupFund.spent);
   assert.equal(after.body.groupFund.onLoan, before.body.groupFund.onLoan + 1000);
+});
+
+test('a purchase the group makes as a whole comes out of the group\u2019s total money', { skip }, async () => {
+  const before = await json(await call(tokens.treasurer, 'GET', '/api/expenses/summary'));
+  // One member's own money, to prove it is not touched: the group's contribution pool
+  // paid for this, not any individual's savings.
+  const hisBefore = await json(
+    await call(tokens.treasurer, 'GET', `/api/ledger/members/${memberPayer._id}`)
+  );
+  assert.equal(hisBefore.status, 200);
+
+  const created = await json(
+    await call(tokens.treasurer, 'POST', '/api/expenses', {
+      source: 'group',
+      amount: 200_000,
+      date: YESTERDAY,
+      description: 'Land at Ngong',
+      reference: 'TITLE/4471',
+      note: 'Deposit paid to the vendor at the meeting.',
+    })
+  );
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.expense.source, 'group');
+  assert.equal(created.body.expense.typeId, null, 'no fund is charged for this');
+
+  const after = await json(await call(tokens.treasurer, 'GET', '/api/expenses/summary'));
+
+  // The group's total money is 200,000 lighter...
+  assert.equal(after.body.money.totalExpenses, before.body.money.totalExpenses + 200_000);
+  assert.equal(after.body.money.netBalance, before.body.money.netBalance - 200_000);
+  assert.equal(
+    after.body.money.spentFromGroupTotal,
+    before.body.money.spentFromGroupTotal + 200_000
+  );
+  assert.equal(after.body.money.spentFromFunds, before.body.money.spentFromFunds);
+  // ...and NOT a fund gone overdrawn: every fund holds exactly what it held before.
+  assert.equal(after.body.groupFund.holds, before.body.groupFund.holds);
+  for (const fund of before.body.funds) {
+    const now = after.body.funds.find((f) => f.id === fund.id);
+    assert.equal(now.balance, fund.balance, `${fund.name} must not be charged`);
+    assert.equal(now.spent, fund.spent, `${fund.name}'s spending must not move`);
+  }
+
+  // The row says where the money came from, so the list and the documents read the same.
+  const row = after.body.expenses.find((x) => x.description === 'Land at Ngong');
+  assert.equal(row.fromGroupTotal, true);
+  assert.equal(row.fund, "The group's total money");
+  assert.equal(row.fundId, '');
+  // It is not in the funds' table, because it is not a fund.
+  assert.ok(
+    !after.body.byFund.some((f) => f.spent >= 200_000),
+    'the land must not appear as a fund'
+  );
+
+  // A member's own money is untouched — that is the whole point of this source.
+  const hisAfter = await json(
+    await call(tokens.treasurer, 'GET', `/api/ledger/members/${memberPayer._id}`)
+  );
+  assert.equal(hisAfter.body.member.money, hisBefore.body.member.money);
+
+  // Deleting it puts the group's total back where it was.
+  const removed = await json(
+    await call(tokens.treasurer, 'DELETE', `/api/expenses/${created.body.expense._id}`)
+  );
+  assert.equal(removed.status, 200);
+  const restored = await json(await call(tokens.treasurer, 'GET', '/api/expenses/summary'));
+  assert.equal(restored.body.money.netBalance, before.body.money.netBalance);
+  assert.equal(restored.body.money.totalExpenses, before.body.money.totalExpenses);
+});
+
+test('a group purchase has to say what it bought', { skip }, async () => {
+  const nameless = await json(
+    await call(tokens.treasurer, 'POST', '/api/expenses', {
+      source: 'group',
+      amount: 5_000,
+      date: YESTERDAY,
+    })
+  );
+  assert.equal(nameless.status, 400);
+  assert.match(nameless.body.message, /bought/);
+
+  // And a fund-sourced expense still has to name a fund that money is spent from.
+  const fundless = await json(
+    await call(tokens.treasurer, 'POST', '/api/expenses', { source: 'fund', amount: 5_000 })
+  );
+  assert.equal(fundless.status, 400);
+  assert.match(fundless.body.message, /track expenses/);
 });
 
 test('only the office may record or read spending, and only against a real fund', { skip }, async () => {

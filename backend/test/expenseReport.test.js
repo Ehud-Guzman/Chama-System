@@ -18,8 +18,17 @@ const {
   renderExpenseReportPdf,
 } = require('../src/utils/expenseReport');
 
-// One expense as the controller hands it over: populated fund and logger.
-function expense({ fund = 'Chai', amount, date, description = 'Tea', reference = '', note = '' }) {
+// One expense as the controller hands it over: populated fund and logger. `fromGroup`
+// makes it a purchase the group made as a whole, which names no fund at all.
+function expense({
+  fund = 'Chai',
+  amount,
+  date,
+  description = 'Tea',
+  reference = '',
+  note = '',
+  fromGroup = false,
+}) {
   return {
     _id: `${fund}-${date}-${amount}`,
     amount,
@@ -28,7 +37,8 @@ function expense({ fund = 'Chai', amount, date, description = 'Tea', reference =
     reference,
     note,
     deleted: false,
-    typeId: { name: fund },
+    source: fromGroup ? 'group' : 'fund',
+    typeId: fromGroup ? null : { name: fund },
     loggedBy: { name: 'Victor' },
   };
 }
@@ -168,7 +178,9 @@ test('the workbook carries the vouchers, the funds and the months, with a total 
 
   const summary = Object.fromEntries(sheets[0].rows.map((r) => [r.Field, r.Value]));
   assert.equal(summary['Money in, all time'], 3_444_800);
-  assert.equal(summary['Spent out of the funds (deducted)'], 4000);
+  assert.equal(summary['Spent in total (loans excluded)'], 4000);
+  assert.equal(summary['Of that, out of the funds'], 4000);
+  assert.equal(summary["Of that, out of the group's total money"], 0);
   assert.equal(summary['Held by the group now'], 3_440_800);
   assert.equal(summary['Prepared by'], 'Victor');
 
@@ -290,5 +302,64 @@ test('the report states the group fund total, and the workbook carries it', () =
   );
   assert.equal(summary['Group funds hold (all funds together)'], 14_400);
   assert.equal(summary['Group funds - spent and gone'], 4000);
+});
+
+test('money spent out of the group\u2019s total money is not a fund gone overdrawn', () => {
+  const report = buildExpenseReport({
+    expenses: [
+      ...FIXTURES,
+      // A group purchase: no fund behind it, because the group bought it as a whole.
+      expense({
+        fund: undefined,
+        amount: 200_000,
+        date: '2026-09-12',
+        description: 'Land at Ngong',
+        reference: 'TITLE/4471',
+        fromGroup: true,
+      }),
+    ],
+    // The position as moneyPosition() computes it once the group has also spent out of
+    // its total money: the deduction split into the two places the money came from.
+    position: position({
+      funds: [CHAI],
+      overrides: {
+        totalExpenses: 204_000,
+        spentFromFunds: 4000,
+        spentFromGroupTotal: 200_000,
+        netBalance: 3_444_800 - 204_000,
+      },
+    }),
+  });
+
+  // It counts as money gone — the group's total is 200,000 lighter — but it is not a
+  // fund's spending, so the funds' table is untouched and still adds up.
+  assert.equal(report.summary.total, 204_000);
+  assert.equal(report.summary.spentFromGroupTotal, 200_000);
+  assert.equal(report.summary.spentFromFunds, 4000);
+  assert.deepEqual(
+    report.byFund.map((f) => f.name),
+    ['Chai'],
+    'the group\u2019s purchase must not appear as a fund'
+  );
+  assert.equal(report.byFund[0].spent, 4000);
+
+  // The row itself says where the money came from, so the list and the documents read
+  // the same way.
+  const land = report.rows.find((r) => r.description === 'Land at Ngong');
+  assert.equal(land.fromGroupTotal, true);
+  assert.equal(land.fund, "The group's total money");
+  assert.equal(land.fundId, '');
+
+  // And the money block names both halves of the deduction.
+  assert.equal(report.money.spentFromGroupTotal, 200_000);
+  assert.equal(report.money.spentFromFunds, 4000);
+  assert.equal(report.money.totalExpenses, 4000 + 200_000);
+
+  const sheets = expenseReportSheets(report, 'Wazo Moja Self-Help Group');
+  const summary = Object.fromEntries(sheets[0].rows.map((r) => [r.Field, r.Value]));
+  assert.equal(summary["Of that, out of the group's total money"], 200_000);
+  assert.equal(summary['Of that, out of the funds'], 4000);
+  const rows = sheets[1].rows;
+  assert.equal(rows[0].Fund, "The group's total money", 'newest first, and named as such');
 });
 

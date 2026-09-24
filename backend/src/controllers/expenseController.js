@@ -80,15 +80,30 @@ async function listExpenses(req, res, next) {
   }
 }
 
+// Which pot is paying. Omitted means a fund, which is what every request meant before
+// the group's total money could pay for anything.
+function readSource(value) {
+  return value === 'group' ? 'group' : 'fund';
+}
+
 // POST /api/expenses
 async function createExpense(req, res, next) {
   try {
-    const { typeId, amount, date, description, reference, note } = req.body || {};
+    const { source, typeId, amount, date, description, reference, note } = req.body || {};
+    const from = readSource(source);
 
-    const type = await ContributionType.findById(typeId);
-    if (!type || !type.tracksExpenses) {
-      return res.status(400).json({ message: 'Contribution type not found or does not track expenses' });
+    let type = null;
+    if (from === 'fund') {
+      type = await ContributionType.findById(typeId);
+      if (!type || !type.tracksExpenses) {
+        return res.status(400).json({ message: 'Contribution type not found or does not track expenses' });
+      }
+    } else if (!String(description || '').trim()) {
+      // A group purchase names no fund, so what it was for is the only thing that says
+      // what the money bought. Without it the entry is a figure and nothing else.
+      return res.status(400).json({ message: 'Say what the group bought with it' });
     }
+
     const n = Number(amount);
     if (!Number.isFinite(n) || n <= 0) {
       return res.status(400).json({ message: 'Amount must be a number greater than zero' });
@@ -105,7 +120,8 @@ async function createExpense(req, res, next) {
     }
 
     const expense = await Expense.create({
-      typeId: type._id,
+      source: from,
+      typeId: from === 'fund' ? type._id : null,
       amount: n,
       date: when,
       description: String(description || '').trim(),
@@ -140,17 +156,25 @@ async function updateExpense(req, res, next) {
     if (!expense || expense.deleted) return res.status(404).json({ message: 'Expense not found' });
     const before = snapshot(expense);
 
-    const { typeId, amount, date, description, reference, note } = req.body || {};
-    // The fund can be corrected too — an expense put against the wrong one is the other
-    // mistake this form exists to fix, and it has to be a valid fund money comes out of.
-    if (typeId !== undefined && typeId !== null && typeId !== '') {
-      const type = await ContributionType.findById(typeId);
-      if (!type || !type.tracksExpenses) {
-        return res
-          .status(400)
-          .json({ message: 'Contribution type not found or does not track expenses' });
+    const { source, typeId, amount, date, description, reference, note } = req.body || {};
+    // The pot can be corrected too: money recorded against a fund that was really the
+    // group's own, or the other way round, is the other mistake this form exists to fix.
+    if (source !== undefined || typeId !== undefined) {
+      const from = readSource(source === undefined ? expense.source : source);
+      if (from === 'group') {
+        expense.source = 'group';
+        expense.typeId = null;
+      } else {
+        const id = typeId === undefined || typeId === null || typeId === '' ? expense.typeId : typeId;
+        const type = id ? await ContributionType.findById(id) : null;
+        if (!type || !type.tracksExpenses) {
+          return res
+            .status(400)
+            .json({ message: 'Contribution type not found or does not track expenses' });
+        }
+        expense.source = 'fund';
+        expense.typeId = type._id;
       }
-      expense.typeId = type._id;
     }
     if (amount !== undefined) {
       const n = Number(amount);
@@ -170,6 +194,14 @@ async function updateExpense(req, res, next) {
     if (description !== undefined) expense.description = String(description).trim();
     if (reference !== undefined) expense.reference = String(reference).trim();
     if (note !== undefined) expense.note = String(note).trim();
+
+    // A group purchase names no fund, so what it was for is the only thing that says what
+    // the money bought. The check is here rather than in the branch above so it also
+    // catches a correction that clears the description on an entry already sourced from
+    // the group's total money.
+    if (expense.source === 'group' && !expense.description) {
+      return res.status(400).json({ message: 'Say what the group bought with it' });
+    }
 
     await expense.save();
     await logAudit({

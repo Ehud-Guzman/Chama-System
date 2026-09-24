@@ -1,5 +1,6 @@
 const PDFDocument = require('pdfkit');
 const { CHAMA_NAME } = require('../data/branding');
+const { toMoney } = require('./money');
 const { groupFundTotals } = require('./moneyPosition');
 
 // What the group has spent, as a document.
@@ -39,14 +40,20 @@ function monthLabel(key) {
 // report groups it.
 function mapExpense(expense) {
   const date = expense.date ? new Date(expense.date) : null;
+  // Money spent out of the group's total money names no fund: it comes off what the
+  // group holds as a whole, so it is labelled as that rather than being made to look
+  // like a fund of its own.
+  const fromGroupTotal = expense.source === 'group' || !expense.typeId;
   return {
     id: String(expense._id),
     date,
     month: date ? new Date(date.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 7) : '',
+    source: fromGroupTotal ? 'group' : 'fund',
+    fromGroupTotal,
     // The fund's id travels with the row so a screen correcting an entry can put the
     // picker back on the fund it was spent from, not on whichever is first.
-    fundId: String(expense.typeId?._id || expense.typeId || ''),
-    fund: expense.typeId?.name || 'Fund',
+    fundId: fromGroupTotal ? '' : String(expense.typeId?._id || expense.typeId || ''),
+    fund: fromGroupTotal ? "The group's total money" : expense.typeId?.name || 'Fund',
     description: expense.description || '',
     reference: expense.reference || '',
     note: expense.note || '',
@@ -60,9 +67,13 @@ function buildExpenseReport({ expenses, position, preparedBy = '' }) {
   const rows = expenses.map(mapExpense);
   const held = position || {};
 
-  const fundNames = new Set(rows.map((r) => r.fund));
+  const fundNames = new Set(rows.filter((r) => !r.fromGroupTotal).map((r) => r.fund));
   const byFundMap = new Map();
+  // Only the rows that came out of a fund. A group purchase is not a fund with a
+  // negative balance — it is money the group spent as a whole, and it is totalled
+  // separately so the fund table still adds up.
   for (const row of rows) {
+    if (row.fromGroupTotal) continue;
     const fund = byFundMap.get(row.fund) || { name: row.fund, spent: 0, count: 0 };
     fund.spent += row.amount;
     fund.count += 1;
@@ -125,6 +136,17 @@ function buildExpenseReport({ expenses, position, preparedBy = '' }) {
   const dates = rows.map((r) => r.date).filter(Boolean).map((d) => d.getTime());
   const total = rows.reduce((sum, r) => sum + r.amount, 0);
   const advances = byFund.reduce((sum, f) => sum + f.advances, 0);
+  // What the group spent out of its total money rather than out of a fund. Summed from
+  // the rows so the documents and the screen agree, and separately from the funds so a
+  // reader can tell "we bought land" from "we spent the tea money".
+  const spentFromGroupTotal = toMoney(
+    rows.filter((r) => r.fromGroupTotal).reduce((sum, r) => sum + r.amount, 0)
+  );
+  const moneyOut = Number(held.totalExpenses) || 0;
+  const groupTotalOut = Number(held.spentFromGroupTotal ?? spentFromGroupTotal) || 0;
+  const fundsOut = Number(
+    held.spentFromFunds ?? toMoney(Math.max(moneyOut - groupTotalOut, 0))
+  ) || 0;
 
   return {
     rows: [...rows].sort((a, b) => b.date - a.date),
@@ -137,6 +159,9 @@ function buildExpenseReport({ expenses, position, preparedBy = '' }) {
       // this total can be larger than the figure taken off the contributions.
       advances,
       counted: total - advances,
+      // Of which came out of the group's total money rather than a fund.
+      spentFromGroupTotal,
+      spentFromFunds: toMoney(total - advances - spentFromGroupTotal),
       fundCount: byFund.length,
       monthCount: byMonth.length,
       firstDate: dates.length ? new Date(Math.min(...dates)) : null,
@@ -148,11 +173,15 @@ function buildExpenseReport({ expenses, position, preparedBy = '' }) {
       totalContributed: Number(held.totalContributed) || 0,
       // Money gone, loans and advances excluded — the figure that comes off what the
       // members contributed.
-      totalExpenses: Number(held.totalExpenses) || 0,
+      totalExpenses: moneyOut,
+      // Of that: out of the funds the group collects into, and out of its total money —
+      // a purchase like land names no fund and must not be shown as one gone overdrawn.
+      // The position is authoritative; the rows are the fallback for a caller that
+      // assembles a position by hand (the unit tests do).
+      spentFromFunds: fundsOut,
+      spentFromGroupTotal: groupTotalOut,
       netBalance: Number(held.netBalance) || 0,
-      // The group's own funds added up, spending already netted off each of them. The
-      // fallback matters because this builder is also called with a position assembled
-      // for a test: the total is then worked out from the same fund rows.
+      // The group's own funds added up, spending already netted off each of them.
       groupFund: held.groupFund || groupFundTotals(held.funds),
     },
     preparedBy,
@@ -230,7 +259,9 @@ function renderExpenseReportPdf(res, report, chamaName) {
     ['  of the money that came into them', money(gf.in)],
     ['  spent from them, and gone', money(gf.spent)],
     ['  out on loan, still owed back', money(gf.onLoan)],
-    ['Spent out of the funds (loans and advances excluded)', money(report.money.totalExpenses)],
+    ['Spent in total (loans and advances excluded)', money(report.money.totalExpenses)],
+    ['  out of the funds the group collects into', money(report.money.spentFromFunds)],
+    ['  out of the group\u2019s total money (no fund)', money(report.money.spentFromGroupTotal)],
     ['Held by the group now', money(report.money.netBalance)],
     [
       'Expenses on this report',
@@ -370,7 +401,9 @@ function expenseReportSheets(report, chamaName) {
     { Field: 'Money in, all time', Value: report.money.totalContributed },
     { Field: 'Carried in from the paper ledger', Value: report.money.carriedIn },
     { Field: 'Paid in since the books opened', Value: report.money.collected },
-    { Field: 'Spent out of the funds (deducted)', Value: report.money.totalExpenses },
+    { Field: 'Spent in total (loans excluded)', Value: report.money.totalExpenses },
+    { Field: 'Of that, out of the funds', Value: report.money.spentFromFunds },
+    { Field: "Of that, out of the group's total money", Value: report.money.spentFromGroupTotal },
     { Field: 'Held by the group now', Value: report.money.netBalance },
     { Field: 'Group funds hold (all funds together)', Value: report.money.groupFund?.holds },
     { Field: 'Group funds - came in', Value: report.money.groupFund?.in },

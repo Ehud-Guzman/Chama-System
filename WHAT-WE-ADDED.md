@@ -1029,6 +1029,11 @@ WHAT CHANGED, IN PLAIN ENGLISH
        * corrections (cash spent differs from the estimate) and deletions. A deletion
          returns the money to the fund and stays in the audit trail - this system never
          erases a money record, it only marks it dead;
+       * a purchase the group makes AS A WHOLE - land, a building, an asset - is recorded
+         against THE GROUP'S TOTAL MONEY instead of a fund: it needs no fund to charge,
+         takes nothing off any member's own balance, and comes straight off what the
+         group holds. Before this, the only way to record the land was to charge a fund
+         that never held the money, which left that fund reading as overdrawn;
        * a date in the future is refused, because that is almost always a mistyped year
          and it would put the spending in a month that has not happened.
 
@@ -1059,6 +1064,13 @@ WHAT CHANGED, IN PLAIN ENGLISH
      advance fund is listed but NOT deducted from the group's spending. That money left the
      fund - the fund is genuinely lighter by it, and the group total says so - but it is
      owed back, so counting it as spent would make a healthy group look like a deficit.
+
+     A purchase out of the group's total money is deducted the same way - what the group
+     holds comes down by it, on every screen and in both documents - but it is named as
+     having come out of the group's money rather than out of a fund, and the funds' own
+     figure is left alone. That is the difference between "we bought land" and "we spent
+     the tea money": one is the group's own decision with its own money, the other is a
+     fund's spending.
 
   3. THE SPENDING REPORT, AS A DOCUMENT
 
@@ -1107,8 +1119,14 @@ WHAT THIS LOOKS LIKE ON THE GROUND
   Committee meeting, the treasurer is asked what the tea money has bought:
 
     1. Finance -> Expenses. Four figures at the top: money in all time, what the group's
-       funds hold with the spending already off them, what has been spent out of the funds,
-       and what the group holds now. Below them, each fund with what came in and what left.
+       funds hold with the spending already off them, what has been spent (and how much of
+       it came out of the funds and how much out of the group's total money), and what the
+       group holds now. Below them, each fund with what came in and what left.
+
+       The picker under "Spent from" leads with THE GROUP'S TOTAL MONEY - which is what
+       land, a building or any purchase the group makes as a whole comes out of - then the
+       funds by what they hold. Recording Ksh 200,000 for land against the group's total
+       leaves every fund exactly where it was and takes 200,000 off what the group holds.
     2. "Every expense (23)" - press PDF and hand the page round. Every line carries its
        voucher number, and the M-Pesa message where there was one.
     3. Somebody queries one line. Press Excel instead if they want to sort it, or open
@@ -1123,10 +1141,11 @@ WHAT THIS LOOKS LIKE ON THE GROUND
 
 HOW THIS WAS PROVED
 
-  Backend        264 checks, 197 passing and 0 failing; 67 skip themselves without a
-                 database, as they always do. Seventeen are new: nine on the spending
+  Backend        267 checks, 198 passing and 0 failing; 69 skip themselves without a
+                 database, as they always do. Eighteen are new: ten on the spending
                  report (the deduction, the group's funds added up with the spending off
-                 them, the loan exception that is listed but not deducted, a fund the
+                 them, a purchase out of the group's total money that charges no fund,
+                 the loan exception that is listed but not deducted, a fund the
                  ledger no longer lists, the month cut, the workbook sheets, an empty
                  group, and the PDF itself), and eight on the two fine
                  emails (the switch and its default, each reason a member is skipped, in
@@ -1139,16 +1158,19 @@ HOW THIS WAS PROVED
                  is UI over endpoints that were already there and already covered: issuing,
                  settling and voiding call the same three API calls the member's own page
                  does, so the two cannot behave differently.
-  Rehearsal      67 checks against a real MongoDB across 10 suites, all passing -
-                 including the 5 new ones in expenses.test.js, which record an expense
+  Rehearsal      69 checks against a real MongoDB across 10 suites, all passing -
+                 including the 7 new ones in expenses.test.js, which record an expense
                  through the API and check that the fund's balance, the group's total
                  fund and the group's total all move by it, that a correction moves them
                  and a deletion puts them back, that a loan fund is listed, leaves the
-                 fund lighter, and is named as owed back rather than spent, that a
-                 secretary is refused a read and a write, that tomorrow's date and a
-                 personal weekly type are refused, and that the PDF and the workbook come
-                 back as real files. The runner sets FINE_EMAILS=off, so a rehearsal on a
-                 machine with a working mail configuration emails nobody.
+                 fund lighter, and is named as owed back rather than spent, that a purchase
+                 out of the group's total money (land) leaves every fund untouched and a
+                 member's own money untouched while the group's total comes down, that a
+                 secretary is refused a read and a write, that tomorrow's date, a nameless
+                 group purchase and a personal weekly type are refused, and that the PDF
+                 and the workbook come back as real files. The runner sets FINE_EMAILS=off,
+                 so a rehearsal on a machine with a working mail configuration emails
+                 nobody.
   Data check     check:data passes - no spreadsheet or dump is tracked.
 
 WHAT IS STILL OPEN FOR THE COMMITTEE

@@ -568,7 +568,11 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   treasurer and the super admin) is where money leaves the funds. An expense carries the fund it
   came from, the amount, the date, what it was for, the voucher or receipt number it is backed by
   and a free-text note for an M-Pesa message — every write is audit-logged, and deleting one is a
-  soft delete that returns the money to the fund and stays in the trail. Spending is deducted from
+  soft delete that returns the money to the fund and stays in the trail. The source is either **a
+  fund** (the pot the group collects into — the picker shows each one's balance, leads with the one
+  holding most, and groups the funds nothing has been collected into yet) or **the group's total
+  money**, for what the group buys as a whole like land: no fund is charged, no member's own balance
+  moves, and it comes straight off what the group holds. Spending is deducted from
   the all-time contribution total the moment it is saved (`utils/moneyPosition`, shared with the
   reports summary, so the screen and `GET /api/reports/summary` can never disagree); a fund flagged
   `isRecoverable` is a loan, so its payouts are listed but not deducted — that money is still owed

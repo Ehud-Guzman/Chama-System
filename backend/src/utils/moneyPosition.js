@@ -7,6 +7,7 @@ const { fundBalance } = require('./fundBalance');
 const { bucketForType } = require('./ledgerTypes');
 const { resolveConfig, scoredWeeks } = require('./weekCycle');
 const { getOrCreateSettings } = require('./settings');
+const { toMoney } = require('./money');
 
 // The group's money, in the three lines a committee asks for: what came in, what has
 // been spent out of the funds, and what that leaves on hand.
@@ -29,13 +30,32 @@ async function computeMoneyPosition() {
     // money paid out under them is still owed back to the group, and counting it as
     // spent would make the group look like it had run a deficit the day it helped a
     // member. Everything else — tea, water, an emergency — is money gone.
+    //
+    // Split by where the money came from, because the two are spent from different
+    // places and a report has to be able to say so: `fund` is a pot the group collects
+    // into, `group` is the group's total money (land, a building, an asset bought as a
+    // whole). A group-source expense names no fund at all, which is why the lookup keeps
+    // documents with no match instead of dropping them — dropping them is exactly how
+    // the group's biggest purchases would silently vanish from its own spending.
     Expense.aggregate([
       { $match: { deleted: false } },
-      { $group: { _id: '$typeId', total: { $sum: '$amount' } } },
-      { $lookup: { from: 'contributiontypes', localField: '_id', foreignField: '_id', as: 'type' } },
-      { $unwind: '$type' },
+      {
+        $group: {
+          _id: { source: { $ifNull: ['$source', 'fund'] }, typeId: '$typeId' },
+          total: { $sum: '$amount' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'contributiontypes',
+          localField: '_id.typeId',
+          foreignField: '_id',
+          as: 'type',
+        },
+      },
+      { $unwind: { path: '$type', preserveNullAndEmptyArrays: true } },
       { $match: { 'type.isRecoverable': { $ne: true } } },
-      { $group: { _id: null, total: { $sum: '$total' } } },
+      { $group: { _id: '$_id.source', total: { $sum: '$total' } } },
     ]),
     carriedInTotals(),
     getOrCreateSettings(),
@@ -94,13 +114,21 @@ async function computeMoneyPosition() {
 
   const collected = contributedRows[0]?.total || 0;
   const totalContributed = collected + carried.total;
-  const totalExpenses = expensesAgg[0]?.total || 0;
+  // Two sums rather than one, so a report can say where the money went: out of the
+  // funds the group collects into, or out of its total money (a group purchase with no
+  // fund behind it). The deduction is the two added up.
+  const spentBySource = new Map(expensesAgg.map((row) => [row._id, Number(row.total) || 0]));
+  const spentFromFunds = spentBySource.get('fund') || 0;
+  const spentFromGroupTotal = spentBySource.get('group') || 0;
+  const totalExpenses = spentFromFunds + spentFromGroupTotal;
 
   return {
     carriedIn: carried,
     collected,
     totalContributed,
     totalExpenses,
+    spentFromFunds,
+    spentFromGroupTotal,
     netBalance: totalContributed - totalExpenses,
     funds,
     // The group's own money, added up: see groupFundTotals below.
@@ -126,7 +154,7 @@ const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 // so a reader can check the arithmetic instead of trusting the bottom line.
 function groupFundTotals(funds = []) {
   const rows = Array.isArray(funds) ? funds : [];
-  const sum = (pick) => round2(rows.reduce((total, fund) => total + (Number(pick(fund)) || 0), 0));
+  const sum = (pick) => toMoney(rows.reduce((total, fund) => total + (Number(pick(fund)) || 0), 0));
 
   const holds = sum((f) => f.balance);
   const spent = sum((f) => (f.isRecoverable ? 0 : f.spent));
@@ -138,7 +166,7 @@ function groupFundTotals(funds = []) {
   return {
     // What has come into those funds: their one-time carry-in, what was paid in since,
     // and the income the ledger derives (the automatic tea).
-    in: round2(carriedIn + collected + derived),
+    in: toMoney(carriedIn + collected + derived),
     carriedIn,
     collected,
     derived,

@@ -26,6 +26,10 @@ import ConfirmDialog from '../components/shared/ConfirmDialog';
 // one figure in this form nobody expects to have to correct.
 function emptyForm(date = todayISO()) {
   return {
+    // Where the money comes from: a fund the group collects into, or the group's total
+    // money — for what the group buys as a whole (land, a building), which has no fund
+    // to charge.
+    source: 'fund',
     typeId: '',
     amount: '',
     date,
@@ -113,6 +117,7 @@ export default function Expenses() {
   function startEdit(expense) {
     setEditingId(expense.id);
     setForm({
+      source: expense.source === 'group' || expense.fromGroupTotal ? 'group' : 'fund',
       typeId: expense.fundId || '',
       amount: String(expense.amount ?? ''),
       date: expense.date ? isoDateOf(expense.date) : todayISO(),
@@ -124,6 +129,18 @@ export default function Expenses() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  // One control, two kinds of answer: a fund, or the group's total money. Keeping it in
+  // the same picker means the treasurer does not have to learn a second step to record
+  // the group's biggest purchases.
+  function pickSource(event) {
+    const value = event.target.value;
+    if (value === 'group') {
+      setForm((f) => ({ ...f, source: 'group' }));
+      return;
+    }
+    setForm((f) => ({ ...f, source: 'fund', typeId: value }));
+  }
+
   function cancelEdit() {
     setEditingId('');
     setForm({ ...emptyForm(), typeId: selectedFund?.id || '' });
@@ -132,7 +149,8 @@ export default function Expenses() {
   async function submit(e) {
     e.preventDefault();
     const n = Number(String(form.amount).replace(/,/g, ''));
-    if (!selectedFund || !form.typeId) {
+    const fromGroup = form.source === 'group';
+    if (!fromGroup && (!selectedFund || !form.typeId)) {
       toast('Choose the fund this was spent from', 'error');
       return;
     }
@@ -140,8 +158,14 @@ export default function Expenses() {
       toast('Enter an amount greater than zero', 'error');
       return;
     }
+    // A group purchase names no fund, so what it was for is what identifies it.
+    if (fromGroup && !form.description.trim()) {
+      toast('Say what the group bought with it', 'error');
+      return;
+    }
     const body = {
-      typeId: form.typeId,
+      source: fromGroup ? 'group' : 'fund',
+      typeId: fromGroup ? null : form.typeId,
       amount: n,
       date: form.date || todayISO(),
       description: form.description.trim(),
@@ -156,14 +180,22 @@ export default function Expenses() {
         toast('Expense corrected — the change is in the audit trail');
       } else {
         await api.post('/api/expenses', body);
-        toast(
-          `${money(n)} recorded against ${selectedFund.name}${
-            selectedFund.balance - n < 0 ? ' — that fund is now overdrawn' : ''
-          }`
-        );
+        if (fromGroup) {
+          toast(
+            `${money(n)} recorded against the group's total money${
+              Number(holding.netBalance) - n < 0 ? ' — that is more than the group holds' : ''
+            }`
+          );
+        } else {
+          toast(
+            `${money(n)} recorded against ${selectedFund.name}${
+              selectedFund.balance - n < 0 ? ' — that fund is now overdrawn' : ''
+            }`
+          );
+        }
       }
       setEditingId('');
-      setForm({ ...emptyForm(body.date), typeId: form.typeId });
+      setForm({ ...emptyForm(body.date), source: form.source, typeId: form.typeId });
       await load();
     } catch (err) {
       toast(apiMessage(err), 'error');
@@ -288,9 +320,13 @@ export default function Expenses() {
           accent
         />
         <Stat
-          label="Spent out of the funds"
+          label="Spent, and deducted"
           value={`− ${money(holding.totalExpenses)}`}
-          hint="Deducted from the funds, and from the total. Loans and advances are not — that money is owed back"
+          hint={`${money(holding.spentFromFunds)} out of the funds${
+            holding.spentFromGroupTotal > 0
+              ? ` + ${money(holding.spentFromGroupTotal)} out of the group's total`
+              : ''
+          } — loans and advances are not counted`}
           alert
         />
         <Stat
@@ -337,13 +373,19 @@ export default function Expenses() {
                 </label>
                 <select
                   id="expense-fund"
-                  value={form.typeId || selectedFund?.id || ''}
-                  onChange={(e) => set('typeId', e.target.value)}
+                  value={form.source === 'group' ? 'group' : form.typeId || selectedFund?.id || ''}
+                  onChange={pickSource}
                   className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
                 >
-                  {/* Ordered by what they hold, so the pot the money is actually in comes
-                      first and the funds nothing has been collected into yet sit under a
-                      heading of their own instead of standing beside it as equals. */}
+                  {/* The group's own money first, because that is what a purchase the
+                      group makes as a whole — land, a building — comes out of, and it
+                      needs no fund to charge and no member's balance touched. */}
+                  <option value="group">
+                    The group's total money — {money(holding.netBalance)} available
+                  </option>
+                  {/* Then the funds, ordered by what they hold, so the pot the money is
+                      actually in comes next and the funds nothing has been collected
+                      into yet sit under a heading of their own. */}
                   {inCredit.map((f) => (
                     <option key={f.id} value={f.id}>
                       {fundLabel(f)}
@@ -360,8 +402,11 @@ export default function Expenses() {
                   )}
                 </select>
                 <p className="amount mt-1 text-[11px] leading-4 text-muted">
-                  The group's funds hold {money(groupFund.holds)} altogether. Spending comes off
-                  the fund picked here.
+                  {form.source === 'group'
+                    ? "Comes off the group's total money — what the members have contributed and the funds hold, less what has been spent. No fund is charged and no member's balance changes."
+                    : `Spending comes off the fund picked here. The group's funds hold ${money(
+                        groupFund.holds
+                      )} altogether.`}
                 </p>
               </div>
               <div>
