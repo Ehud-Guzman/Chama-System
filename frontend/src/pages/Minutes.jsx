@@ -327,6 +327,20 @@ export default function Minutes() {
       <header>
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">Minutes</p>
         <h1 className="mt-1 text-2xl font-bold">Meeting minutes</h1>
+        {/* How many minutes the group has on file. This is the question the screen is
+            opened with, and the one figure that does not move while the list is searched
+            or a month is opened — so it sits above both panels rather than inside either
+            of them. Held back until the count is known: "0 minutes on file" flashing on
+            the way in would be a statement about the record that is simply not true. */}
+        {!loading && !loadError && (
+          <p className="mt-1 text-sm text-muted">
+            {total === 0
+              ? 'No minutes on file yet'
+              : total === 1
+                ? '1 minute on file'
+                : `${total} minutes on file`}
+          </p>
+        )}
       </header>
 
       {loadError && <ErrorState title="Could not load the minutes" message={loadError} onRetry={load} />}
@@ -336,8 +350,15 @@ export default function Minutes() {
           <div className="border-b border-rule p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">Documents</h2>
-              <span className="text-xs text-muted">
-                {minutes.length === 1 ? '1 minute' : `${minutes.length} minutes`}
+              {/* How many minutes this panel is holding. It says "of the total" whenever
+                  the office holds more than the screen loaded, because a pill reading
+                  "100 minutes" beside a record of 140 would be a quiet lie. */}
+              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-widest text-primary">
+                {total > minutes.length
+                  ? `${minutes.length} of ${total}`
+                  : minutes.length === 1
+                    ? '1 minute'
+                    : `${minutes.length} minutes`}
               </span>
             </div>
             <input
@@ -470,13 +491,16 @@ export default function Minutes() {
             // marked. That does not fit down the side of a list.
             <div className="overflow-hidden rounded-xl border border-rule bg-surface">
               <div className="border-b border-rule p-4">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                   <h2 className="min-w-0 text-sm font-semibold">
                     {waiting ? 'Searching…' : <>Results for “{term}”</>}
                   </h2>
+                  {/* How many meetings the word was found in, which is the whole answer
+                      to a search — counted here rather than left to be added up from the
+                      rows below. */}
                   {!waiting && (
-                    <span className="text-xs text-muted">
-                      {results.length === 1 ? '1 minute' : `${results.length} minutes`}
+                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-widest text-primary">
+                      {results.length === 1 ? '1 found' : `${results.length} found`}
                     </span>
                   )}
                 </div>

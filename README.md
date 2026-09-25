@@ -812,8 +812,13 @@ in every heading, each month folded shut until it is asked for, and one control 
 close the lot — because a flat list of years of meetings is a wall of dates and nobody
 remembers the scroll position that held the May meeting. It asks for the newest hundred
 minutes (`?limit=100`, the endpoint's own ceiling) rather than the twenty it used to be sent
-by default, and says out loud when the office holds more than the screen is showing. A
-search does not filter that panel: the answer takes the wide panel on the right, where a
+by default, and says out loud when the office holds more than the screen is showing. The
+figures are on the screen rather than left to be worked out: how many minutes the group has
+on file sits above both panels — the one number that does not move while the list is
+searched or a month is opened — the documents panel says how many it is holding (`100 of
+140` when the office holds more than was loaded), and a search answers with how many
+meetings the word was found in. A search does not
+filter that panel: the answer takes the wide panel on the right, where a
 snippet has room, and the term stays in the box so following a word through the next meeting
 it was said in is one tap — `← Back to the search results`. On a phone the record's list
 stands down while a search is running, so the answer comes directly under the search box

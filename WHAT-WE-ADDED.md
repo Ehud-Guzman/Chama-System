@@ -1277,14 +1277,22 @@ WHAT IS STILL OPEN FOR THE COMMITTEE
      record. And on a phone a search stands the browse list down, so the answer sits directly
      under the search box instead of below a year of months.
 
+     THE NUMBERS ARE ON THE SCREEN. How many minutes the group has on file now sits above both
+     panels - the one figure that does not change while a list is searched or a month is opened,
+     and held back until the count is known so that "0 minutes on file" never flashes on the
+     way in. The documents panel carries a pill saying how many minutes it is holding, and says
+     "100 of 140" rather than "100 minutes" whenever the office holds more than was loaded. A
+     search answers with a pill saying how many meetings the word was found in - the whole
+     answer to the question, rather than a number to be added up from the rows below.
+
      HOW THIS WAS PROVED. The grouping is a plain module (frontend/src/utils/minuteGroups.js)
      with seven checks of its own in frontend/test/minuteGroups.test.js: months newest first
      across a year boundary, the zero-padded key that keeps September below December, the month
      names, that nothing is dropped on the way into a group, and that a date nothing can be read
      from lands in "No date" rather than vanishing. The frontend suite is 36 checks, all
-     passing. The screen builds clean as its own lazily loaded chunk (18.8 KB / 6.2 KB
+     passing. The screen builds clean as its own lazily loaded chunk (19.1 KB / 6.2 KB
      gzipped), so a member's page pays nothing for it, and the members' page is still inside
-     its 150 KB budget at 145.4 KB gzipped.
+     its 150 KB budget at 145.5 KB gzipped.
 
 END OF DOCUMENT
 ===============
