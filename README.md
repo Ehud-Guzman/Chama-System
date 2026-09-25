@@ -520,6 +520,23 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   (`utils/groupIdentity`). Those two clauses are resolved on the server precisely because the rest
   of the constitution stays behind the ID gate; a group's vision and mission are meant to be read
   by anyone, its rules are not.
+- **The members' page has a shape, and the record comes first.** `/` is three bands, in the order the
+  questions get asked: **who this is** (the group's mark and name), **where he stands**, and **what
+  happened**. A successful lookup stands the hero down to one line — *Record open · Member № 12345 ·
+  ID •••••678*, with **Check another ID** — rather than leaving a 3rem headline and a form card
+  filling the first screen while the member's own record began below the fold. The passbook is a
+  dashboard from `xl`: the position card (**money held**, the sum behind that figure, and what he
+  owes), his details and his statement downloads form a 21rem rail, and the ledger — with the fines
+  and the week-by-week schedule beneath it — takes the main column at twice the rail's width, because
+  a ledger is the one thing on the page that wants horizontal room. On a phone there is no rail, so
+  the position card comes first, directly under his name, because *"how much do I have, and am I
+  behind?"* is why most members open the page at all. The card that answers it is built by
+  `frontend/src/utils/passbookPosition.js`, asserted in `frontend/test/passbookPosition.test.js`,
+  so it cannot say "money held" while showing a different question's figure. The group's own totals
+  are the last band, behind their own rule and heading (*The group's figures*) — public information,
+  marked as something other than the member's record instead of one more identical card in the same
+  stack.
+
 - **Chama documents, minutes and the constitution (ID-gated):** title deeds, certificates and
   other group records are uploaded from `/admin/documents` (PDF, Word/Excel, or a photo, up to
   8 MB) and minutes are written at `/admin/minutes`. Both are stored in MongoDB itself —
@@ -1177,7 +1194,7 @@ be, and that another member's money cannot appear on one.
 things that make the difference between the passbook opening and not opening.
 
 **Weight.** The document, JavaScript, CSS, the one font that loads **and the images the page draws**
-must stay under about **150 KB gzip** between them — currently **145.1 KB**. `npm run build && npm run
+must stay under about **150 KB gzip** between them — currently **146.2 KB**. `npm run build && npm run
 report:bundle` prints the figure, and it is the number CI gates on. Two rules keep it there: anything
 over ~50 KB is loaded with `await import()` at the moment it is used (`xlsx`, `docx`, `mammoth`, the
 Tiptap-based minute reader), and any new page goes into `App.jsx` as a `lazy()` route. The minute

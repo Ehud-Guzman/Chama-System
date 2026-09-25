@@ -1359,6 +1359,71 @@ WHAT IS STILL OPEN FOR THE COMMITTEE
      36; the frontend builds clean.
 
 
+  9. THE MEMBERS' PAGE: HIS RECORD FIRST, AND THE FIGURE HE CAME FOR AT THE TOP
+
+     The page a member opens with his ID number had grown into one column of identical white
+     cards. Every block carried the same weight - the hero, his passbook, the members' area, the
+     group's totals, the vision statement - and they were stacked in a 1280px column that nothing
+     used. Three things were wrong with it, and all three were the same fault seen from different
+     angles: the page had no hierarchy, so nothing on it said "this is your record".
+
+       * THE HERO KEPT ITS FULL HEIGHT AFTER THE ANSWER ARRIVED. A member typed his ID and was
+         still looking at a 3rem headline and the form he had just used, with his own record
+         beginning below the fold. The page's whole reason for existing was the second thing on
+         the screen.
+       * THE PASSBOOK PUT ITS FACTS ABOVE ITS LEDGER, so on a laptop the actual record - the rows
+         - started about 400px down, under a grid of seven statistics the ledger then explained.
+       * THE GROUP'S OWN FIGURES LOOKED LIKE PART OF HIS RECORD. Public information (anybody may
+         read it) and private information (only he can) were the same card, the same border and
+         the same shadow, three blocks apart with a locked documents card between them.
+
+     WHAT THE PAGE IS NOW. Three bands, in the order the questions get asked.
+
+       * WHO THIS IS: the identity band, full width - name, member number, the date he joined.
+       * WHERE HE STANDS: the position card (what he holds, the sum that figure is made of, and
+         what he owes), then his details, then his statement downloads.
+       * WHAT HAPPENED: the ledger, with his fines and his week-by-week schedule under it.
+
+     THE LOOKUP STANDS DOWN ONCE IT HAS DONE ITS JOB. A successful lookup replaces the hero with
+     one line - "Record open . Member No. 12345 . ID ....678" - and a CHECK ANOTHER ID button
+     that brings the form back with the cursor already in the field. The ID is shown masked to its
+     last three digits: the line's job is to say which number is open, and a shared phone or a
+     screenshot should not spell out the credential the gate rides on. Pressing it also clears the
+     ID that was verified, which locks the members' area again - that gate follows the number it
+     checked, and leaving it open behind a member who has moved on to a different record is the one
+     thing it must not do.
+
+     HIS PASSBOOK IS A DASHBOARD FROM A LAPTOP SCREEN UP. The position, his details and his
+     downloads become a 336px rail down the right-hand side, so the ledger takes the remaining
+     width and reaches the top of the screen; the figure he came for sits beside the rows that
+     prove it rather than above them. On a phone there is no rail and the order is simply the
+     reading order: his name, then what he holds and what he owes, then his details and downloads,
+     then the rows. The group's totals and the vision and mission are the last band, behind their
+     own rule and their own heading ("The group's figures", with an eyebrow saying who may read
+     it), which is what stops them reading as one more panel of his passbook.
+
+     TWO SMALLER THINGS CAME OUT OF THE SAME WORK. The duplicate heading is gone - the hero says
+     "Check your contributions" and the form's own "Find your record" heading said it again, so the
+     form is now named for screen readers instead of by a heading nobody needed. And the
+     "No record found" panel moved out of the hero's two-column grid, where on a wide screen it
+     landed under the left-hand column, a screen away from the field that produced it.
+
+     THE POSITION CARD IS THE ONE PIECE OF WORDING WORTH PINNING DOWN, so it is now a plain module
+     (frontend/src/utils/passbookPosition.js) with six checks of its own in
+     frontend/test/passbookPosition.test.js. The figure at the top is "money held" - carried in,
+     plus what he has paid, less what was due - and the card says so; the fallback used when the
+     cycle engine has no answer for a member is a DIFFERENT figure ("paid in his own name"), so the
+     label changes with it. The checks cover the sum spelled out behind the number, the plural that
+     turns "1 week behind" into "3 weeks behind", money owed with no week count to go with it, and
+     a missing or unreadable total printing Ksh 0 rather than "Ksh NaN" on somebody's passbook.
+
+     HOW THIS WAS PROVED. The build is clean, the frontend suite is 42 checks and none fails, and
+     the members' page still fits the weight budget that governs it: the critical path - document,
+     JavaScript, CSS, the one font and the images the page draws - measures 146.2 KB gzip against
+     the 150 KB ceiling CI gates on, up 0.6 KB for the new module and markup. No new dependency,
+     no new request, and the page's own chunk is still lazy.
+
+
 END OF DOCUMENT
 ===============
 

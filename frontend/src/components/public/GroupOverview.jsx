@@ -15,12 +15,31 @@ import StatTile from '../shared/StatTile';
 // The tiles go four across once there is room for them; the two per-name
 // breakdowns below sit side by side from lg, because as full-width cards every
 // amount sat a screen away from the label it belongs to.
+//
+// The band's own eyebrow and heading are here rather than in the page, so the
+// figures and the words that frame them can never be separated: this is the part
+// anybody may read without an ID, and it has to look like something other than one
+// more panel of a member's own record.
 export default function GroupOverview({ overview }) {
   if (!overview) return null;
 
   return (
-    <section>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <section aria-labelledby="group-figures-heading">
+      {/* The band's own heading. The tiles used to start straight into the page, so the group's
+          figures read as one more anonymous panel beside a member's own record — and they are the
+          opposite of that: the part anybody may see, with no ID at all. */}
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">About the group</p>
+      <h2
+        id="group-figures-heading"
+        className="mt-2 text-[clamp(1.5rem,4vw,2rem)] font-bold leading-tight tracking-tight"
+      >
+        The group&rsquo;s figures
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+        Open to everyone — no ID needed. Nothing here belongs to a member by name.
+      </p>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
   <StatTile label="Active members" value={overview.activeMembers} />
   <StatTile label="Registered all-time" value={overview.totalMembersEver} />
   <StatTile
@@ -39,7 +58,7 @@ export default function GroupOverview({ overview }) {
     accent
   />
 </div>
-<p className="mt-3 max-w-3xl text-xs leading-5 text-muted">
+<p className="mt-3 max-w-4xl text-xs leading-5 text-muted">
   "Total raised" is everyone's lifetime contributions added up, including the{" "}
   {money(overview.carriedIn)} the members and the funds already held when the books opened. "Cash
   held now" is that total minus {money(overview.totalExpenses)} spent from tracked funds — the

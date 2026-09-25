@@ -499,6 +499,28 @@ def build_4(doc):
         "list of next of kin, and whether he receives email reminders. Somebody who types a number that "
         "is not theirs gets a record without them.",
     )
+    p(
+        doc,
+        "**Where it all sits on the page.** His record opens first, because that is what he came for. "
+        "While he is still looking at the page without a record, the whole top of it is the one question "
+        "— what the group does, and the box for the ID registered with it. The moment the ID is accepted "
+        "that block stands down to a single line, \"Record open · Member № 12345\", with a button to "
+        "check another ID; his record then begins at the top of the screen instead of below a headline "
+        "and a form he has already used.",
+    )
+    p(
+        doc,
+        "His passbook is laid out as a small dashboard: his name and member number above everything, "
+        "then — under his name on a phone, and in a column down the right-hand side on a laptop screen — "
+        "the one figure the page exists for (**what he holds today**, with the sum it is made of spelled "
+        "out under it, and anything he owes), followed by his details, his next of kin and his statement "
+        "downloads. The ledger itself — every payment, newest first, with what he has paid to date — "
+        "takes the wide side of the page, with his fines and his week-by-week schedule beneath it, "
+        "because a ledger is the one thing that needs the room. What is left is the group's own figures "
+        "and its vision and mission, in a band of their own behind their own heading: the part anybody "
+        "may read without an ID, marked as something different from his record.",
+    )
+
 
     h(doc, "4.4 What he can download", 2)
     bullets(
