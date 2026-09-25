@@ -1,19 +1,30 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import ErrorState from '../components/shared/ErrorState';
-import HighlightedText from '../components/shared/HighlightedText';
 import Loader from '../components/shared/Loader';
+import MinuteListRow from '../components/minutes/MinuteListRow';
 import RichTextEditor from '../components/minutes/RichTextEditor';
+import { groupMinutesByMonth } from '../utils/minuteGroups';
 import { todayISO } from '../utils/format';
 
 const BLANK = { title: '', date: todayISO(), content: '', visibleToMembers: true };
 
-// The minutes list is a long list on a phone: showing every document in an inner
-// scroll region traps the drag gesture that is trying to scroll the page. Show the
-// newest few and let the reader ask for the rest.
-const LIST_PREVIEW = 6;
+// How many minutes the list on the left loads in one go, asked for explicitly rather
+// than left to the API's default of twenty: an office with two years of minutes could
+// not reach the older ones at all. A hundred is the endpoint's own ceiling, and the
+// list says out loud when the office holds more than it is showing — a truncated list
+// must never read as the whole answer.
+const BROWSE_LIMIT = 100;
+
+// The opening words of a minute, for a row in the browse list. A search result shows
+// the sentence the word was found in instead (the server sends it), because that is
+// what says why the minute is a result.
+function openingOf(minute) {
+  if (!minute?.content) return '';
+  return `${minute.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)}…`;
+}
 
 // How long the search box waits for the typing to stop before it asks the API. The
 // minutes are searched on the server — every word of every meeting, not the handful
@@ -39,7 +50,14 @@ export default function Minutes() {
   const [pendingSwitch, setPendingSwitch] = useState(null);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [showAllMinutes, setShowAllMinutes] = useState(false);
+  // How many minutes the office holds, which is not the same as how many are loaded:
+  // the difference is what the list has to be honest about.
+  const [total, setTotal] = useState(0);
+  // Which month groups are open, or null while nobody has opened one by hand — in
+  // which case the newest month is the one open. Keeping the answer as a set of keys
+  // rather than a flag per group means a month that arrives later (a minute saved
+  // into it) needs no state of its own.
+  const [openMonths, setOpenMonths] = useState(null);
   const [search, setSearch] = useState('');
   // What the API answered for the term on screen. Null means "not searching": the
   // list being browsed is the loaded one.
@@ -55,22 +73,32 @@ export default function Minutes() {
   const isDirty = JSON.stringify(form) !== JSON.stringify(baseline);
 
   const term = search.trim();
-  // A search replaces the list rather than filtering it. It has to: a minute's body
-  // is not in the list payload at all, and the minute somebody is looking for is
-  // usually one from months back that was never loaded. What the server sends back
-  // is already the whole answer, so all of it is shown rather than the first six.
-  const shown = term ? searchResults || [] : minutes;
-  const listing = term || showAllMinutes ? shown : shown.slice(0, LIST_PREVIEW);
+  // A search does not filter the list on the left: a minute's body is not in that
+  // payload at all, and the minute somebody is looking for is usually one from months
+  // back that was never loaded. The server is asked instead, and its answer is what
+  // the wide panel on the right shows — the whole answer, not the first few of it.
+  const results = term ? searchResults || [] : [];
   // The first search has nothing to show yet. Saying "no matches" for the half
   // second before the answer arrives would be saying something untrue.
   const waiting = Boolean(term) && searching && searchResults === null;
+
+  // The list on the left as months, newest first.
+  const groups = useMemo(() => groupMinutesByMonth(minutes), [minutes]);
+  const newestMonth = groups[0]?.key ?? null;
+  // Nothing has been opened by hand yet, so the newest month is open — the list is
+  // never an accordion with every lid down.
+  const isMonthOpen = (key) => (openMonths === null ? key === newestMonth : openMonths.has(key));
+  const everyMonthOpen = groups.length > 0 && groups.every((group) => isMonthOpen(group.key));
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     try {
-      const res = await api.get('/api/minutes');
+      const res = await api.get('/api/minutes', { params: { limit: BROWSE_LIMIT } });
       setMinutes(res.data.minutes);
+      // The endpoint counts what it holds, not what it sent: the office can then be
+      // told that the screen is showing part of a longer record.
+      setTotal(res.data.total ?? res.data.minutes.length);
     } catch (err) {
       setLoadError(apiMessage(err, 'Could not load minutes'));
     } finally {
@@ -172,7 +200,38 @@ export default function Minutes() {
   function confirmDiscard() {
     if (pendingSwitch?.type === 'new') applyNew();
     else if (pendingSwitch?.type === 'select') applySelect(pendingSwitch.minute);
+    else if (pendingSwitch?.type === 'results') applyResults();
     setPendingSwitch(null);
+  }
+
+  // Opening and closing a month. The set is rebuilt from what is open *effectively*
+  // (which is the newest month until somebody clicks), so the first click on a month
+  // does not quietly close the month that was open by default.
+  function toggleMonth(key) {
+    const open = openMonths === null ? new Set(newestMonth ? [newestMonth] : []) : new Set(openMonths);
+    if (open.has(key)) open.delete(key);
+    else open.add(key);
+    setOpenMonths(open);
+  }
+
+  function toggleEveryMonth() {
+    setOpenMonths(everyMonthOpen ? new Set() : new Set(groups.map((group) => group.key)));
+  }
+
+  // Back to the search answers without losing the question: the term stays in the box,
+  // so the next result opens with one tap rather than being typed again.
+  function applyResults() {
+    setSelectedId(null);
+    setForm(BLANK);
+    setBaseline(BLANK);
+  }
+
+  function backToResults() {
+    if (isDirty) {
+      setPendingSwitch({ type: 'results' });
+      return;
+    }
+    applyResults();
   }
 
   async function save() {
@@ -278,7 +337,7 @@ export default function Minutes() {
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">Documents</h2>
               <span className="text-xs text-muted">
-                {term ? `${shown.length} found` : `${shown.length} shown`}
+                {minutes.length === 1 ? '1 minute' : `${minutes.length} minutes`}
               </span>
             </div>
             <input
@@ -290,10 +349,12 @@ export default function Minutes() {
               aria-label="Search minutes"
             />
             {/* The box searches the whole of every minute — the body as well as the
-                title — and a date typed as one (21/05/2026) finds that meeting. */}
+                title — and a date typed as one (21/05/2026) finds that meeting. The
+                answer is longer than a title, so it opens in the wide panel beside
+                this list rather than being squeezed into it. */}
             <p className="mt-2 text-xs leading-5 text-muted">
-              {term && searching
-                ? 'Searching every minute…'
+              {term
+                ? 'Searching every minute — the answer appears on the right.'
                 : 'Any word from any meeting, in the minutes themselves.'}
             </p>
             {term && (
@@ -313,154 +374,192 @@ export default function Minutes() {
               New minute
             </button>
           </div>
-          {searchError && (
-            <p
-              className="border-b border-rule bg-alert/5 px-4 py-3 text-xs font-medium text-alert"
-              role="alert"
-            >
-              {searchError}
-            </p>
-          )}
-          {term && searchTruncated && (
-            <p className="border-b border-rule bg-canvas px-4 py-2 text-xs leading-5 text-muted">
-              The newest matches, up to a hundred. Add another word to narrow it down.
-            </p>
-          )}
-          {loading || waiting ? (
-            <div className="p-4">
-              <Loader />
-            </div>
-          ) : shown.length === 0 && !searchError ? (
-            <p className="px-4 py-8 text-center text-sm text-muted">
-              {term ? `No minute contains “${term}”.` : 'No minutes yet.'}
-            </p>
-          ) : shown.length === 0 ? null : (
-            <div>
-              {listing.map((m) => {
-                // A search result opens with the sentence the word was found in
-                // (the server sends it); a browse row shows the minute's first line.
-                const opening = m.content
-                  ? `${m.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)}…`
-                  : '';
-                const preview = m.match?.snippet || opening;
-
-                return (
-                  // The row is not a button any more: it used to contain two more
-                  // buttons (download, delete), which is invalid HTML and reads to a
-                  // screen reader as buttons inside a button. The title is the
-                  // control; the two actions sit beside it as siblings, each a real
-                  // 44px target so a delete is never a mis-tap away from a download.
-                  <div
-                    key={m._id}
-                    className={`flex items-start gap-2 border-b border-rule p-3 last:border-b-0 ${
-                      selectedId === m._id ? 'bg-primary/10' : ''
-                    }`}
-                  >
+          {/* While a search is running on a phone the browse list stands down: the
+              answer sits directly below this panel, and scrolling past every month to
+              reach it would hide the thing that was just asked for. On a wide screen
+              both are on show — the months here, the answer in the panel on the right. */}
+          <div className={term ? 'hidden lg:block' : ''}>
+            {loading ? (
+              <div className="p-4">
+                <Loader />
+              </div>
+            ) : groups.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-muted">No minutes yet.</p>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between gap-2 border-b border-rule bg-canvas px-4 py-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+                    By month
+                  </p>
+                  {/* A year of minutes is a lot of months to open one at a time, so the
+                      whole list can be unfolded at once — and folded back again. */}
+                  {groups.length > 1 && (
                     <button
                       type="button"
-                      onClick={() => select(m)}
-                      aria-pressed={selectedId === m._id}
-                      className="min-w-0 flex-1 rounded-lg p-1 text-left transition-colors active:bg-elevation"
+                      onClick={toggleEveryMonth}
+                      className="min-h-11 text-xs font-semibold text-primary"
                     >
-                      <HighlightedText
-                        text={m.title}
-                        term={term}
-                        className="line-clamp-2 block text-sm font-semibold text-ink"
-                      />
-                      <span className="mb-1 mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
-                        {new Date(m.date).toLocaleDateString('en-KE', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}
-                        {m.visibleToMembers === false && (
-                          <span className="rounded bg-alert/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-widest text-alert">
-                            Not for members
-                          </span>
-                        )}
-                      </span>
-                      {preview && (
-                        <HighlightedText
-                          text={preview}
-                          term={term}
-                          className="line-clamp-2 block text-xs text-muted"
-                        />
-                      )}
+                      {everyMonthOpen ? 'Close all months' : 'Open all months'}
                     </button>
+                  )}
+                </div>
 
-                    <div className="flex shrink-0 gap-1">
-                      <button
-                        type="button"
-                        onClick={() => exportWord(m)}
-                        disabled={exporting}
-                        aria-label={`Download ${m.title} as a Word document`}
-                        title="Download as Word"
-                        className="flex h-11 w-11 items-center justify-center rounded-lg text-base text-muted transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-40"
-                      >
-                        ↓
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleting(m)}
-                        aria-label={`Delete ${m.title}`}
-                        title="Delete"
-                        className="flex h-11 w-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-alert/10 hover:text-alert"
-                      >
+                {groups.map((group) => (
+                  <div key={group.key}>
+                    <button
+                      type="button"
+                      onClick={() => toggleMonth(group.key)}
+                      aria-expanded={isMonthOpen(group.key)}
+                      className="flex min-h-12 w-full items-center justify-between gap-2 border-b border-rule px-4 text-left transition-colors hover:bg-canvas"
+                    >
+                      <span className="min-w-0 truncate text-sm font-semibold">{group.label}</span>
+                      <span className="flex shrink-0 items-center gap-2 text-xs text-muted">
+                        {group.minutes.length}
                         <svg
                           viewBox="0 0 24 24"
                           aria-hidden="true"
-                          className="mx-auto h-4 w-4"
+                          className={`h-4 w-4 transition-transform ${
+                            isMonthOpen(group.key) ? 'rotate-180' : ''
+                          }`}
                           fill="none"
                           stroke="currentColor"
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth="2"
                         >
-                          <path d="M3 6h18" />
-                          <path d="M8 6V4h8v2" />
-                          <path d="M19 6l-1 14H6L5 6" />
-                          <path d="M10 11v5" />
-                          <path d="M14 11v5" />
+                          <path d="M6 9l6 6 6-6" />
                         </svg>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                      </span>
+                    </button>
 
-              {/* The "newest six, ask for the rest" clamp is for browsing. A search
-                  answer is the whole answer and is shown whole — the server has
-                  already capped it. */}
-              {!term && !showAllMinutes && shown.length > LIST_PREVIEW && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllMinutes(true)}
-                  className="min-h-12 w-full border-t border-rule text-sm font-semibold text-primary"
-                >
-                  Show all {shown.length} documents
-                </button>
-              )}
-              {!term && showAllMinutes && shown.length > LIST_PREVIEW && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllMinutes(false)}
-                  className="min-h-12 w-full border-t border-rule text-sm font-semibold text-muted"
-                >
-                  Show the newest {LIST_PREVIEW}
-                </button>
-              )}
-            </div>
-          )}
+                    {isMonthOpen(group.key) &&
+                      group.minutes.map((m) => (
+                        <MinuteListRow
+                          key={m._id}
+                          minute={m}
+                          active={selectedId === m._id}
+                          preview={openingOf(m)}
+                          exporting={exporting}
+                          onSelect={select}
+                          onExport={exportWord}
+                          onDelete={setDeleting}
+                        />
+                      ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* The screen holds the newest hundred; the office may hold more than
+                that, and saying so is the difference between a list and a claim about
+                the record. */}
+            {total > minutes.length && (
+              <p className="border-t border-rule bg-canvas px-4 py-3 text-[11px] leading-5 text-muted">
+                The newest {minutes.length} of {total} minutes are listed. The search box reaches
+                the older ones — a word from the meeting, or its year (2025).
+              </p>
+            )}
+          </div>
         </section>
 
         <section>
-          {selectedId === null ? (
+          {selectedId === null && term ? (
+            // The answer to a search, in the room an answer needs. Every word of every
+            // minute was searched — the body as well as the title — so a result has to
+            // say why it is one: the sentence the word was found in, with the word
+            // marked. That does not fit down the side of a list.
+            <div className="overflow-hidden rounded-xl border border-rule bg-surface">
+              <div className="border-b border-rule p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <h2 className="min-w-0 text-sm font-semibold">
+                    {waiting ? 'Searching…' : <>Results for “{term}”</>}
+                  </h2>
+                  {!waiting && (
+                    <span className="text-xs text-muted">
+                      {results.length === 1 ? '1 minute' : `${results.length} minutes`}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted">
+                  The title, the date, and every word of the minute itself — not only what the
+                  list beside this one happens to hold.
+                </p>
+                {/* A failure, and an answer that was cut short, are said on the answer
+                    itself rather than beside the box that asked the question. */}
+                {searchError && (
+                  <p
+                    className="mt-2 rounded-lg bg-alert/5 px-3 py-2 text-xs font-medium text-alert"
+                    role="alert"
+                  >
+                    {searchError}
+                  </p>
+                )}
+                {searchTruncated && (
+                  <p className="mt-2 rounded-lg bg-canvas px-3 py-2 text-xs leading-5 text-muted">
+                    There are more matches than can be shown at once, so these are the newest, up
+                    to a hundred. Add another word to narrow it down.
+                  </p>
+                )}
+              </div>
+
+              {waiting ? (
+                <div className="p-6">
+                  <Loader />
+                </div>
+              ) : results.length === 0 && !searchError ? (
+                <p className="px-4 py-10 text-center text-sm text-muted">
+                  No minute contains “{term}”.
+                </p>
+              ) : results.length === 0 ? null : (
+                <div>
+                  {results.map((m) => {
+                    // The sentence the word was found in (the server sends it) is a
+                    // better thing to open a result with than the minute's first line.
+                    const snippet = m.match?.snippet || '';
+                    return (
+                      <MinuteListRow
+                        key={m._id}
+                        minute={m}
+                        term={term}
+                        active={selectedId === m._id}
+                        preview={snippet || openingOf(m)}
+                        // A result with nothing marked in the title and no sentence to
+                        // show is a date match: saying so beats an empty result the
+                        // reader cannot account for.
+                        note={
+                          !snippet && m.match?.field === 'date'
+                            ? 'This meeting is on the date you searched.'
+                            : ''
+                        }
+                        exporting={exporting}
+                        onSelect={select}
+                        onExport={exportWord}
+                        onDelete={setDeleting}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : selectedId === null ? (
             <p className="rounded-xl border border-dashed border-rule px-5 py-10 text-center text-sm text-muted">
               Select a minute, or start a new one.
             </p>
           ) : (
             <div className="rounded-xl border border-rule bg-surface">
               <div className="border-b border-rule p-4">
+                {term && (
+                  // The search is still there behind this minute — the term stays in the
+                  // box — so the other results are one tap away, and a minute opened
+                  // from the results can be read without losing the search.
+                  <button
+                    type="button"
+                    onClick={backToResults}
+                    className="mb-1 inline-flex min-h-11 items-center text-xs font-semibold text-primary"
+                  >
+                    ← Back to the search results
+                  </button>
+                )}
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-widest text-muted">

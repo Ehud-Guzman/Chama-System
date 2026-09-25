@@ -806,6 +806,22 @@ the term marked, and one search scans the newest hundred candidates — saying s
 runs out of room rather than letting a truncated list read as the whole answer. A minute
 withheld from members is still found by the office, and never by a member.
 
+**The minutes screen.** The office's copy is two panels: the record on the left, the minute
+being written or read on the right. The record is grouped by month — newest first, the year
+in every heading, each month folded shut until it is asked for, and one control to open or
+close the lot — because a flat list of years of meetings is a wall of dates and nobody
+remembers the scroll position that held the May meeting. It asks for the newest hundred
+minutes (`?limit=100`, the endpoint's own ceiling) rather than the twenty it used to be sent
+by default, and says out loud when the office holds more than the screen is showing. A
+search does not filter that panel: the answer takes the wide panel on the right, where a
+snippet has room, and the term stays in the box so following a word through the next meeting
+it was said in is one tap — `← Back to the search results`. On a phone the record's list
+stands down while a search is running, so the answer comes directly under the search box
+instead of below a year of months. The grouping itself is a plain module
+(`utils/minuteGroups.js`, covered by `test/minuteGroups.test.js`), which is where the two
+quiet mistakes live: a month key that sorts as a word, and a label built from the wrong
+index.
+
 **The audit trail** (`/admin/audit`, its own destination — it was a panel under the reports). The
 trail is read when something needs explaining, by whoever has to explain it, so it is not buried
 under four cards of figures. Every entry arrives read by `utils/auditFlags.js`: put in one of four

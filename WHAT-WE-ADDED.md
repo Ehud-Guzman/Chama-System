@@ -1245,6 +1245,47 @@ WHAT IS STILL OPEN FOR THE COMMITTEE
      The phone is unchanged: still four tabs and a More sheet, still taking the four busiest
      destinations - Dashboard, Members, Finance, Reports - from the same list.
 
+  7. THE MINUTES SCREEN: THE ANSWER ON THE RIGHT, THE RECORD BY MONTH
+
+     Two complaints from using it, and both were about the same screen.
+
+     FIRST, SEARCHING. The minutes are searched on the server - every word of every meeting,
+     because the body of a minute is not in the list the screen holds - and the answer used to
+     come back into the narrow column that the search box sits in. Titles, dates and the
+     sentence the word was found in were being read in a strip about as wide as a phone.
+
+     The office's minutes screen is two panels now: the record on the left, the minute being
+     written or read on the right. A search answer takes the right-hand panel, where a result
+     can show the sentence the word was found in with the word marked. Opening a result opens
+     that minute for editing exactly as clicking it in the list did, and BACK TO THE SEARCH
+     RESULTS returns to the answer with the word still in the box - so a word searched once can
+     be followed through every meeting that mentions it without being typed again. A result
+     whose only match is the date says so, rather than showing a blank line the reader cannot
+     account for.
+
+     SECOND, THE LIST. It had reached the stage where every meeting ever minuted was in one
+     column, newest first, and the meeting somebody wanted was found by scrolling and hunting.
+     The record is grouped by month now: newest month first, the year printed in the heading so
+     "May" is never ambiguous, each month shut until it is opened, and one control to open or
+     close the lot. A minute whose date cannot be read is put into a "No date" month at the
+     foot of the list rather than disappearing from it.
+
+     Two smaller things came out of the same work. The list now asks for the newest hundred
+     minutes instead of the twenty the API sends by default - an office with two years of
+     minutes could not reach the older ones at all - and when the office holds more than the
+     screen is showing, the list says so rather than letting a truncated list read as the whole
+     record. And on a phone a search stands the browse list down, so the answer sits directly
+     under the search box instead of below a year of months.
+
+     HOW THIS WAS PROVED. The grouping is a plain module (frontend/src/utils/minuteGroups.js)
+     with seven checks of its own in frontend/test/minuteGroups.test.js: months newest first
+     across a year boundary, the zero-padded key that keeps September below December, the month
+     names, that nothing is dropped on the way into a group, and that a date nothing can be read
+     from lands in "No date" rather than vanishing. The frontend suite is 36 checks, all
+     passing. The screen builds clean as its own lazily loaded chunk (18.8 KB / 6.2 KB
+     gzipped), so a member's page pays nothing for it, and the members' page is still inside
+     its 150 KB budget at 145.4 KB gzipped.
+
 END OF DOCUMENT
 ===============
 
