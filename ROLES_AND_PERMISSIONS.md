@@ -101,7 +101,12 @@ and reports on all of it
 - ✅ View reports (summary, performance, monthly, weekly, fines) and export them to Excel
 - ✅ View the audit trail and export it
 - ✅ View chama documents (title deeds, certificates) — read only, not upload or remove
-- ✅ Reminder emails to members who are behind
+- ✅ Reminder emails to members who are behind — each member has a weekly budget
+  (`Settings.reminderMaxPerWeek`, 1 by default, set by an admin), so the same member is not emailed
+  the same thing every few days. The screen shows who has already had this week's reminder and when,
+  a member at the limit cannot be ticked, and **Send anyway** exists for a correction — off by
+  default, and every use is recorded in the audit trail. The treasurer can read the limit but not
+  change it.
 - ✅ **Fine emails send themselves** — a payment he logs that clears a member's fine emails the
   member the acknowledgement without anybody pressing anything (that path needs `autoSettleFines`
   switched on, which is the super admin's setting). Issuing a fine emails the member as well, but
@@ -226,6 +231,7 @@ phone numbers are no longer accepted anywhere on the public side.
 | **Meeting Minutes** | R/W | R/W | R (API only) | R/W | ❌ |
 | **Documents** | R/W | R/W | R | R/W | ❌ |
 | **Reminders (email)** | R/W | R/W | R/W | ❌ | ❌ |
+| **How often a member may be emailed** (Settings → Reminders) | R/W | R/W | ❌ | ❌ | ❌ |
 | **Admin Accounts** | R/W | C (secretary/disciplinary) | ❌ | ❌ | ❌ |
 | **Settings** | R/W | R/W | ❌ | ❌ | ❌ |
 | **Backup/Restore & jobs** | R/W | ❌ | ❌ | ❌ | ❌ |
@@ -242,7 +248,12 @@ and again when money clears it — a settlement, or a payment logged against his
 when `autoSettleFines` is on. That is the fine's own record speaking, so the roles differ only in who
 triggers it (a fine: admin and super admin; a payment: admin and treasurer). Neither email can fail
 the entry that caused it, a member with no address or with email reminders switched off is skipped,
-and a deployment that does not want them sets `FINE_EMAILS=off`. Spending from a fund is deducted
+and a deployment that does not want them sets `FINE_EMAILS=off`. The weekly reminder budget
+(Settings → Reminders, one per member per week by default) counts reminders only — a fine email is a
+record of something that happened to the member, not a nudge — and who has actually been emailed, in
+what words and by whom, is listed on the Reminders screen and available as
+`GET /api/notifications/history`, read from the same audit entries the sends write. Spending from a
+fund is deducted
 from the group's all-time contribution total the moment it is recorded, on every screen, because the
 reports summary and the spending screen share one calculation (`utils/moneyPosition`).
 

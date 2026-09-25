@@ -2,6 +2,7 @@ const { getOrCreateSettings, invalidateSettings } = require('../utils/settings')
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { syncLedgerTypeAmounts } = require('../utils/ledgerTypes');
 const { destroyImage } = require('../utils/cloudinary');
+const { normaliseMaxPerWeek, MAX_PER_WEEK_CEILING } = require('../utils/reminderLog');
 
 // The vision and mission statements travel in the public overview, so every
 // visitor's page load carries them. That is why they are capped while the
@@ -39,6 +40,7 @@ async function updateSettings(req, res, next) {
       weekAnchorDate,
       autoSettleFines,
       twoFactorAuthEnabled,
+      reminderMaxPerWeek,
     } = req.body || {};
     if (chamaName !== undefined) {
       if (!String(chamaName).trim()) {
@@ -144,6 +146,25 @@ async function updateSettings(req, res, next) {
         return res.status(400).json({ message: 'twoFactorAuthEnabled must be true or false' });
       }
       settings.twoFactorAuthEnabled = twoFactorAuthEnabled;
+    }
+    // How many reminder emails one member may be sent in a contribution week; 0 is no limit.
+    // Any admin can set this one: it is how the group talks to its members, not a rule about
+    // money, and the treasurer who presses send is the person who feels a wrong number first.
+    //
+    // Out-of-range is refused rather than quietly clamped. A limit the office did not choose,
+    // applied to a member the office cannot see being skipped, is the kind of silent correction
+    // that ends with somebody insisting "it said one a week" about a setting that says nine.
+    if (reminderMaxPerWeek !== undefined) {
+      const value = Number(reminderMaxPerWeek);
+      if (!Number.isInteger(value) || value < 0 || value > MAX_PER_WEEK_CEILING) {
+        return res.status(400).json({
+          message:
+            `Reminders per member per week must be a whole number from 0 to ${MAX_PER_WEEK_CEILING} `
+            + '(0 means no limit).',
+          field: 'reminderMaxPerWeek',
+        });
+      }
+      settings.reminderMaxPerWeek = normaliseMaxPerWeek(value);
     }
     if (weeklyTrackingStartDate !== undefined) {
       if (weeklyTrackingStartDate === null || weeklyTrackingStartDate === '') {

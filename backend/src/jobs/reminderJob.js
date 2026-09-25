@@ -14,10 +14,23 @@
 // The dues come from the same cycle engine the member's own page uses (computeMemberLedger via
 // notificationController.computeMemberDues), so a member can never be emailed a week number or
 // an amount his own passbook contradicts.
+//
+// **And it respects the weekly budget.** A member who is behind stays behind until he pays, so a
+// sweep that ran every Sunday, plus a treasurer pressing send whenever the screen is open, would
+// say the same thing four times in a month. Settings.reminderMaxPerWeek (1 by default) is the
+// number of reminders one member may have in a contribution week, counted from the audit trail
+// (utils/reminderLog); the report says how many of the people who are behind have already had
+// theirs, so a quiet Sunday is not mistaken for a Sunday with nothing to do.
 const Member = require('../models/Member');
 const { getOrCreateSettings } = require('../utils/settings');
 const { isMailConfigured } = require('../utils/mailer');
 const { computeBackupHealth } = require('../utils/backupHealth');
+const {
+  normaliseMaxPerWeek,
+  weekWindow,
+  sendsSince,
+  allowanceFor,
+} = require('../utils/reminderLog');
 const {
   computeMemberDues,
   deliverReminders,
@@ -42,6 +55,7 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
     .sort({ name: 1 })
     .lean();
 
+  const settings = await getOrCreateSettings();
   const dues = await computeMemberDues(members);
 
   const owing = members
@@ -58,12 +72,33 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
     .filter((row) => row.total > 0)
     .sort((a, b) => b.total - a.total);
 
+  // The weekly budget, read before the summary so the report can tell tonight's work from what
+  // was already done on Tuesday. Without it the screen says "32 behind" about nine people who
+  // were emailed three days ago, which is precisely the misreading that ends with somebody
+  // pressing send again — the habit the budget exists to break.
+  //
+  // Always read, even with no limit set: the same map is what the report uses to say who has
+  // already been emailed, and that question does not stop mattering when the cap is off.
+  const maxPerWeek = normaliseMaxPerWeek(settings.reminderMaxPerWeek);
+  const { since, weekStart } = weekWindow();
+  const sentThisWeek = await sendsSince(members.map((member) => member._id), since);
+  const sentCountFor = (row) => sentThisWeek.get(String(row.member._id))?.count || 0;
+  const stillAllowed = (row) => allowanceFor(sentCountFor(row), maxPerWeek).allowed;
+
   const summary = {
     membersChecked: members.length,
     owingCount: owing.length,
     owingTotal: owing.reduce((sum, row) => sum + row.total, 0),
     reachableCount: owing.filter((row) => row.reachable).length,
     missingEmailCount: owing.filter((row) => !row.member.email).length,
+    // How many of those who are behind have already had this week's reminder, and how many are
+    // still within their budget. The two numbers are what make the report honest about a
+    // quiet-looking run.
+    weeklyLimit: maxPerWeek,
+    weekStart,
+    alreadyEmailedThisWeek: owing.filter((row) => row.reachable && sentCountFor(row) > 0).length,
+    awaitingReminder: owing.filter((row) => row.reachable && stillAllowed(row)).length,
+    heldByLimit: owing.filter((row) => row.reachable && !stillAllowed(row)).length,
     // The five largest, by name and amount: enough for the screen to be actionable without
     // carrying a copy of the ledger into a job record.
     worst: owing.slice(0, 5).map((row) => ({
@@ -79,7 +114,13 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
   };
 
   const shouldSend = send === null ? sendsEnabled() : Boolean(send);
-  const targets = owing.filter((row) => row.reachable).slice(0, maxRecipients());
+  // Only the members still inside their weekly budget are targets. The cap is enforced again
+  // inside deliverReminders — that copy is the one that counts, because the reminders screen
+  // uses it too — but leaving a capped member out here means a sweep with nothing to actually
+  // send says so without opening an SMTP connection first.
+  const targets = owing
+    .filter((row) => row.reachable && stillAllowed(row))
+    .slice(0, maxRecipients());
 
   // The other thing worth saying once a week, and for the same reason this whole file exists: the
   // failure it guards against is an absence, and an absence never announces itself. A copy of the
@@ -105,11 +146,20 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
     return summary;
   }
   if (targets.length === 0) {
-    summary.note = 'Nobody reachable is behind. Nothing to send.';
+    // Two different quiet weeks, said differently. "Nobody is behind" and "everybody behind has
+    // already been told" look identical in a count and mean opposite things to the committee.
+    summary.note =
+      summary.heldByLimit > 0
+        ? `Nobody to email today: the ${summary.heldByLimit} `
+          + `${summary.heldByLimit === 1 ? 'reachable member' : 'reachable members'} who `
+          + `${summary.heldByLimit === 1 ? 'is' : 'are'} behind already `
+          + `${summary.heldByLimit === 1 ? 'has' : 'have'} this week's reminder `
+          + `(limit ${maxPerWeek} per week — see Reminders per member per week in Settings).`
+        : 'Nobody reachable is behind. Nothing to send.';
     return summary;
   }
 
-  const [settings, actor] = await Promise.all([getOrCreateSettings(), resolveSystemActor()]);
+  const actor = await resolveSystemActor();
 
   const delivered = await deliverReminders({
     members: targets.map((row) => row.member),
@@ -124,6 +174,9 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
   summary.sent = delivered.sent;
   summary.skipped = delivered.skipped;
   summary.failed = delivered.failed;
+  // Anybody this batch left at the cap because the count moved between the two reads — the
+  // check above chose the targets, this one is the record of what actually went.
+  summary.skippedByWeeklyLimit = delivered.skippedByWeeklyLimit;
   summary.mailed = true;
   summary.creditedTo = actor.email;
   logEvent('reminder_sweep_sent', {

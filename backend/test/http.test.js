@@ -61,9 +61,12 @@ test('the admin API refuses an anonymous caller', async () => {
     '/api/ledger',
     '/api/fines',
     // The reminders screen writes to people's inboxes, so the mail status and the list
-    // behind it have to refuse a stranger before anything else about them matters.
+    // behind it have to refuse a stranger before anything else about them matters. The history
+    // is on the same list for a different reason: it names who was emailed, which is a member's
+    // own business and nobody else's.
     '/api/notifications/status',
     '/api/notifications/reminders',
+    '/api/notifications/history',
   ]) {
     const res = await get(path);
     assert.equal(res.status, 401, `${path} should be 401 without a token`);

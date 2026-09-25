@@ -574,6 +574,18 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   with "valid sender email required". Every send is audit-logged, members can be opted out
   individually (`emailNotifications`), and a member with no address is listed as un-emailable
   rather than silently skipped.
+  **A member is not emailed endlessly.** Each member has a weekly budget —
+  `reminderMaxPerWeek` in Settings, 1 by default, 0 for no limit — counted over the group's own
+  week (Friday → Thursday) from the audit entry every send already writes (`utils/reminderLog`),
+  so nothing resets on a Friday and a member emailed before this existed is still counted. The
+  reminders screen shows "already emailed once this week" on the row and refuses the tick until
+  somebody deliberately overrules it for that batch ("Send anyway…", off by default, recorded in
+  the audit entry); the weekly sweep leaves those members out and its report says how many of the
+  people who are behind have already had theirs, so a quiet Sunday cannot be misread as a Sunday
+  with nothing to do. The two fine emails are never counted — they record something that happened
+  to the member rather than nudging him about it. `GET /api/notifications/history` answers the
+  other half of the same question: who has actually been emailed, about what, when and by whom,
+  read from those same audit entries, so it can never report a message that did not go.
 - **Fund spending, and the fines that email themselves:** `/admin/finance/expenses` (admins, the
   treasurer and the super admin) is where money leaves the funds. An expense carries the fund it
   came from, the amount, the date, what it was for, the voucher or receipt number it is backed by
@@ -749,6 +761,12 @@ bundle as a foreign-looking URL).
 | `REMINDER_SWEEP_MAX` | Most members one sweep will email, default 200 |
 | `FINE_EMAILS` | `off` stops the emails a fine sends on its own — the one that tells a member a fine has been recorded and the one that acknowledges his payment. On by default, because both are triggered by somebody recording or settling a fine, not by a schedule. Needs a mail configuration either way; a member with no address or with email reminders switched off is skipped |
 | `SYSTEM_ACTOR_EMAIL` | Which account automatic writes are credited to in the audit trail. Defaults to the earliest super admin |
+
+**Not an environment variable: how often one member may be emailed.** That is
+`Settings.reminderMaxPerWeek` (1 by default, 0 for no limit), set from Settings → Reminders by an
+admin or the super admin — because it is a decision the committee can change without a developer,
+where `REMINDER_SWEEP_SEND` above is a deploy-time switch about whether the group emails anybody at
+all.
 
 ## Environment variables (frontend)
 
@@ -946,6 +964,23 @@ password *and* a live code, because either one alone is something a thief holdin
 already has. An admin whose phone is gone is unblocked by another admin from the accounts
 panel, which leaves the loudest entry the trail takes.
 
+**How often a member may be emailed is the committee's decision, not a deploy's.** Settings →
+**Reminders** carries one number: *reminders per member per week*, 1 by default, 0 for no limit.
+It is the other half of the fine-email and sweeping machinery above — a member who is behind stays
+behind until he pays, so without it the Sunday sweep and a treasurer with the screen open would
+say the same thing four times in a month, and the message people learn to ignore is the one that
+matters the week the meeting is on Thursday. The count is taken over the group's own week
+(Friday → Thursday, `utils/weekCycle`) from the `Notification` entry every send already writes
+(`utils/reminderLog`), which is why nothing has to be reset on a Friday and why the reminders
+screen can show its work: each row says "already emailed once this week", a member at the limit
+cannot be ticked, and **Send anyway** exists for a correction or a member who asked to be told
+again — off by default, and named in the audit entry when it is used. The weekly sweep leaves
+those members out and reports how many of the people who are behind have already had theirs, so a
+quiet Sunday is not mistaken for a Sunday with nothing to do. The same audit entries are read back
+as `GET /api/notifications/history` — who was emailed, in what words, when and by whom — which is
+the question "was Joseph actually told?" that no screen used to answer.
+
+
 **The audit trail is tamper-evident.** Every entry carries the hash of the entry before it
 (`utils/auditChain`), so a stored document that has been edited, an entry that has been
 deleted, or one that has been inserted is no longer a quiet change: it breaks every hash
@@ -995,7 +1030,9 @@ Four things about the runner are deliberate:
     the way a person says them: `daily@02:00`, `weekly@fri@03:00`, `monthly@1@04:00`.
   * **The reminder sweep reports before it sends.** It computes and reports every week and emails
     only when switched on — the same principle as `autoSettleFines`: a deploy must never begin
-    writing to the membership on its own.
+    writing to the membership on its own. Its report also says what the weekly limit
+    (`Settings.reminderMaxPerWeek`) leaves alone: how many of the people who are behind have
+    already had this week's reminder, and how many are still waiting for theirs.
 
 Run one by hand with `npm run job:backup` (or `job:audit`, `job:reminders`), or
 `POST /api/jobs/<name>/run`. Both go through the same code as the timer, so "run it now" is a

@@ -17,6 +17,12 @@ test('a payment does not pay fines by default', () => {
   assert.equal(settings.autoSettleFines, false);
 });
 
+test('one reminder per member per week is the default', () => {
+  // A member who is behind stays behind, so a cap that defaulted to "no limit" would undo
+  // itself on the first deploy. 0 is the deliberate way to say "no limit".
+  assert.equal(new Settings({}).reminderMaxPerWeek, 1);
+});
+
 test('settings is a single row keyed "main"', () => {
   assert.equal(new Settings({}).key, 'main');
   const unique = Settings.schema.indexes().find(([index]) => index.key === 1);

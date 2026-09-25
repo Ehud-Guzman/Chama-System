@@ -839,7 +839,11 @@ def build_7(doc):
             "members or hold them back, and manage the headings they are filed under.",
             "**Emails whoever is behind.** The Reminders screen lists who owes what from the same weekly "
             "schedule the members' own passbooks show, so an email can never claim something a statement "
-            "contradicts.",
+            "contradicts. Each member has a weekly budget — Settings → Reminders, one reminder a week by "
+            "default — so the same member is not told the same thing every few days: the row says how "
+            "often he has already been emailed this week, a member at the limit cannot be ticked unless "
+            "somebody deliberately ticks **Send anyway**, and the bottom of the screen lists who has "
+            "actually been emailed, in what words, when and by whom.",
             "**Reports and exports**: summary, trend over recent weeks, weekly reconciliation, member "
             "performance, monthly totals and the fines report — each one downloadable as .xlsx. The "
             "fines report's **Who owes what** is the list the office works from: how many members owe, "
@@ -1481,7 +1485,10 @@ def build_13(doc):
                 "Super admin, admin, treasurer",
                 "Reminders → tick the members → choose whether to include late arrears and fines → add a "
                 "note → Send. The screen waits, because each message is sent one at a time, and reports "
-                "what happened member by member.",
+                "what happened member by member. A member who has already had this week's reminder is "
+                "shown with the count and cannot be ticked — **Send anyway**, off by default, is the "
+                "deliberate way round it, and the limit itself (1 a week by default) is set by an admin "
+                "in Settings → Reminders.",
             ],
         ],
         widths=[3.6, 3.2, 9.7],
@@ -1976,7 +1983,7 @@ def build_annex_b(doc):
                 "Member photo: super_admin, admin, treasurer. Chama logo: super_admin, admin",
                 "A photo is a member field; the logo is a settings field",
             ],
-            ["/api/notifications", "super_admin, admin, treasurer", "The reminder list and the send; mail status"],
+            ["/api/notifications", "super_admin, admin, treasurer", "The reminder list, the send, who has already been emailed this week and when, and the history of what went out; mail status"],
             [
                 "/api/reports",
                 "super_admin, admin, treasurer, secretary",

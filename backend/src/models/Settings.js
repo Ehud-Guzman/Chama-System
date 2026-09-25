@@ -58,6 +58,21 @@ const SettingsSchema = new Schema(
     // call, not a developer's, and because a deploy must never be able to change
     // figures on its own.
     autoSettleFines: { type: Boolean, default: false },
+    // How many reminder emails one member may be sent per contribution week.
+    //
+    // One is the default, and it is a policy rather than a technical limit: a member who is
+    // behind stays behind until he pays, so a sweep every Sunday plus a treasurer pressing send
+    // whenever the screen is open would tell him the same thing four times in a month. After the
+    // first, the message stops being a reminder and becomes the reason he stops reading them.
+    //
+    // 0 means no limit, and that is a real choice for a group that wants to nag. The window is
+    // the group's own week (Friday → Thursday, utils/weekCycle), read back from the audit trail
+    // each send writes (utils/reminderLog) — so nothing here has to be reset on a Friday, and a
+    // member emailed before the cap existed is counted rather than forgotten.
+    //
+    // The cap never stops the fine emails: those are a record of something that happened to him,
+    // not a nudge, and they are named separately in the trail.
+    reminderMaxPerWeek: { type: Number, default: 1, min: 0 },
     // Whether two-factor authentication is in use at all.
     //
     // OFF by default, and that is the point: the feature is built and ready, but until the

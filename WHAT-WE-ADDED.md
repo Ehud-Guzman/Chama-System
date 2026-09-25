@@ -688,6 +688,8 @@ Audit trail
 Reminders
     REMINDER_SWEEP_SEND              "true" lets the sweep email members (off by default)
     REMINDER_SWEEP_MAX               most members one sweep will email (default 200)
+    (how often ONE member may be emailed is not an environment variable - it is
+     Settings -> Reminders, "reminders per member per week", 1 by default, 0 for no limit)
 
 Audit attribution
     SYSTEM_ACTOR_EMAIL               which account automatic writes are credited to
@@ -1293,6 +1295,69 @@ WHAT IS STILL OPEN FOR THE COMMITTEE
      passing. The screen builds clean as its own lazily loaded chunk (19.1 KB / 6.2 KB
      gzipped), so a member's page pays nothing for it, and the members' page is still inside
      its 150 KB budget at 145.5 KB gzipped.
+
+  8. A REMINDER IS SENT ONCE A WEEK, AND THE OFFICE CAN SEE WHO GOT IT
+
+     Two halves of the same complaint, both from the same place: nobody could tell what the
+     system had actually said to the members.
+
+     THE FIRST HALF: NOBODY WAS COUNTING. A member who is behind stays behind until he pays.
+     The weekly sweep runs every Sunday, and the reminders screen sends whenever somebody has
+     it open - so a member who owes week 93 was told so on Sunday, again on Tuesday, and again
+     the Sunday after. The third copy of the same message is not a reminder any more; it is the
+     reason he stops reading them, and the reason the one that mattered - the week before the
+     meeting - is the one nobody read.
+
+     Each member now has a WEEKLY BUDGET, and it belongs to the committee rather than to the
+     code: Settings -> Reminders, REMINDERS PER MEMBER PER WEEK, one by default and 0 for no
+     limit. It is the same kind of switch as the two-factor one next to it - the group's own
+     decision, changeable without a developer, and it stays off the moment somebody sets it
+     back.
+
+     The count is not kept in a new table. Every reminder already wrote an entry to the audit
+     trail, and that entry is now the only record of the send: the week counted is the group's
+     own week (Friday to Thursday, the week the contributions on the same screen belong to),
+     and the entries written before a kind was recorded on them are counted too - the
+     alternative is a cap that forgets this week's sends on the day it is deployed. A member at
+     his limit is skipped, with a reason that names the count, the limit and where to change it,
+     never a silent skip.
+
+     ON THE SCREEN, the count is visible before it is enforced. Each row says "Already emailed
+     once this week - last 18 Sept", a member at the limit is listed but cannot be ticked, and
+     the figure at the top says how much of the week's budget has been spent (14 members, 15
+     emails, most get 1). SEND ANYWAY is there for the correction - a wrong figure, a member
+     who asked to be told again - and it is a deliberate tick rather than a remembered one,
+     because a checkbox that stays on quietly undoes the limit it was added to enforce. When it
+     is used, the audit entry says so.
+
+     The weekly sweep obeys the same budget through the same code - one implementation, so an
+     email sent by hand and one sent on a Sunday say exactly the same thing and count the same
+     way - and its report now says what the limit left alone: how many of the people who are
+     behind have already had theirs, how many are still waiting, and why nothing went out on a
+     Sunday that looks quiet. The two fine emails are NOT counted: they record something that
+     happened to the member rather than nudging him about it, and each carries its own kind in
+     the trail.
+
+     THE SECOND HALF: WHO WAS EMAILED? "Was Joseph actually told?" used to be answerable only
+     from a line in the request log and an audit entry nobody could read back. The bottom of
+     the Reminders screen now lists everything this system has emailed members, newest first -
+     the reminders, the fine that was issued, the payment that cleared it - with the address it
+     went to, the subject it went out under, the time, and the account that pressed send (or
+     "the system" for the sweep and the fine emails). GET /api/notifications/history is the
+     same list for anything that wants it, and the full record stays where it always was, in
+     Audit trail filtered to "Notification".
+
+     HOW THIS WAS PROVED. The arithmetic is a plain module (backend/src/utils/reminderLog.js)
+     with ten checks of its own in backend/test/reminderLog.test.js: one a week for a blank or
+     unreadable setting, a fraction or a negative limit refused rather than obeyed, the week
+     opening at Friday 00:00 EAT and a Thursday-night send counted against the week that has
+     closed rather than the one starting, the audit filter that recognises a reminder including
+     the entries written before the kind existed, and the reason that names the count, the
+     limit and where to change it. The one-a-week default is pinned in test/models.test.js, and
+     /api/notifications/history was added to the list of routes that must refuse a stranger in
+     test/http.test.js. The backend suite is 278 checks, none failing; the frontend suite is
+     36; the frontend builds clean.
+
 
 END OF DOCUMENT
 ===============

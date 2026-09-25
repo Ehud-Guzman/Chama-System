@@ -42,7 +42,7 @@ const CATEGORIES = [
 const WATCHED_FIELDS = {
   Member: ['name', 'phone', 'email', 'nationalId', 'regNumber', 'active', 'openingBalance', 'joinDate'],
   User: ['name', 'email', 'role', 'active'],
-  Settings: ['chamaName', 'weeklyAmount', 'chaiAmount', 'cycleStartWeek', 'weekAnchorDate', 'constitution'],
+  Settings: ['chamaName', 'weeklyAmount', 'chaiAmount', 'cycleStartWeek', 'weekAnchorDate', 'constitution', 'reminderMaxPerWeek'],
   Contribution: ['memberId', 'typeId', 'amount', 'grossAmount', 'fineDeducted', 'date', 'method', 'deleted'],
   Expense: ['amount', 'date', 'description', 'typeId'],
   Fine: ['amount', 'remaining', 'status', 'reason', 'memberId', 'typeId'],
@@ -66,6 +66,7 @@ const FIELD_LABELS = {
   cycleStartWeek: 'week number',
   weekAnchorDate: 'week start',
   chamaName: 'chama name',
+  reminderMaxPerWeek: 'reminders per member per week',
   amount: 'amount',
   grossAmount: 'amount handed over',
   fineDeducted: 'fine deducted',

@@ -2,6 +2,7 @@ const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const ContributionType = require('../models/ContributionType');
 const Fine = require('../models/Fine');
+const AuditLog = require('../models/AuditLog');
 // Required for the populate in computeMemberDues, not for anything named below: mongoose
 // resolves a `ref` by name when the query runs, so the model has to be registered in the
 // process, by whoever else happens to be there. The API process gets away with not doing it
@@ -29,6 +30,19 @@ const { logAudit } = require('../utils/auditLogger');
 // the outcome of every send has to be written down as it happens, not only returned in
 // a response somebody may never see.
 const { logEvent } = require('../middleware/requestLogger');
+// The weekly budget, and the answer to "who have we emailed?" — both read back from the audit
+// entry every send writes. See utils/reminderLog for why the count lives there and not in a
+// collection of its own.
+const {
+  normaliseMaxPerWeek,
+  weekWindow,
+  sendsSince,
+  allowanceFor,
+  overLimitReason,
+  kindLabel,
+  HISTORY_LIMIT,
+  HISTORY_MAX,
+} = require('../utils/reminderLog');
 
 // One request should never try to email the whole group and then time out — the
 // page selects a handful at a time, and the sends happen inside this request. Fifty
@@ -148,8 +162,19 @@ async function listReminders(req, res, next) {
 
     const dues = await computeMemberDues(members);
 
+    // What each member has already been sent this week, so the screen can say so before anybody
+    // ticks a name — and so a member who is already at his limit cannot be ticked by accident.
+    // Read from the audit trail rather than tracked separately: a send that happened is a fact
+    // already written down, and a second counter is a second thing that can disagree with it.
+    const settings = await getOrCreateSettings();
+    const weeklyLimit = normaliseMaxPerWeek(settings.reminderMaxPerWeek);
+    const { since, weekStart } = weekWindow();
+    const sentThisWeek = await sendsSince(members.map((m) => m._id), since);
+
     const rows = members.map((m) => {
       const due = dues.get(String(m._id)) || { lateWeeks: [], fines: [], finesTotal: 0, lateTotal: 0, total: 0 };
+      const sent = sentThisWeek.get(String(m._id));
+      const allowance = allowanceFor(sent?.count || 0, weeklyLimit);
       return {
         id: m._id,
         name: m.name,
@@ -163,6 +188,11 @@ async function listReminders(req, res, next) {
         finesCount: due.fines.length,
         finesTotal: due.finesTotal,
         total: due.total,
+        // Reminders already sent this contribution week, and whether the budget is spent. The
+        // screen disables a member at the limit rather than letting a send come back skipped.
+        remindersThisWeek: allowance.sent,
+        lastReminderAt: sent?.lastAt || null,
+        reminderCapReached: !allowance.allowed,
       };
     });
 
@@ -179,6 +209,85 @@ async function listReminders(req, res, next) {
       // Why a member can't be emailed — surfaced in the UI so it's obvious the
       // fix is to add an address, not to keep pressing send.
       missingEmailCount: visible.filter((r) => !r.email).length,
+      // The budget, and how much of it has been spent: the window is the group's own week, so
+      // the numbers here are comparable with the weeks on the member's passbook.
+      weeklyLimit,
+      weekStart,
+      emailedThisWeek: rows.filter((r) => r.remindersThisWeek > 0).length,
+      emailsThisWeek: rows.reduce((sum, r) => sum + r.remindersThisWeek, 0),
+      atCapCount: rows.filter((r) => r.reminderCapReached).length,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/notifications/history?limit=50 — who has been emailed, and what about.
+//
+// The audit trail has recorded every send since reminders existed, and nothing ever read it
+// back: an office asking "was Joseph told?" had a request-log line and no screen. This is that
+// screen's data. It carries all three kinds this system emails — a reminder, a fine being
+// issued, a fine being paid — because the question is really "what has this system been saying
+// to our members?", and an answer that left out the automatic ones would mislead.
+async function reminderHistory(req, res, next) {
+  try {
+    const requested = Number(req.query.limit);
+    const pageSize =
+      Number.isFinite(requested) && requested > 0
+        ? Math.min(Math.floor(requested), HISTORY_MAX)
+        : HISTORY_LIMIT;
+
+    const entries = await AuditLog.find({ entityType: 'Notification' })
+      .select('entityId performedBy createdAt after')
+      .sort({ createdAt: -1 })
+      .limit(pageSize)
+      .populate('performedBy', 'name')
+      .lean();
+
+    // One lookup for every name on the page rather than a populate per row: `entityId` has no
+    // declared ref, because the same field holds a member here and something else for another
+    // entity type, and a `ref` that is only right sometimes is worse than no `ref`.
+    const ids = [...new Set(entries.map((entry) => String(entry.entityId)))];
+    const members = ids.length
+      ? await Member.find({ _id: { $in: ids } }).select('name regNumber email').lean()
+      : [];
+    const byId = new Map(members.map((member) => [String(member._id), member]));
+
+    const { weekStart } = weekWindow();
+
+    const rows = entries.map((entry) => {
+      const member = byId.get(String(entry.entityId));
+      const after = entry.after || {};
+      return {
+        id: entry._id,
+        memberId: String(entry.entityId),
+        name: member?.name || 'A member who has since left',
+        regNumber: member?.regNumber || null,
+        // The address it actually went to, as it was recorded at the time — a member who has
+        // since changed his address should still be shown where the message he received went.
+        to: after.to || member?.email || '',
+        kind: after.kind || 'reminder',
+        kindLabel: kindLabel(after.kind),
+        subject: after.subject || '',
+        sentAt: entry.createdAt,
+        // Who pressed send: a named account, or the system for the sweep and the fine emails
+        // (the sweep credits the supervising account, utils/systemActor, so it reads as itself).
+        sentBy: entry.performedBy
+          ? { id: entry.performedBy._id, name: entry.performedBy.name }
+          : { id: null, name: 'The system' },
+      };
+    });
+
+    res.json({
+      entries: rows,
+      limit: pageSize,
+      total: rows.length,
+      weekStart,
+      // What the weekly budget has been spent on so far, over every member — the number the
+      // screen puts beside the per-member counts so the two cannot be read as disagreeing.
+      remindersThisWeek: rows.filter(
+        (row) => row.kind === 'reminder' && new Date(row.sentAt) >= new Date(weekStart)
+      ).length,
     });
   } catch (err) {
     next(err);
@@ -207,13 +316,31 @@ async function deliverReminders({
   // to the one line that request writes when it finishes. The weekly sweep has no
   // request, so it passes nothing and its lines stand on their own.
   rid = null,
+  // The weekly budget is a policy, not a lock: somebody with the authority to press send may
+  // say "yes, this batch, on purpose" — a correction, or a member who asked to be told again.
+  // It is not the default, and every use is recorded in the audit entry, because the cap exists
+  // to stop accidents and nagging rather than to stop the office.
+  ignoreWeeklyLimit = false,
 }) {
   const cleanNote = String(note || '').trim().slice(0, 600);
   const results = [];
   let sent = 0;
   let skipped = 0;
   let failed = 0;
+  let skippedByWeeklyLimit = 0;
   const startedAt = Date.now();
+
+  // How many reminders each member in this batch has already had this contribution week, and
+  // what the group allows (Settings.reminderMaxPerWeek — 1 by default, 0 for no limit). The
+  // window is worked out once for the batch rather than per member, so a batch that starts at
+  // 23:59 on a Thursday cannot count half its members against the week that just closed.
+  //
+  // Read even when there is no limit, because the number is not only the gate: it is what the
+  // audit entry records and what the screen shows, and "1 of 1" written over a member's fourth
+  // email of the week would be a false record of a true send.
+  const maxPerWeek = normaliseMaxPerWeek(settings?.reminderMaxPerWeek);
+  const { since, weekStart } = weekWindow();
+  const sentThisWeek = await sendsSince(members.map((m) => m._id), since);
 
   // One connection, tried before the first message, because the alternative is one per
   // member: with a provider this host cannot reach, every send spends its own
@@ -256,6 +383,18 @@ async function deliverReminders({
       continue;
     }
 
+    // The weekly budget, checked after every reason that has nothing to do with it. The order
+    // matters to whoever reads the row: "No email address on file" is a job for the office, while
+    // "already emailed this week" is a limit somebody may deliberately override — so the reason
+    // that has a fix comes first, and the two are never confused for each other.
+    const sentBefore = sentThisWeek.get(String(member._id))?.count || 0;
+    const allowance = allowanceFor(sentBefore, maxPerWeek);
+    if (!ignoreWeeklyLimit && !allowance.allowed) {
+      skippedByWeeklyLimit += 1;
+      skip(member, overLimitReason(allowance));
+      continue;
+    }
+
     try {
       const { subject, html, text } = buildReminderEmail({
         chamaName: settings.chamaName,
@@ -266,7 +405,16 @@ async function deliverReminders({
       });
       await sendMail({ to: member.email, subject, html, text });
       sent += 1;
-      results.push({ id: member._id, name: member.name, email: member.email, status: 'sent', reason: null });
+      results.push({
+        id: member._id,
+        name: member.name,
+        email: member.email,
+        status: 'sent',
+        reason: null,
+        // How many he has had this week including this one, so the screen can say "1 of 1" on
+        // the row it just cleared rather than leaving the treasurer to count.
+        remindersThisWeek: sentBefore + 1,
+      });
 
       // Written down as it happens, because the response these belong to may never be
       // delivered — a request the office gives up on finishes nowhere and is logged
@@ -280,11 +428,22 @@ async function deliverReminders({
         performedBy,
         after: {
           channel: 'email',
+          // What makes this entry a reminder rather than a fine email, and therefore what the
+          // weekly budget counts and the history screen lists (utils/reminderLog). Both fine
+          // emails already carry their own kind, so the three are told apart from the entry
+          // alone, with no second register to keep in step.
+          kind: 'reminder',
           to: member.email,
           subject,
           lateWeeks: lateWeeks.length,
           fines: fines.length,
           note: cleanNote || null,
+          // The week's running total, and the limit it was measured against — so the entry says
+          // whether this was the first nudge of the week or a deliberate fourth, without anybody
+          // having to count the entries around it.
+          remindersThisWeek: sentBefore + 1,
+          weeklyLimit: maxPerWeek,
+          limitOverridden: ignoreWeeklyLimit || undefined,
         },
       });
     } catch (err) {
@@ -315,11 +474,23 @@ async function deliverReminders({
     attempted: members.length,
     sent,
     skipped,
+    skippedByLimit: skippedByWeeklyLimit,
     failed,
     ms: Date.now() - startedAt,
   });
 
-  return { sent, skipped, failed, results };
+  return {
+    sent,
+    skipped,
+    failed,
+    // Named separately from the other skips: "already emailed this week" is the one reason a
+    // person can decide to overrule, and a batch that quietly sent nothing because of it must
+    // not look the same as a batch that found nobody to email.
+    skippedByWeeklyLimit,
+    results,
+    weeklyLimit: maxPerWeek,
+    weekStart,
+  };
 }
 
 // POST /api/notifications/reminders — body:
@@ -333,7 +504,15 @@ async function sendReminders(req, res, next) {
     // production instead of the generic "Something went wrong".
     assertMailConfigured();
 
-    const { memberIds, includeLate = true, includeFines = true, note = '' } = req.body || {};
+    const {
+      memberIds,
+      includeLate = true,
+      includeFines = true,
+      note = '',
+      // Whether this batch may go to members who are already at their weekly limit. Off unless
+      // the screen says otherwise, and only ever true because a person ticked the box.
+      ignoreWeeklyLimit = false,
+    } = req.body || {};
     const ids = [...new Set((Array.isArray(memberIds) ? memberIds : []).map(String))].slice(
       0,
       MAX_RECIPIENTS
@@ -357,12 +536,18 @@ async function sendReminders(req, res, next) {
       note,
       performedBy: req.user._id,
       rid: req.id,
+      ignoreWeeklyLimit: ignoreWeeklyLimit === true,
     });
 
     res.json({
       sent: summary.sent,
       skipped: summary.skipped,
       failed: summary.failed,
+      // The one skip the caller can do something about, named on its own: the screen offers to
+      // send anyway rather than leaving "skipped 4" to be interpreted.
+      skippedByWeeklyLimit: summary.skippedByWeeklyLimit,
+      weeklyLimit: summary.weeklyLimit,
+      weekStart: summary.weekStart,
       results: summary.results,
     });
   } catch (err) {
@@ -374,6 +559,7 @@ module.exports = {
   mailStatus,
   listReminders,
   sendReminders,
+  reminderHistory,
   // Shared with the weekly sweep job, so a member emailed automatically and one emailed by
   // hand are told exactly the same thing.
   computeMemberDues,

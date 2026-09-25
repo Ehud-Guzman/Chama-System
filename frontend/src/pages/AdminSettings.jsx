@@ -4,6 +4,7 @@ import ChangePasswordForm from '../components/shared/ChangePasswordForm';
 import TwoFactorPanel from '../components/shared/TwoFactorPanel';
 import AddAdminForm from '../components/shared/AddAdminForm';
 import BackupPanel from '../components/shared/BackupPanel';
+import ReminderSettingsPanel from '../components/shared/ReminderSettingsPanel';
 import BackLink from '../components/shared/BackLink';
 import NavTile from '../components/shared/NavTile';
 import FineTypeManager from '../components/contributions/FineTypeManager';
@@ -23,6 +24,12 @@ const SECTIONS = [
     id: 'identity',
     label: 'Chama identity',
     hint: 'Name, logo, vision and mission, week start',
+    roles: ['super_admin', 'admin'],
+  },
+  {
+    id: 'reminders',
+    label: 'Reminders',
+    hint: 'How often a member may be emailed about what he owes',
     roles: ['super_admin', 'admin'],
   },
   {
@@ -90,8 +97,9 @@ export default function AdminSettings() {
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">Administration</p>
         <h1 className="mt-1 text-2xl font-bold">Settings</h1>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-          The group as members see it, the fines the disciplinary officer picks from, the accounts
-          that can sign in, and your own password.
+          The group as members see it, how often members may be emailed about what they owe, the
+          fines the disciplinary officer picks from, the accounts that can sign in, and your own
+          password.
         </p>
       </header>
 
@@ -106,6 +114,11 @@ export default function AdminSettings() {
           {has('identity') && (
             <div id="identity" className="scroll-mt-24">
               <ChamaSettingsForm />
+            </div>
+          )}
+          {has('reminders') && (
+            <div id="reminders" className="scroll-mt-24">
+              <ReminderSettingsPanel />
             </div>
           )}
           {has('fines') && (
