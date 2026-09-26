@@ -134,6 +134,7 @@ money dated before the cycle opens is credited to the opening week.
 | `npm run check:national-ids` | Reports duplicate/blank/free-text IDs. Exit code 1 on duplicates — a unique index cannot build while two members share a number, and the gate refuses both |
 | `npm run audit:prune -- --days=730 --confirm-write` | Trims the audit trail to a retention window. Dry run without `--confirm-write`; the prune itself is recorded in what remains |
 | `npm run balances:restore` · `ledger:clear-contributions` | The destructive ones that remain. Both dry-run by default, both back up to `backend/data/` (gitignored), both write a `System` audit entry naming the operator (`--by=<email>`, or the earliest super admin) |
+| `node scripts/reportMoneyLine.js` · `node scripts/verifyLedgerFigures.js` | The two read-only checks to reach for when the figures are argued about — a balance in a meeting, or an email somebody says was sent to the wrong member. Neither writes anything, builds an index, creates a Settings row or sends anything. The first prints every member's held money, what he owes, his fines, whether he is told about any of it and why (the money line included); the second recomputes each member the long way — carried in + what he paid since the cycle opened − tea — and compares it with the engine, member by member, so "the system says X" can be answered with "and a plain sum of the documents says the same". `--rows` on the second lists every shilling logged since the books opened with the week it belongs to; `--member=<part of a name>` narrows it to one member |
 
 **The go-live scripts are gone, because the go-live happened.** Five commands were removed on
 2026-09-21, once the Week-92 reset was behind us and the books had opened:
@@ -269,7 +270,16 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   collected — a member holding 1,400 who misses a week reads 1,300 held and 1,400 owed, not a
   negative balance — and the figure the older statements printed is still on the payload as
   `moneyNetOfDues` (`money − required`), so a statement from before the change reconciles against
-  today's with one subtraction. **Tea is automatic**:
+  today's with one subtraction.
+  **Two questions live side by side in the engine, and confusing them is what makes a member argue
+  with his own passbook.** `settled` is the paper ledger's weekly column — was that week's money in
+  by the time the week closed — and it is what the §7.5 NILL fine is built on. `weeksBehind` and the
+  per-week `owed` are the *money*: is any of it still owing now. A week paid the day after its
+  Thursday is NILL in the column (the deadline was missed) and not a debt (the money arrived), and
+  what a reminder may quote is the money — a member who has paid everything must never be emailed
+  "week 93 — 1,400 short" while his passbook says he owes nothing. The arrears are handed to the
+  weeks oldest-first, so the weeks' `owed` amounts add up to `arrears` to the shilling, and
+  `test/memberLedger.test.js` pins both halves of that. **Tea is automatic**:
   `chaiAmount` is deducted from every member for every closed scored week of the cycle whether or
   not anybody logged anything, it needs no entry, it can never be in arrears, and it is shown per
   member so each can see the total he has put into the Group's Tea Fund. That mirrors the paper
@@ -621,8 +631,15 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   after the week it was measured in (114,600 in week 92, 116,000 in week 93, 117,400 in week 94,
   …), because what it is compared against is what the group expected a member to have put in by
   then — a frozen figure would stop excluding anybody within a fortnight. It is compared against
-  the money the group is actually holding for him (`ledger.money`, carried in + paid in − tea), the
-  decision is the pure `coveredByBalance` in `utils/reminderLimit`, the reminders screen says how
+  the money the group is actually holding for him (`ledger.money`, carried in + paid in − tea) —
+  and **that figure begins with what he carried into the cycle**, so every query that loads members
+  for the reminders path has to ask for `openingBalance`: a projection that leaves it out reads
+  every member as having carried in nothing, which silently turns the line into "chase everybody"
+  and emails the members who are furthest ahead. `computeMemberDues` therefore reads the field
+  itself when a caller's projection has forgotten it, rather than trusting the projection (the
+  reminders list, the send and the sweep all select it, so the extra read only ever happens for a
+  caller that would otherwise be wrong). The decision is the pure `coveredByBalance` in
+  `utils/reminderLimit`, the reminders screen says how
   many names the line took off the list and why, and the weekly sweep names them in its report
   rather than reporting a smaller number than the ledger holds. A member the line covers cannot be
   emailed from the screen either: the send is skipped with the reason on the row, and the response

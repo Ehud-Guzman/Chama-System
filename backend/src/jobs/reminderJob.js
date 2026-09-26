@@ -50,8 +50,12 @@ function maxRecipients() {
 async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
   // Everyone active, not just those owing: the report has to say what was checked as well as
   // what was found, or "0 owing" and "the query returned nothing" look identical.
+  //
+  // `openingBalance` is on the projection for the money line, not for the report: what a member
+  // holds starts with what he carried into the cycle, so a sweep that cannot see it reads every
+  // member as holding nothing and emails the ones who are furthest ahead (utils/reminderLimit).
   const members = await Member.find({ active: true })
-    .select('name regNumber phone email emailNotifications photoUrl joinDate')
+    .select('name regNumber phone email emailNotifications photoUrl joinDate openingBalance')
     .sort({ name: 1 })
     .lean();
 

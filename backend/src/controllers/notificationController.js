@@ -92,6 +92,24 @@ async function computeMemberDues(members, { settings: givenSettings = null } = {
   // The line as it stands this week, or 0 when the rule is switched off.
   const weekNumber = currentWeekNumber(config);
   const moneyLimit = moneyLimitForWeek(settings, config, weekNumber);
+
+  // What a member holds is measured *including* what he carried into the cycle, so a caller's
+  // projection has to have asked for `openingBalance`. If one did not, read it here rather than
+  // quietly measuring everybody against their payments alone — that reads as "nobody has anything"
+  // and emails exactly the members the group asked to be left alone, which is what happened when
+  // the reminders list, the send and the sweep all selected fields without it. The extra query only
+  // happens when a row is actually missing the field, so the three callers that select it pay
+  // nothing (see the projections in listReminders, sendReminders and job:reminders).
+  const missingOpening = members.filter((m) => !('openingBalance' in m));
+  const openings = missingOpening.length
+    ? new Map(
+        (
+          await Member.find({ _id: { $in: missingOpening.map((m) => m._id) } })
+            .select('openingBalance')
+            .lean()
+        ).map((m) => [String(m._id), Number(m.openingBalance) || 0])
+      )
+    : null;
   const typeById = new Map(types.map((t) => [String(t._id), t]));
   const byMember = new Map();
   for (const c of contributions) {
@@ -115,24 +133,30 @@ async function computeMemberDues(members, { settings: givenSettings = null } = {
 
   for (const member of members) {
     const ledger = computeMemberLedger({
-      member,
+      // A member row that was projected without his carried-in balance has it filled in from the
+      // read above; a caller that selected it passes straight through.
+      member: openings
+        ? { ...member, openingBalance: openings.get(String(member._id)) ?? 0 }
+        : member,
       contributions: byMember.get(String(member._id)) || [],
       config,
     });
 
-    // `settled` rather than `status`: a week covered out of earlier credit is not
-    // late, and the opening week is the baseline — nothing was expected of it, so
-    // it can never be late either. This is exactly what the ledger's own
-    // weeksBehind counts, so a reminder can never contradict the member's page.
+    // The weeks the money is still short of — `behind`, not `!settled`: a member who paid a week
+    // late has an unsettled week in the paper ledger's column and nothing owing now, and telling
+    // him "Week 93 — 1,400 short" when his passbook says he owes nothing is the kind of
+    // contradiction that gets a system distrusted. `w.owed` is the amount still outstanding
+    // against that week, so these shortfalls add up to exactly the arrears on his own page, which
+    // is what the ledger's own `weeksBehind` counts.
     const lateWeeks = ledger.weeks
-      .filter((w) => !w.isBaseline && !w.isCurrent && !w.settled)
+      .filter((w) => w.behind)
       .map((w) => ({
         weekNumber: w.weekNumber,
         startDate: w.startDate,
         typeName: WEEKLY_TYPE_NAME,
         expected: ledger.weeklyAmount,
         paid: w.personalPaid,
-        shortfall: Math.max(ledger.weeklyAmount - w.personalPaid, 0),
+        shortfall: w.owed,
       }));
 
     const fines = pendingFines
@@ -187,8 +211,15 @@ async function listReminders(req, res, next) {
   try {
     const onlyOwing = req.query.onlyOwing !== '0';
 
+    // `openingBalance` is not for the list — it is half of what the money line is measured against
+    // (utils/reminderLimit): the money a member holds is his carried-in balance, plus what he has
+    // paid since the cycle opened, less the tea. A projection that leaves it out reads every member
+    // as having carried in nothing, which silently turns "leave the members who are ahead alone"
+    // into "chase everybody who missed a week" — the members with the most money being the ones who
+    // get emailed. computeMemberDues reads the field itself if a caller forgets it, but the one
+    // query that loads every active member should not be the one that pays for it.
     const members = await Member.find({ active: true })
-      .select('name regNumber phone email emailNotifications photoUrl joinDate')
+      .select('name regNumber phone email emailNotifications photoUrl joinDate openingBalance')
       .sort({ name: 1 })
       .lean();
 
@@ -609,7 +640,10 @@ async function sendReminders(req, res, next) {
     }
 
     const members = await Member.find({ _id: { $in: ids }, active: true })
-      .select('name phone email emailNotifications')
+      // openingBalance for the same reason as the list's query: it is what the money line measures
+      // a member against, and a batch that skipped the members who are ahead must not be the one
+      // place that reads them as holding nothing.
+      .select('name phone email emailNotifications openingBalance')
       .lean();
 
     const settings = await getOrCreateSettings();

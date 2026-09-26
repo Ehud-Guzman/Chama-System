@@ -200,7 +200,38 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
     credit = available - config.weeklyAmount;
   }
 
-  const weeksBehind = weeks.filter((w) => !w.isCurrent && !w.settled).length;
+  // What is still **owing**, week by week — a different question from `settled` above.
+  //
+  // `settled` is the paper ledger's weekly column: was this week's money in by the time the week
+  // closed? A member who pays his 1,400 on the Friday after the Thursday is NILL in that column,
+  // and rightly so — nothing came in that week, and §7.5's fine is about the deadline.
+  //
+  // What a member is *told he owes* has to be the money, not the deadline. A later payment settles
+  // an earlier shortfall: 3,000 handed over the day after a missed week covers it and leaves credit
+  // behind, so nothing is outstanding even though that week was never paid in its own week. Quoting
+  // the weekly column as the debt is how a member who has paid everything gets emailed "Week 93 —
+  // 1,400 short" while his own passbook, built from `arrears`, says he owes nothing. Those two
+  // sentences may never disagree: the arrears are handed out to the weeks oldest-first — the
+  // deficits always sit at the oldest unsettled week, because credit carries forward — so the
+  // amounts add up to `arrears` exactly, and the weeks that are going to be named as owing are the
+  // ones the money is actually short of.
+  //
+  // Nothing here changes a figure: `settled`, `shortfall` and the NILL fine flag are untouched, and
+  // the sum of `owed` is `arrears` (see the assertions in test/memberLedger.test.js).
+  let outstanding = Math.max(0, required - paid);
+  for (const w of weeks) {
+    if (w.isBaseline || w.isCurrent) {
+      // Nothing is owed against the opening week, and the week still running has not closed.
+      w.owed = 0;
+      w.behind = false;
+      continue;
+    }
+    w.owed = Math.min(Math.max(0, w.shortfall), outstanding);
+    outstanding -= w.owed;
+    w.behind = w.owed > 0;
+  }
+
+  const weeksBehind = weeks.filter((w) => w.behind).length;
 
   const openingBalance = Number(member.openingBalance) || 0;
   // What he has paid against what the cycle expected of him. Positive is credit
@@ -268,10 +299,17 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
     weeksPaid: weeks.filter((w) => w.status === 'paid').length,
     weeksPartial: weeks.filter((w) => w.status === 'partial').length,
     weeksNill: weeks.filter((w) => w.status === 'nill').length,
-    // Weeks the money hasn't covered yet — closed ones only ("behind"), and
-    // including the running week ("to catch up"), which is what the treasurer's
-    // one-tap "cover everything" needs to know.
+    // Closed weeks the money has not covered yet: what the member is *behind* in the only sense a
+    // reminder, a statement or his own passbook may quote — money still owing. `settled` below is
+    // the looser, deadline-based record the treasurer's week table shows (was that week's money in
+    // by its Thursday), and a week can be one without the other: a member who pays a week late has
+    // an unsettled week and nothing behind him.
     weeksBehind,
+    // Weeks the walk could not settle *in their own week* — the same condition the NILL fine reads,
+    // and what the treasurer's page shows as "owing" against a week. The week still running counts
+    // in it too (nothing has settled it yet), so this is not a count of debts: see `w.owed` for what
+    // is still owed week by week, `weeksBehind` for the weeks that are actually a debt, and
+    // `arrears` for the total.
     weeksUnsettled: weeks.filter((w) => !w.settled).length,
     nillWeeksDueFine: weeks.filter((w) => w.nillFineDue).map((w) => w.weekNumber),
     // Weeks 1..(cycleStartWeek-1) that have money logged against them, so the

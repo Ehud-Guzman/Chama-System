@@ -1501,6 +1501,62 @@ shilling below it still being told. The frontend suite is 43 checks with 0 failu
 production build is clean.
 
 
+TWO NUMBERS THAT WERE WRONG, FOUND BY CHECKING THE LIVE BOOKS
+------------------------------------------------------------
+
+Both were found the same way: by running the app's own maths against the real database and reading
+the answer, rather than by reasoning about the code. Both are fixed, and neither moves a shilling.
+
+1. THE MONEY LINE WAS MEASURED AGAINST THE WRONG FIGURE. The line that decides who is not told he
+   is behind is measured against what the group is holding for a member — and what it holds begins
+   with what he carried into the cycle. The three queries that load members for the reminders
+   screen, the send and the weekly sweep all projected a list of fields that did NOT include
+   `openingBalance`, so the engine saw every member as having carried in nothing and measured them
+   against what they had paid since week 92 alone. On the live books — where members hold up to
+   Ksh 198,840 — the rule was therefore a no-op: the members who were furthest ahead were the ones
+   being emailed about a missed week. All three projections now select the field, and
+   `computeMemberDues` reads it itself if a caller's projection has forgotten it, so a future
+   screen cannot silently disarm the rule the same way. Checked against the real database: the line
+   reads 117,400 in week 94 and leaves Harrison Kamau (198,840), Joel Ndungu (173,300), Isaiah
+   Maina (154,400), Benard Ngugi (127,200) and Joshua Maina (117,800) alone.
+
+2. A MEMBER WHO HAD PAID EVERYTHING WAS STILL QUOTED AS SHORT. One member paid Ksh 3,000 on 26
+   September — the day after the week that had just closed. The money therefore covered the missed
+   week and left credit beside it, so his ledger said he owed nothing and his passbook said
+   "up to date"; the weekly table, which records what arrived during each week, still marked that
+   week as never paid, and the reminders list quoted the weekly table. The result would have been
+   an email telling a member who owes nothing that he is "1,400 short". Two questions now live
+   side by side and are named differently: `settled` stays the paper ledger's column (was the money
+   in by the Thursday — what the KES 50 NILL fine is built on), and `weeksBehind`, with a per-week
+   `owed`, is the money: any of it still owing now. The arrears are handed to the weeks
+   oldest-first, so the weeks add up to `arrears` to the shilling, and
+   `backend/test/memberLedger.test.js` pins both halves — the deadline record and the debt — on the
+   ordinary case, the paid-late case, and the part-paid case.
+
+WHAT CAME OUT OF IT BESIDES THE FIXES: two read-only tools, for a committee that doubts a number
+(see the maintenance-scripts table in the README). `node scripts/reportMoneyLine.js` prints every
+member's held money, what he owes, his fines, whether he is told about any of it and why.
+`node scripts/verifyLedgerFigures.js` recomputes each member the long way and compares it with the
+engine, member by member, and prints the totals both ways — on the live books all 31 members
+agreed and the figures reconciled exactly (carried in 3,370,830 + paid in 30,350 − tea 3,100 =
+3,398,080 held, 23,800 owed). `--rows` lists every shilling logged since the books opened with the
+week it belongs to. Neither writes anything, builds an index or creates a Settings row.
+
+FILES
+
+  backend/src/controllers/notificationController.js  the three member projections, the guard in
+                                           computeMemberDues, and the late weeks taken from what is
+                                           still owed rather than from the deadline
+  backend/src/jobs/reminderJob.js          the sweep's own projection, same reason
+  backend/src/utils/memberLedger.js        `owed` per week and `weeksBehind` from the money;
+                                           `settled`/`shortfall`/the NILL flag untouched
+  backend/test/memberLedger.test.js        the paid-late and part-paid cases, and the invariant that
+                                           the weeks' owed amounts add up to the arrears
+  backend/scripts/reportMoneyLine.js       NEW - read-only: who is told, who the line leaves alone
+  backend/scripts/verifyLedgerFigures.js   NEW - read-only: the engine against a plain sum of the
+                                           documents, member by member (--rows, --member=)
+
+
 END OF DOCUMENT
 ===============
 
