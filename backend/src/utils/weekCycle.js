@@ -12,6 +12,11 @@
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// The group's own money line, held here as values so every screen resolves it once (see
+// resolveConfig). The rule itself lives in utils/reminderLimit, which needs nothing from this file —
+// no cycle, no database — so this stays a one-way dependency.
+const { normaliseMoneyLimit, normaliseMoneyLimitWeek } = require('./reminderLimit');
+
 // Kenya runs a fixed +3 with no daylight saving, so a week boundary is plain
 // arithmetic rather than a timezone-database lookup. Fixing the offset matters
 // for more than tidiness: the API runs on hosts that default to UTC while the
@@ -63,6 +68,12 @@ function fridayOf(date) {
 // Everything downstream reads the cycle through this shape, so the amounts can
 // be changed by resolution without touching the anchor — moving the anchor would
 // silently renumber every week already logged.
+//
+// The group's own money line travels in here too (reminderLimit*): it is a policy the group sets
+// — "a member holding at least this much is not told he is behind" — and every screen that says
+// the word "behind" has to give the same answer, so the ledger carries it rather than each
+// controller resolving it on its own. The rule itself lives in utils/reminderLimit; this is only
+// the values, normalised once.
 function resolveConfig(settings) {
   if (!settings || !settings.weekAnchorDate) {
     throw new Error('Week cycle anchor is not set — call getOrCreateSettings() first');
@@ -77,6 +88,8 @@ function resolveConfig(settings) {
       : DEFAULT_CHAI_AMOUNT,
     anchorDate: new Date(settings.weekAnchorDate),
     anchorMs: new Date(settings.weekAnchorDate).getTime(),
+    reminderMoneyLimit: normaliseMoneyLimit(settings.reminderMoneyLimit),
+    reminderMoneyLimitWeek: normaliseMoneyLimitWeek(settings.reminderMoneyLimitWeek),
   };
 }
 

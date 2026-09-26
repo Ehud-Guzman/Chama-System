@@ -53,16 +53,37 @@ function StatusPill({ member, baselineWeek }) {
   const pill =
     "inline-block max-w-full whitespace-normal rounded-full px-2 py-1 text-[11px] font-bold uppercase leading-4 tracking-widest";
 
-  if (member.arrears > 0) {
+  // The money the group *chases*: 0 for a member holding at least the group's line, whom the group
+  // has decided not to tell he is behind (Settings → Reminders, utils/reminderLimit). `arrears` is
+  // still on the row as the plain record of what is uncollected — the pill names it either way — and
+  // an older payload with no chased figure falls back to the plain one, which is the safe way to be
+  // wrong: it never tells a member he is fine when he is not.
+  const chased = member.chasedArrears ?? member.arrears;
+  const weeks = member.chasedWeeksBehind ?? member.weeksBehind;
+
+  if (chased > 0) {
     return (
       <span className={`${pill} bg-alert/10 text-alert`}>
-        {money(member.arrears)} owed
-        {member.weeksBehind > 0 && (
+        {money(chased)} owed
+        {weeks > 0 && (
           <span className="hidden sm:inline">
             {" "}
-            ({member.weeksBehind} week{member.weeksBehind === 1 ? "" : "s"} behind)
+            ({weeks} week{weeks === 1 ? "" : "s"} behind)
           </span>
         )}
+      </span>
+    );
+  }
+  // Above the line with a week still uncollected: nothing is being asked of him, so the pill says
+  // that in the neutral tone rather than in the red one the chase uses.
+  if (member.arrears > 0) {
+    return (
+      <span className={`${pill} bg-canvas text-muted`}>
+        Ahead of the cycle
+        <span className="hidden sm:inline">
+          {" "}
+          — {money(member.arrears)} not collected (he holds more than {money(member.moneyLimit)})
+        </span>
       </span>
     );
   }
@@ -269,8 +290,12 @@ export default function MemberLedgerList({
               <Stat
                 label="Owed by members"
                 value={money(totals.arrears)}
-                hint="(closed weeks still unpaid)"
-                alert={totals.arrears > 0}
+                hint={`(closed weeks still unpaid)${
+                  (totals.notChasedArrears ?? 0) > 0
+                    ? ` — of which ${money(totals.notChasedArrears)} is not chased: those members hold more than the group's line`
+                    : ''
+                }`}
+                alert={(totals.chasedArrears ?? totals.arrears) > 0}
               />
             </section>
           )}

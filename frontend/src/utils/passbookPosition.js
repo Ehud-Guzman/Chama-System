@@ -30,13 +30,27 @@ export function passbookPosition(ledger, fallbackTotal = 0) {
       netOfDues: null,
       arrears: 0,
       weeksBehind: 0,
+      moneyLimit: 0,
+      coveredByBalance: false,
+      chasedArrears: 0,
+      chasedWeeksBehind: 0,
       upToDate: false,
       arrearsText: null,
+      aheadText: null,
     };
   }
 
   const arrears = Number(ledger.arrears) || 0;
   const weeksBehind = Number(ledger.weeksBehind) || 0;
+  // Whether any of it is *chased*. A member holding at least the group's own line is not told he is
+  // behind (utils/reminderLimit), so the card reads the chased figures when the server sends them
+  // and falls back to the plain ones when it does not — an older payload must never be read as "he
+  // is fine".
+  const moneyLimit = Number(ledger.moneyLimit) || 0;
+  const chasedArrears = Number(ledger.chasedArrears ?? ledger.arrears) || 0;
+  const chasedWeeks = Number(ledger.chasedWeeksBehind ?? ledger.weeksBehind) || 0;
+  // Above the line, with a closed week still uncollected: nothing is being asked of him.
+  const ahead = chasedArrears === 0 && arrears > 0;
 
   return {
     label: `Money held · week ${ledger.currentWeek}`,
@@ -57,14 +71,26 @@ export function passbookPosition(ledger, fallbackTotal = 0) {
     netOfDues: Number(ledger.moneyNetOfDues) || 0,
     arrears,
     weeksBehind,
-    upToDate: arrears <= 0,
+    // The policy view, so the card can say "fine" without hiding the money: what the group actually
+    // chases, and the line that decided it.
+    moneyLimit,
+    coveredByBalance: Boolean(ledger.coveredByBalance),
+    chasedArrears,
+    chasedWeeksBehind: chasedWeeks,
+    upToDate: chasedArrears <= 0,
     // "Owed" on its own invites the next question — how far back? — so the weeks ride with it, and
-    // one week is not "1 weeks behind".
+    // one week is not "1 weeks behind". Shown only when the group is actually asking him for it.
     arrearsText:
-      arrears > 0
-        ? `${money(arrears)} owed${
-            weeksBehind > 0 ? ` (${weeksBehind} week${weeksBehind === 1 ? '' : 's'} behind)` : ''
+      chasedArrears > 0
+        ? `${money(chasedArrears)} owed${
+            chasedWeeks > 0 ? ` (${chasedWeeks} week${chasedWeeks === 1 ? '' : 's'} behind)` : ''
           }`
         : null,
+    // Said instead, when he is above the line: nothing is being asked of him, and the uncollected
+    // week is still named so nobody thinks it vanished.
+    aheadText: ahead
+      ? `Ahead of the cycle — ${money(arrears)} of a closed week is not collected yet, and nothing `
+        + 'is being asked of you.'
+      : null,
   };
 }

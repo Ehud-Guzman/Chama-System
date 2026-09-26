@@ -77,6 +77,53 @@ test('money owed with no week count still says what is owed', () => {
   assert.equal(position.arrearsText, 'Ksh 700 owed');
 });
 
+test('a member above the group\'s line is not told he is behind', () => {
+  // Holding 198,840 against a line of 117,400: he missed a closed week and the money is still
+  // uncollected, but the group does not chase him, so the card says so in the calm tone — and the
+  // amount is still named, so nobody thinks the week vanished.
+  const position = passbookPosition({
+    ...LEDGER,
+    money: 198840,
+    arrears: 1400,
+    weeksBehind: 1,
+    moneyLimit: 117400,
+    coveredByBalance: true,
+    chasedArrears: 0,
+    chasedWeeksBehind: 0,
+  });
+
+  assert.equal(position.arrearsText, null, 'nothing is being asked of him');
+  assert.equal(position.upToDate, true);
+  assert.equal(
+    position.aheadText,
+    'Ahead of the cycle — Ksh 1,400 of a closed week is not collected yet, and nothing is being '
+      + 'asked of you.'
+  );
+  assert.equal(position.held, 198840);
+  assert.equal(position.arrears, 1400, 'the plain record is still on the payload');
+  assert.equal(position.chasedWeeksBehind, 0);
+  assert.equal(position.moneyLimit, 117400);
+});
+
+test('below the line the card reads exactly as it did before the line existed', () => {
+  // An older payload (no chased figures) has to behave like the plain record, and a member under
+  // the line must never be let off: this is the safe direction for the fallback to fail in.
+  const legacy = passbookPosition({ ...LEDGER, arrears: 1400, weeksBehind: 1 });
+  assert.equal(legacy.arrearsText, 'Ksh 1,400 owed (1 week behind)');
+  assert.equal(legacy.aheadText, null);
+
+  const chased = passbookPosition({
+    ...LEDGER,
+    arrears: 1400,
+    weeksBehind: 1,
+    chasedArrears: 1400,
+    chasedWeeksBehind: 1,
+  });
+  assert.equal(chased.arrearsText, 'Ksh 1,400 owed (1 week behind)');
+  assert.equal(chased.aheadText, null);
+  assert.equal(chased.upToDate, false);
+});
+
 test('with no ledger the card says what the figure really is', () => {
   const position = passbookPosition(null, 3400);
 

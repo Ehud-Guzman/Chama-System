@@ -158,6 +158,10 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl }
 
             {position.arrearsText ? (
               <p className="amount mt-2 text-sm font-medium text-alert">{position.arrearsText}</p>
+            ) : position.aheadText ? (
+              /* Above the group's line: it asks nothing of him, so the card says so in the calm
+                 tone rather than in the red one used for money the group is chasing. */
+              <p className="amount mt-2 text-sm font-medium text-muted">{position.aheadText}</p>
             ) : position.upToDate ? (
               /* Said out loud rather than left blank: a member who is up to date should not have to
                  work it out from an absence. */
@@ -191,8 +195,13 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl }
               {result.ledger && (
                 <Fact
                   label="Weeks behind"
-                  value={position.weeksBehind > 0 ? position.weeksBehind : 'None'}
-                  alert={position.weeksBehind > 0}
+                  // The chased count, not the plain one: above the group's line nothing is being
+                  // asked of him, and the card above says so — a page that said "Ahead" in one line
+                  // and "1 week behind" in the next would be arguing with itself.
+                  value={
+                    position.chasedWeeksBehind > 0 ? position.chasedWeeksBehind : 'None'
+                  }
+                  alert={position.chasedWeeksBehind > 0}
                 />
               )}
 

@@ -1557,6 +1557,58 @@ FILES
                                            documents, member by member (--rows, --member=)
 
 
+THE WORD "BEHIND" NOW FOLLOWS THE LINE EVERYWHERE, NOT JUST IN EMAILS
+---------------------------------------------------------------------
+
+The money line was built for the reminder emails, and it worked — the members above it stopped being
+emailed. But the office screens kept saying "1 week behind" beside a member holding 198,840, because
+the line only governed who was emailed and not what the app *said*. A committee reading that has one
+question — "which is it?" — so the answer is now the same everywhere.
+
+WHAT CHANGED. The engine reports two readings of the same money:
+
+  arrears / weeksBehind        the record: he missed a closed week and 1,400 of it is unpaid.
+  chasedArrears / chasedWeeksBehind   the policy: what the group actually asks him for. Both are 0
+                               for a member holding at least the line, and 0 is the whole of it —
+                               nothing is written off, and `arrears` is still on every payload.
+
+Every screen that shows the word "behind" reads the chased pair: the finance ledger's row pill, the
+members register's card, the member's detail page, the weekly sweep and the reminders list, and the
+member's own passbook (whose position card now says "Ahead of the cycle — Ksh 1,400 of a closed week
+is not collected yet, and nothing is being asked of you", in the calm tone rather than the red one).
+The treasurer's own page still shows the uncollected week and can still log it the moment the member
+brings it — what it no longer does is call him behind, and it says why in words: "He is above the
+Ksh 117,400 line, so that uncollected week is not chased and he is not told he is behind."
+
+NOTHING LEFT THE TOTALS. The header now prints both halves of what is owed — "owed Ksh 23,800 (of
+which Ksh 7,000 is not chased: those members hold more than the group's line)" — so the money the
+line takes off the individual rows is still on the page, named, rather than disappearing from the
+group's receivable. `totalLedger` is where that split is worked out, from the same per-member figures
+the rows are drawn from.
+
+AND THE SAFE DIRECTION FOR A HALF-DEPLOYED APP. A payload from before this change carries no chased
+figure, and every screen then falls back to the plain record — a member under the line can never be
+shown as fine because a field was missing. That is tested on both sides: the engine
+(`backend/test/memberLedger.test.js`, including the line switched off with 0 and holding two hundred
+thousand) and the card (`frontend/test/passbookPosition.test.js`, including an older payload with no
+chased figure at all).
+
+
+FILES
+
+  backend/src/utils/weekCycle.js           resolveConfig carries the line's values
+  backend/src/utils/memberLedger.js        moneyLimit, coveredByBalance, chasedArrears,
+                                           chasedWeeksBehind on the ledger, the list projection and
+                                           the header totals (chased / notChased)
+  backend/src/controllers/memberController.js  the three hand-mapped payloads
+  frontend/src/components/ledger/MemberLedgerList.jsx  the row pill and the header's owed split
+  frontend/src/components/members/MemberCards.jsx      the register's "behind" label
+  frontend/src/components/public/PassbookCard.jsx      the position card and the "weeks behind" fact
+  frontend/src/pages/MemberDetail.jsx · FinanceMemberLedger.jsx  the member's page and the ledger
+                                           page: the uncollected week named, not called behind
+  frontend/src/utils/passbookPosition.js   aheadText, and upToDate from what is chased
+
+
 END OF DOCUMENT
 ===============
 

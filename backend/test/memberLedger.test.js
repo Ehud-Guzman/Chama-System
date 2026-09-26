@@ -14,7 +14,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { parseEatDate, resolveConfig } = require('../src/utils/weekCycle');
-const { computeMemberLedger, summariseMember } = require('../src/utils/memberLedger');
+const { computeMemberLedger, summariseMember, totalLedger } = require('../src/utils/memberLedger');
 
 // 2026-09-11 is the Friday week 92 opens on, which makes week 93 Fri 18 Sep →
 // Thu 24 Sep — the week these figures were read off the live books.
@@ -272,4 +272,93 @@ test('a week nobody paid at all is behind, exactly as the arrears say', () => {
   // Every screen reads these two together, so they may never disagree: the count of weeks and the
   // money are one statement.
   assert.equal(summariseMember({ _id: 'm1', name: 'A', active: true }, ledger).weeksBehind, 1);
+});
+
+// ---------------------------------------------------------------------------------------------
+// The group's line: what he is *told*, beside what the weeks say
+//
+// `arrears` and `weeksBehind` are the record — he missed a week and 1,400 of it is unpaid — and the
+// chased pair is the policy: a member holding at least Settings.reminderMoneyLimit has paid more
+// into the cycle than it has asked of him, and the group decided he is not told he is behind
+// (utils/reminderLimit). Every screen that shows the word "behind" reads the chased pair, so the
+// member's passbook, the office's list and the register cannot say different things about him.
+// ---------------------------------------------------------------------------------------------
+
+const configNoLine = resolveConfig({
+  cycleStartWeek: 92,
+  weeklyAmount: 1400,
+  chaiAmount: 100,
+  weekAnchorDate: parseEatDate('2026-09-11'),
+  reminderMoneyLimit: 0,
+});
+
+const HOLDING_THE_LINE = parseEatDate('2026-09-25'); // week 94: line = 114,600 + 2 × 1,400
+
+test('above the line the weeks are still the record and nothing is chased', () => {
+  const ledger = computeMemberLedger({
+    member: { openingBalance: 200000 },
+    contributions: [],
+    config,
+    now: HOLDING_THE_LINE,
+  });
+
+  assert.equal(ledger.moneyLimit, 117400, 'the line moves 1,400 a week from week 92');
+  assert.equal(ledger.coveredByBalance, true);
+  assert.equal(ledger.arrears, 1400, 'the record is untouched');
+  assert.equal(ledger.weeksBehind, 1);
+  assert.equal(ledger.money, 199900, 'and so is the money');
+  assert.equal(ledger.chasedArrears, 0, 'but nothing is asked of him');
+  assert.equal(ledger.chasedWeeksBehind, 0);
+
+  const summary = summariseMember({ _id: 'm1', name: 'A', active: true }, ledger);
+  assert.equal(summary.chasedArrears, 0);
+  assert.equal(summary.chasedWeeksBehind, 0);
+  assert.equal(summary.moneyLimit, 117400);
+});
+
+test('below the line what is chased is simply what is owed', () => {
+  const ledger = computeMemberLedger({
+    member: { openingBalance: 50000 },
+    contributions: [],
+    config,
+    now: HOLDING_THE_LINE,
+  });
+
+  assert.equal(ledger.coveredByBalance, false);
+  assert.equal(ledger.chasedArrears, ledger.arrears);
+  assert.equal(ledger.chasedWeeksBehind, ledger.weeksBehind);
+  assert.equal(ledger.chasedArrears, 1400);
+});
+
+test('a line of 0 is off: everybody who is behind is told', () => {
+  const ledger = computeMemberLedger({
+    member: { openingBalance: 200000 },
+    contributions: [],
+    config: configNoLine,
+    now: HOLDING_THE_LINE,
+  });
+
+  assert.equal(ledger.moneyLimit, 0);
+  assert.equal(ledger.coveredByBalance, false);
+  assert.equal(ledger.chasedArrears, 1400, 'holding a fortune is no defence when the group says so');
+});
+
+test('the header keeps both halves of what is owed', () => {
+  const rich = computeMemberLedger({
+    member: { openingBalance: 200000 },
+    contributions: [],
+    config,
+    now: HOLDING_THE_LINE,
+  });
+  const poor = computeMemberLedger({
+    member: { openingBalance: 1000 },
+    contributions: [],
+    config,
+    now: HOLDING_THE_LINE,
+  });
+  const totals = totalLedger([rich, poor]);
+
+  assert.equal(totals.arrears, 2800, 'both members owe a week');
+  assert.equal(totals.chasedArrears, 1400, 'only one of them is being asked for it');
+  assert.equal(totals.notChasedArrears, 1400, 'and the other half is named, not lost');
 });

@@ -51,11 +51,17 @@ export default function MemberCards({ members }) {
                   )}
                 </p>
                 <p className="shrink-0">
-                  {m.arrears > 0
-                    ? `${money(m.arrears)} behind`
-                    : m.balance
-                      ? 'Held for him'
-                      : 'Nothing held'}
+                  {/* The money the group *chases*, not the plain record: a member holding at least
+                      the group's own line is not told he is behind (utils/reminderLimit), so his
+                      card says so instead of counting weeks at him. `arrears` is still what is
+                      uncollected — the pill names it — and an older payload without the chased
+                      figure falls back to the plain one rather than claiming he is fine. */}
+                  {(() => {
+                    const chased = m.chasedArrears ?? m.arrears;
+                    if (chased > 0) return `${money(chased)} behind`;
+                    if (m.coveredByBalance && m.arrears > 0) return 'Ahead of the cycle';
+                    return m.balance ? 'Held for him' : 'Nothing held';
+                  })()}
                 </p>
               </div>
             </div>

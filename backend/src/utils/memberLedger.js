@@ -1,4 +1,14 @@
 const { weekNumberForDate, weekRange, currentWeekNumber, scoredWeeks } = require('./weekCycle');
+// The group's own line, and the decision built on it: a member holding at least that much is not
+// told he is behind. The ledger reports the *policy* view of that beside the money — `arrears` and
+// `weeksBehind` stay the plain truth about the weeks, and `chasedArrears`/`chasedWeeksBehind` are
+// what the group actually chases him for (0 when he is above the line). Every screen that shows the
+// word "behind" reads the second pair, so the app cannot tell a member one thing on his passbook
+// and another on the treasurer's list.
+const {
+  moneyLimitForWeek,
+  coveredByBalance: holdsAtLeastTheLine,
+} = require('./reminderLimit');
 
 // Everything one member's ledger shows, computed in a single pass.
 //
@@ -250,6 +260,17 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   // does NOT come off it — see the rule at the top of this file; that week shows
   // as `arrears` and is collected against the next week's payment.
   const money = openingBalance + paid - teaOffMoney;
+
+  // The same two figures asked the group's way. `weeksBehind` and `arrears` (below) are the plain
+  // truth about the weeks: he missed one, and 1,400 of it is unpaid. Whether the group *tells him he
+  // is behind* is a policy the group sets — a member holding at least `moneyLimit` has paid more
+  // into the cycle than it has asked of him, and chasing him is what the group decided against
+  // (Settings → Reminders, utils/reminderLimit). So the money is reported twice: as it stands, and
+  // as what the group chases. Every screen that shows the word "behind" reads the chased pair, and
+  // every screen that shows the money reads `arrears` — one policy, everywhere, visibly.
+  const moneyLimit = moneyLimitForWeek(config, config, currentWeek);
+  const coveredByBalance = holdsAtLeastTheLine(money, moneyLimit);
+  const arrears = movement < 0 ? -movement : 0;
   // The figure the books showed while the week's expectation was still being
   // netted out of the held money: carried in + paid in − dues so far − tea. Kept
   // on the payload because "it has already happened" is answerable with it — a
@@ -280,7 +301,14 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
     // screens that have to reconcile against an older statement, and the reason
     // "it has already happened" is a subtraction rather than a restatement.
     moneyNetOfDues,
-    arrears: movement < 0 ? -movement : 0,
+    arrears,
+    // The group's line as it stands this week, whether he is above it, and what the group actually
+    // chases him for. On every screen that asks "is he behind?" — the member list, the passbook,
+    // the reminders — these are the figures to read; `arrears`/`weeksBehind` remain the record.
+    moneyLimit,
+    coveredByBalance,
+    chasedArrears: coveredByBalance ? 0 : arrears,
+    chasedWeeksBehind: coveredByBalance ? 0 : weeksBehind,
     credit: movement > 0 ? movement : 0,
     chai: {
       // Everything taken off his money for tea: the automatic figure for every
@@ -338,6 +366,13 @@ function summariseMember(member, ledger) {
     paid: ledger.paid,
     extraPaid: ledger.extraPaid,
     arrears: ledger.arrears,
+    // What the group chases him for, and the line that decided it: `chasedArrears` is 0 for a member
+    // holding at least `moneyLimit`, so a list row can say "fine" instead of "1 week behind" without
+    // losing the money — `arrears` is still on the row for anyone who needs the plain record.
+    moneyLimit: ledger.moneyLimit,
+    coveredByBalance: ledger.coveredByBalance,
+    chasedArrears: ledger.chasedArrears,
+    chasedWeeksBehind: ledger.chasedWeeksBehind,
     credit: ledger.credit,
     chaiPaid: ledger.chai.due,
     chaiThisWeek: ledger.chai.thisWeek,
@@ -368,6 +403,11 @@ function totalLedger(ledgers) {
       paid: acc.paid + l.paid,
       required: acc.required + l.required,
       arrears: acc.arrears + l.arrears,
+      // The same total, split by whether the group chases it: `chasedArrears` is what the members
+      // who are *not* above the line owe, and `notChasedArrears` is the money held for the ones who
+      // are. The header prints both, so nothing the line leaves alone disappears from the total.
+      chasedArrears: acc.chasedArrears + l.chasedArrears,
+      notChasedArrears: acc.notChasedArrears + (l.arrears - l.chasedArrears),
       credit: acc.credit + l.credit,
       chaiPaid: acc.chaiPaid + l.chai.due,
       chaiRecorded: acc.chaiRecorded + l.chai.recorded,
@@ -379,6 +419,8 @@ function totalLedger(ledgers) {
       paid: 0,
       required: 0,
       arrears: 0,
+      chasedArrears: 0,
+      notChasedArrears: 0,
       credit: 0,
       chaiPaid: 0,
       chaiRecorded: 0,

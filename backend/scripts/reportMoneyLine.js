@@ -125,7 +125,8 @@ async function main() {
   console.log(`  unpaid fines:                       ${money(finedTotal)}`);
   if (above.length > 0) {
     console.log('');
-    console.log('  Left alone (holds at least the line) — their passbook still shows the week they missed:');
+    console.log('  Left alone (holds at least the line) — the week stays on the record, and he is not');
+    console.log('  told he is behind — on any screen:');
     for (const { member, due } of above) {
       console.log(
         `    ${pad(member.name, 26)}${rpad(money(due.moneyHeld), 14)}  vs line ${money(limit)}`

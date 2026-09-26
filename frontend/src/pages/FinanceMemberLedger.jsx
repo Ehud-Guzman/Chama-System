@@ -358,8 +358,16 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         <Stat
           label={owed ? 'Owed' : 'Extra saved'}
           value={money(owed ? ledger.arrears : ledger.credit)}
-          hint={owed ? '(closed weeks still unpaid)' : '(paid more than was due so far)'}
-          alert={owed}
+          hint={
+            owed
+              ? (ledger.chasedArrears ?? ledger.arrears) > 0
+                ? '(closed weeks still unpaid)'
+                : `(closed weeks still unpaid — not chased: he holds more than ${money(
+                    ledger.moneyLimit
+                  )})`
+              : '(paid more than was due so far)'
+          }
+          alert={owed && (ledger.chasedArrears ?? ledger.arrears) > 0}
         />
         <Stat
           label={`Tea — ${ledger.chai.weeks} week${ledger.chai.weeks === 1 ? '' : 's'}`}
@@ -374,7 +382,18 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         <span className="amount font-semibold">{money(ledger.money)}</span> held for him. The weeks
         that have closed ({money(ledger.required)}) are what the group expected of him, not money
         taken off him: a week he has not paid is the {money(ledger.arrears)} he owes beside it, and
-        his held figure is what he actually handed over. While the expectation was still being
+        his held figure is what he actually handed over.
+        {(ledger.chasedArrears ?? ledger.arrears) === 0 && ledger.arrears > 0 && (
+          <>
+            {' '}
+            <span className="font-semibold">
+              He is above the {money(ledger.moneyLimit)} line, so that uncollected week is not
+              chased and he is not told he is behind
+            </span>{' '}
+            — it stays on his record and is logged whenever he brings it.
+          </>
+        )}
+        {' '}While the expectation was still being
         deducted, this figure read{' '}
         <span className="amount font-semibold">{money(ledger.moneyNetOfDues ?? ledger.money)}</span>{' '}
         — the same books, with the {money(ledger.required)} shown as owed instead of taken out. Tea is{' '}
@@ -468,6 +487,21 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
             >
               He is {ledger.weeksBehind} week{ledger.weeksBehind === 1 ? '' : 's'} behind ({' '}
               {money(ledger.arrears)} owed) — log it all and catch him up
+            </button>
+          )}
+          {/* Above the group's line the uncollected week is not chased (utils/reminderLimit): the
+              treasurer still needs to see it, and to be able to log it when the member brings it —
+              so the button stays, and what changes is that it no longer calls him behind. */}
+          {(ledger.chasedArrears ?? ledger.arrears) === 0 && ledger.arrears > 0 && (
+            <button
+              type="button"
+              onClick={coverArrears}
+              className="min-h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-xs font-semibold text-muted"
+            >
+              Ahead of the cycle — {ledger.weeksBehind} closed week
+              {ledger.weeksBehind === 1 ? '' : 's'} uncollected ({money(ledger.arrears)}), not chased
+              {ledger.moneyLimit > 0 ? ` above ${money(ledger.moneyLimit)}` : ''} — log it when he
+              brings it
             </button>
           )}
 

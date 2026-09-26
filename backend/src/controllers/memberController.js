@@ -343,6 +343,13 @@ async function listMembers(req, res, next) {
           balance: ledger.money,
           arrears: ledger.arrears,
           weeksBehind: ledger.weeksBehind,
+          // And the group's own answer to "is he behind?" — 0 owed and 0 weeks for a member holding
+          // at least the line, so the list can say he is fine without hiding the money (arrears
+          // above is the plain record of the weeks). See utils/reminderLimit.
+          moneyLimit: ledger.moneyLimit,
+          coveredByBalance: ledger.coveredByBalance,
+          chasedArrears: ledger.chasedArrears,
+          chasedWeeksBehind: ledger.chasedWeeksBehind,
           chaiDue: ledger.chai.due,
         };
       }),
@@ -425,6 +432,12 @@ async function getMember(req, res, next) {
         // member's older statement against today's without re-deriving anything.
         moneyNetOfDues: ledger.moneyNetOfDues,
         arrears: ledger.arrears,
+        // The group's line, and what it chases: the screens that say "behind" read these, so the
+        // member's own page and the office's list cannot disagree about him.
+        moneyLimit: ledger.moneyLimit,
+        coveredByBalance: ledger.coveredByBalance,
+        chasedArrears: ledger.chasedArrears,
+        chasedWeeksBehind: ledger.chasedWeeksBehind,
         credit: ledger.credit,
         currentWeek: ledger.currentWeek,
         cycleStartWeek: config.cycleStartWeek,
@@ -1111,6 +1124,12 @@ async function buildPublicProfile(member, options = {}) {
       // dues from, kept so a member's older copy reconciles (utils/memberLedger).
       moneyNetOfDues: ledger.moneyNetOfDues,
       arrears: ledger.arrears,
+      // Read by the passbook's position card: a member holding at least the group's line is told he
+      // is fine, not that he is behind (utils/reminderLimit).
+      moneyLimit: ledger.moneyLimit,
+      coveredByBalance: ledger.coveredByBalance,
+      chasedArrears: ledger.chasedArrears,
+      chasedWeeksBehind: ledger.chasedWeeksBehind,
       credit: ledger.credit,
       weeksElapsed: ledger.weeksElapsed,
       weeksPaid: ledger.weeksPaid,

@@ -279,7 +279,18 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   what a reminder may quote is the money — a member who has paid everything must never be emailed
   "week 93 — 1,400 short" while his passbook says he owes nothing. The arrears are handed to the
   weeks oldest-first, so the weeks' `owed` amounts add up to `arrears` to the shilling, and
-  `test/memberLedger.test.js` pins both halves of that. **Tea is automatic**:
+  `test/memberLedger.test.js` pins both halves of that.
+  **The group's money line governs every use of the word "behind", not just the emails.** A member
+  holding at least `Settings.reminderMoneyLimit` is above the line (utils/reminderLimit), and the
+  engine reports the policy beside the money: `arrears` and `weeksBehind` stay the record of what is
+  unpaid, `chasedArrears`/`chasedWeeksBehind` (0 above the line) are what the group actually asks
+  him for, and every screen that shows the word — the finance ledger's pill, the members register's
+  "behind" label, the member's page and his passbook, the reminders list and the emails — reads the
+  chased pair. An above-the-line member with a week still uncollected reads "Ahead of the cycle —
+  Ksh 1,400 not collected" in the neutral tone instead of a red "1 week behind", and the header
+  totals keep every shilling: "owed Ksh 23,800 (of which Ksh 7,000 is not chased)". A payload from
+  before this existed (no chased figure) falls back to the plain record, which is the safe way to be
+  wrong — it never tells a member he is fine when he is not. **Tea is automatic**:
   `chaiAmount` is deducted from every member for every closed scored week of the cycle whether or
   not anybody logged anything, it needs no entry, it can never be in arrears, and it is shown per
   member so each can see the total he has put into the Group's Tea Fund. That mirrors the paper

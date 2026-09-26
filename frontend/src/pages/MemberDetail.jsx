@@ -391,12 +391,22 @@ async function exportStatementExcel() {
                 {money(ledger.paid)} paid in since
               </p>
             )}
-            {ledger && ledger.arrears > 0 && (
+            {ledger && (ledger.chasedArrears ?? ledger.arrears) > 0 && (
               <p className="amount mt-1 text-xs font-semibold text-alert">
-                {money(ledger.arrears)} owed
-                {ledger.weeksBehind > 0
-                  ? ` (${ledger.weeksBehind} week${ledger.weeksBehind === 1 ? '' : 's'} behind)`
+                {money(ledger.chasedArrears ?? ledger.arrears)} owed
+                {(ledger.chasedWeeksBehind ?? ledger.weeksBehind) > 0
+                  ? ` (${ledger.chasedWeeksBehind ?? ledger.weeksBehind} week${
+                      (ledger.chasedWeeksBehind ?? ledger.weeksBehind) === 1 ? '' : 's'
+                    } behind)`
                   : ''}
+              </p>
+            )}
+            {/* Above the group's line: the money is still uncollected, but nothing is asked of him —
+                said in the calm tone rather than the red one (utils/reminderLimit). */}
+            {ledger && (ledger.chasedArrears ?? ledger.arrears) === 0 && ledger.arrears > 0 && (
+              <p className="amount mt-1 text-xs font-semibold text-muted">
+                Ahead of the cycle — {money(ledger.arrears)} of a closed week not collected
+                {ledger.moneyLimit > 0 ? ` (he holds more than ${money(ledger.moneyLimit)})` : ''}
               </p>
             )}
           </div>
