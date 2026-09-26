@@ -73,6 +73,28 @@ const SettingsSchema = new Schema(
     // The cap never stops the fine emails: those are a record of something that happened to him,
     // not a nudge, and they are named separately in the trail.
     reminderMaxPerWeek: { type: Number, default: 1, min: 0 },
+    // Who the group stops chasing: a member holding at least this much is not told he is behind.
+    //
+    // A member who brought a hundred thousand into the cycle and then missed a Thursday is behind by
+    // the week-by-week count, and only by it — he has paid in more than the cycle has asked of him.
+    // Emailing him about one closed week is how a chama teaches its best-paying members to stop
+    // reading its emails, so the reminders screen and the weekly sweep leave him alone while his
+    // money stays above this line (see utils/reminderLimit for the whole rule).
+    //
+    // The figure is measured **in the week the books opened** (`reminderMoneyLimitWeek`), because
+    // the line moves: `weeklyAmount` is added every week after it, so week 92 reads 114,600, week 93
+    // reads 116,000, and so on. A fixed figure would stop excluding anybody within a fortnight.
+    //
+    // The default is this group's own number at week 92 — the same way 1,400, 100 and 92 are the
+    // constitution's figures — and it is editable, because it is a policy and not arithmetic.
+    // 0 switches the rule off: every member who is behind is told, whatever he holds.
+    //
+    // It touches nothing else. His passbook still reports the week he missed (that is his record),
+    // his fines are still emailed (a fine is not a weekly nudge), and no figure in the books moves.
+    reminderMoneyLimit: { type: Number, default: 114600, min: 0 },
+    // The week `reminderMoneyLimit` was measured in. Null means the cycle's own opening week, which
+    // is what a group that has only ever typed one number gets.
+    reminderMoneyLimitWeek: { type: Number, default: null },
     // Whether two-factor authentication is in use at all.
     //
     // OFF by default, and that is the point: the feature is built and ready, but until the

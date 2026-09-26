@@ -420,6 +420,10 @@ async function getMember(req, res, next) {
         required: ledger.required,
         tea: ledger.chai.due,
         money: ledger.money,
+        // Held less every week that has closed — what this figure read while the dues were still
+        // being taken off it (utils/memberLedger). On the payload so the office can reconcile a
+        // member's older statement against today's without re-deriving anything.
+        moneyNetOfDues: ledger.moneyNetOfDues,
         arrears: ledger.arrears,
         credit: ledger.credit,
         currentWeek: ledger.currentWeek,
@@ -1103,6 +1107,9 @@ async function buildPublicProfile(member, options = {}) {
       required: ledger.required,
       tea: ledger.chai.due,
       money: ledger.money,
+      // Held less every week that has closed — the figure the passbook's card used to subtract the
+      // dues from, kept so a member's older copy reconciles (utils/memberLedger).
+      moneyNetOfDues: ledger.moneyNetOfDues,
       arrears: ledger.arrears,
       credit: ledger.credit,
       weeksElapsed: ledger.weeksElapsed,

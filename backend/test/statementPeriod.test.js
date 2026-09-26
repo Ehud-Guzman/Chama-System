@@ -1,10 +1,16 @@
 // A period statement: what it resolves to, and the one thing that makes it worth printing.
 //
 // The interesting tests here are the reconciliation ones. A period statement is only useful if its
-// figures add up — opening, plus what came in, less what was due and the tea, equals closing — and
-// that is the property a member or the committee will check first, on paper, in front of everybody.
-// So most of what follows drives the real ledger engine over a synthetic member and asserts the
-// identity exactly, including across a week boundary.
+// figures add up — opening, plus what came in, less the tea, equals closing — and that is the
+// property a member or the committee will check first, on paper, in front of everybody. So most of
+// what follows drives the real ledger engine over a synthetic member and asserts the identity
+// exactly, including across a week boundary.
+//
+// The weeks that closed are *reported* rather than deducted (utils/memberLedger), so they are
+// deliberately outside that sum: a closed week nobody paid is arrears beside the balance, not money
+// that moved. The old arithmetic — opening + in − due − tea — is asserted too, as today's figure
+// less the weeks that closed, because that is what every statement printed before the rule changed
+// reads as, and the office has to be able to reconcile the two.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -152,7 +158,7 @@ test('a period that cannot be understood is refused with a sentence, not a throw
 // The figures — the part that has to add up
 // -----------------------------------------------------------------------------
 
-test('the period reconciles: opening plus in, less due and tea, equals closing', () => {
+test('the period reconciles: opening plus what came in, less the tea, equals closing', () => {
   const block = blockFor({ year: '2026' });
 
   // Both ends are the member's real position at that instant, from the same engine the passbook
@@ -162,10 +168,19 @@ test('the period reconciles: opening plus in, less due and tea, equals closing',
   assert.equal(block.balanced, true);
   assert.equal(block.accountedFor, block.movement);
 
-  // Spelled out, exactly as the statement prints it, so a reader can check it by hand.
+  // Spelled out, exactly as the statement prints it, so a reader can check it by hand. The weeks
+  // that closed are deliberately NOT in this sum: a closed week nobody paid is arrears, not money
+  // that moved (utils/memberLedger), so it is reported beside the balance rather than taken off it.
+  assert.equal(
+    Math.round((block.opening + block.paidIn - block.tea) * 100) / 100,
+    block.closing
+  );
+  // And the sum every statement printed before the rule changed: today's figure less every week
+  // that closed. Same books, and the bridge between the two readings.
   assert.equal(
     Math.round((block.opening + block.paidIn - block.required - block.tea) * 100) / 100,
-    block.closing
+    block.closing - block.required,
+    'the old arithmetic is today\'s figure less the weeks that closed'
   );
 });
 
@@ -188,7 +203,7 @@ test('it reconciles for every shape of period, including one week wide', () => {
     assert.equal(
       block.balanced,
       true,
-      `${JSON.stringify(query)}: opening ${block.opening} + ${block.paidIn} − ${block.required} − ${block.tea} = ${block.accountedFor}, but closing is ${block.closing}`
+      `${JSON.stringify(query)}: opening ${block.opening} + ${block.paidIn} − ${block.tea} = ${block.accountedFor}, but closing is ${block.closing}`
     );
   }
 });
@@ -214,11 +229,19 @@ test('a month inside the cycle carries its own weeks, and neither baseline nor r
   assert.equal(february.required, 5600);
   assert.equal(february.tea, 400);
 
-  // A month nothing was paid in still accrues what was due: `paidIn` is 0 and the movement is the
-  // weeks that closed, which is what arrears are made of.
+  // A month nothing was paid in still accrues what was due, and that is now reported rather than
+  // taken off the balance: the only money that leaves him in February is the tea. The four closed
+  // weeks (5,600) are settled out of January's surplus — the credit-aware walk (§7.5) — so the
+  // arrears through the month are nil, and the figure he holds moves by nothing but the tea.
   assert.equal(february.paidIn, 0);
   assert.equal(february.contributionsCount, 0);
-  assert.equal(february.movement, -5600 - 400);
+  assert.equal(february.movement, -400, 'only the tea left his money');
+  assert.equal(february.arrears, 0, 'January surplus covered the four weeks that closed');
+  assert.equal(
+    february.movement,
+    -february.tea,
+    'what moved: the tea, and nothing that was never collected'
+  );
 
   // The weeks and the tea always move together, and the tea is a whole number of weeks' worth: the
   // engine charges tea for exactly the weeks it scores, so this can never drift apart.

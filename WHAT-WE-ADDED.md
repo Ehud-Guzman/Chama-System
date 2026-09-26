@@ -1424,6 +1424,83 @@ WHAT IS STILL OPEN FOR THE COMMITTEE
      no new request, and the page's own chunk is still lazy.
 
 
+ONE WEEK'S MONEY IS NEVER TAKEN OFF A MEMBER'S FIGURE, AND THE GROUP
+STOPS CHASING ANYBODY HOLDING ENOUGH
+-------------------------------------------------------------------
+
+TWO CHANGES, BOTH ABOUT A MEMBER WHO MISSES A THURSDAY.
+
+1. BEING BEHIND IS SHOWN AS MONEY OWED, NOT AS MONEY TAKEN. The books used to work out a member's
+   held figure as "carried in + paid in - what he was expected to have paid - tea". That meant the
+   week's 1,400 came off him the moment the week closed, whether or not he had paid it: a member
+   holding 1,400 who missed a week read MINUS 100 (1,300 after the tea, less the 1,400 that was
+   never collected). The paper ledger never did that - its total column was "Previous + Weekly +
+   Extra - Chai" - and the Ksh 1,400 he owes is not a movement of money, it is a debt against the
+   next collection. So the figure he holds is now exactly that: carried in + paid in - tea. A
+   closed week nobody paid shows beside it as "Ksh 1,400 owed (1 week behind)", and nothing else
+   about his page changes: the week is still flagged, the tea is still deducted, and his fines are
+   still his own.
+
+   IT HAS ALREADY HAPPENED, SO THE TWO READINGS RECONCILE. The deduction was never stored anywhere
+   - it was worked out on the way to the screen - so the whole book moves the moment the rule does,
+   and no member's opening balance or payment has to be touched. Every screen and statement that
+   needs to tie back to what was printed before now carries the old figure as well: it is the new
+   one less every week that has closed, and the server publishes it as `moneyNetOfDues`
+   (`money - required`). The treasurer's member page prints the sentence in full; the period
+   statement prints the old sum under the new one ("Money at the start + what he paid in - the tea =
+   money at the end", with the weeks that closed and what is owed named beneath the total, and the
+   PDF prints it as an equation). "The arithmetic adds up" is still checked on every statement, and
+   it now proves the new identity instead of the old one.
+
+2. NOBODY HOLDING AT LEAST THE GROUP'S LINE IS TOLD HE IS BEHIND. A member who brought a hundred
+   thousand shillings into the cycle and then missed one Thursday is behind on the week-by-week
+   count and by that count alone. Settings -> Reminders gains "Leave members alone above this much":
+   114,600 measured in week 92, which is the treasurer's own figure, and 0 to switch the rule off.
+   At or above the line, a member's closed weeks stop being something he is emailed about. It is
+   not a limit the reminders screen can overrule, and it never touches his fines: a fine is
+   something he was charged for breaking a rule, and having money in hand is not a defence.
+
+   THE LINE MOVES WITH THE CYCLE, which is the part that makes it work. The weekly contribution is
+   added every week after the week the figure was measured in - 114,600 in week 92, 116,000 in week
+   93, 117,400 in week 94 - because what it is compared against is what the group expected a member
+   to have put in by then. A frozen figure would stop excluding anybody within a fortnight, and
+   nobody would notice until the emails started again.
+
+   IT IS COMPARED AGAINST THE MONEY THE GROUP ACTUALLY HOLDS for him (carried in + paid in - tea),
+   which is the first change read the other way round: a member's arrears no longer lower the
+   figure he is measured by. The reminders screen says, in words, how many names the line took off
+   the list, who they are and where to change it, and the weekly sweep names them in its report
+   instead of reporting "nobody behind" about a week the ledger says was missed. A batch that has
+   one of them in it is skipped with the reason on the row, and the counts are returned separately
+   so "held by the money line" can never be misread as a failed send.
+
+FILES
+
+  backend/src/utils/memberLedger.js        the rule: money is carried in + paid in - tea;
+                                           `moneyNetOfDues` carries the old figure
+  backend/src/utils/statementPeriod.js     the period identity is now paid in - tea
+  backend/src/utils/memberStatement.js     the statements relabel the weeks as what was expected and
+                                           print what is still owed under the total
+  backend/src/utils/reminderLimit.js       NEW - the money line, its growth, and the covered decision
+  backend/src/models/Settings.js           reminderMoneyLimit (default 114600), reminderMoneyLimitWeek
+  backend/src/controllers/settingsController.js   both fields validated, 0 allowed and meaning off
+  backend/src/controllers/notificationController.js  the line applied to the dues, the list and every
+                                           batch, and named in the skips
+  backend/src/jobs/reminderJob.js          the sweep's report counts and names the members it left out
+  frontend/src/utils/passbookPosition.js   the card's sum spelled out without the dues
+  frontend/src/components/shared/ReminderSettingsPanel.jsx   the money line, with the week it was
+                                           measured in
+  frontend/src/pages/Reminders.jsx, MemberDetail.jsx, FinanceMemberLedger.jsx,
+  components/ledger/MemberLedgerList.jsx   the labels and the reconciliation sentences
+
+HOW THIS WAS PROVED. The backend suite is 287 checks with 0 failures (69 rehearsal checks skip
+themselves with no database, on purpose), including new checks that a closed week nobody paid
+leaves the held figure alone, that the old figure is exactly `held - weeks that closed`, and that
+the line reads 114,600 in week 92 and 1,400 higher every week after, with 0 switching it off and a
+shilling below it still being told. The frontend suite is 43 checks with 0 failures and the
+production build is clean.
+
+
 END OF DOCUMENT
 ===============
 

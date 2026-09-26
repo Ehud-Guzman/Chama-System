@@ -26,13 +26,26 @@ test('the figure on top is the money held, and the sum behind it is spelled out'
 
   assert.equal(position.label, 'Money held · week 94');
   assert.equal(position.held, 6200);
+  // Only money that actually came in is subtracted: the tea the group took. The weeks that closed
+  // (2,800 of them) are what he was expected to pay, not something taken off the figure — they ride
+  // on the "owed" line, or nowhere at all when his payments covered them.
   assert.equal(
     position.identity,
-    'Ksh 5,000 carried in + Ksh 4,200 paid in since week 92 − Ksh 3,000 due so far '
-      + '(weekly contributions and tea)'
+    'Ksh 5,000 carried in + Ksh 4,200 paid in since week 92 − Ksh 200 tea deducted (Group fund)'
   );
   // The fallback is ignored whenever the cycle engine answered: it is a different question.
   assert.notEqual(position.held, 999);
+});
+
+test('the figure the older statements printed is carried, so the two reconcile', () => {
+  // Held less every week that has closed: what this member's figure read while the expectation was
+  // still being netted out of it (identical to `ledger.moneyNetOfDues` on the server).
+  const position = passbookPosition({ ...LEDGER, moneyNetOfDues: 3400 });
+  assert.equal(position.netOfDues, 3400);
+  assert.equal(position.held - position.netOfDues, LEDGER.required);
+
+  // With no ledger there is no such figure, and nothing is claimed about one.
+  assert.equal(passbookPosition(null, 3400).netOfDues, null);
 });
 
 test('a member who is up to date is said to be, not left blank', () => {
@@ -46,10 +59,15 @@ test('arrears carry how far back they go, and one week is not "1 weeks"', () => 
   const oneWeek = passbookPosition({ ...LEDGER, arrears: 1400, weeksBehind: 1, money: 4800 });
   assert.equal(oneWeek.arrearsText, 'Ksh 1,400 owed (1 week behind)');
   assert.equal(oneWeek.upToDate, false);
-  assert.equal(oneWeek.held, 4800, 'arrears do not change what he holds — the engine already netted them');
+  assert.equal(
+    oneWeek.held,
+    4800,
+    'arrears never change what he holds: a week nobody paid is owed, not money that moved'
+  );
 
   const threeWeeks = passbookPosition({ ...LEDGER, arrears: 4200, weeksBehind: 3 });
   assert.equal(threeWeeks.arrearsText, 'Ksh 4,200 owed (3 weeks behind)');
+  assert.equal(threeWeeks.held, LEDGER.money, 'and the figure at the top is untouched by them');
 });
 
 test('money owed with no week count still says what is owed', () => {

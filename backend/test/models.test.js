@@ -23,6 +23,15 @@ test('one reminder per member per week is the default', () => {
   assert.equal(new Settings({}).reminderMaxPerWeek, 1);
 });
 
+test('the money a member may hold before he is left alone defaults to the group\'s own line', () => {
+  // A member holding at least this much is not told he is behind. The default is the treasurer's
+  // own figure for the week the books opened (114,600), and the week itself is left blank so that
+  // a fresh install needs one number rather than two — blank reads as the cycle's opening week.
+  const settings = new Settings({});
+  assert.equal(settings.reminderMoneyLimit, 114600);
+  assert.equal(settings.reminderMoneyLimitWeek, null);
+});
+
 test('settings is a single row keyed "main"', () => {
   assert.equal(new Settings({}).key, 'main');
   const unique = Settings.schema.indexes().find(([index]) => index.key === 1);

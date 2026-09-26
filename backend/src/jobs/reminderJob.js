@@ -56,7 +56,8 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
     .lean();
 
   const settings = await getOrCreateSettings();
-  const dues = await computeMemberDues(members);
+  // The group's own row, handed in so the money line and the weekly budget come from one read.
+  const dues = await computeMemberDues(members, { settings });
 
   const owing = members
     .map((member) => {
@@ -67,10 +68,27 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
         lateWeeks: due.lateWeeks.length,
         fines: due.fines.length,
         reachable: Boolean(member.email) && member.emailNotifications !== false,
+        // Worth knowing about even though he is not in this sweep: he *is* behind on the
+        // week-by-week count, and the group's own rule is that he is not written to about it, so
+        // the report names him rather than leaving the difference unexplained.
+        heldOff: Boolean(due.coveredByBalance),
       };
     })
     .filter((row) => row.total > 0)
     .sort((a, b) => b.total - a.total);
+
+  // Everybody the group's money line took off this run's list, whether or not a fine keeps him in
+  // it: he is behind by the week-by-week count and that is exactly why the report says so instead
+  // of reporting a smaller number than the ledger holds.
+  const heldByBalance = members
+    .map((member) => ({ member, due: dues.get(String(member._id)) || {} }))
+    .filter((row) => (row.due.lateWeeksIgnored || 0) > 0)
+    .map((row) => ({
+      name: row.member.name,
+      moneyHeld: row.due.moneyHeld || 0,
+      lateWeeks: row.due.lateWeeksIgnored,
+    }))
+    .sort((a, b) => b.moneyHeld - a.moneyHeld);
 
   // The weekly budget, read before the summary so the report can tell tonight's work from what
   // was already done on Tuesday. Without it the screen says "32 behind" about nine people who
@@ -99,6 +117,13 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
     alreadyEmailedThisWeek: owing.filter((row) => row.reachable && sentCountFor(row) > 0).length,
     awaitingReminder: owing.filter((row) => row.reachable && stillAllowed(row)).length,
     heldByLimit: owing.filter((row) => row.reachable && !stillAllowed(row)).length,
+    // The other reason a name is not in this sweep, and the one the committee will ask about:
+    // members holding at least the group's own line are not told they are behind (Settings →
+    // Reminders, utils/reminderLimit). Counted and named, because a report that quietly checked
+    // fewer people than the ledger has is a report somebody stops trusting.
+    moneyLimit: [...dues.values()][0]?.moneyLimit || 0,
+    heldByBalanceCount: heldByBalance.length,
+    heldByBalance: heldByBalance.slice(0, 5),
     // The five largest, by name and amount: enough for the screen to be actionable without
     // carrying a copy of the ledger into a job record.
     worst: owing.slice(0, 5).map((row) => ({
@@ -146,16 +171,26 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
     return summary;
   }
   if (targets.length === 0) {
-    // Two different quiet weeks, said differently. "Nobody is behind" and "everybody behind has
-    // already been told" look identical in a count and mean opposite things to the committee.
-    summary.note =
-      summary.heldByLimit > 0
-        ? `Nobody to email today: the ${summary.heldByLimit} `
-          + `${summary.heldByLimit === 1 ? 'reachable member' : 'reachable members'} who `
-          + `${summary.heldByLimit === 1 ? 'is' : 'are'} behind already `
-          + `${summary.heldByLimit === 1 ? 'has' : 'have'} this week's reminder `
-          + `(limit ${maxPerWeek} per week — see Reminders per member per week in Settings).`
-        : 'Nobody reachable is behind. Nothing to send.';
+    // Three different quiet weeks, said differently. "Nobody is behind", "everybody behind has
+    // already been told" and "everybody behind is holding enough that the group does not chase
+    // him" look identical in a count and mean entirely different things to the committee.
+    if (summary.heldByLimit > 0) {
+      summary.note =
+        `Nobody to email today: the ${summary.heldByLimit} `
+        + `${summary.heldByLimit === 1 ? 'reachable member' : 'reachable members'} who `
+        + `${summary.heldByLimit === 1 ? 'is' : 'are'} behind already `
+        + `${summary.heldByLimit === 1 ? 'has' : 'have'} this week's reminder `
+        + `(limit ${maxPerWeek} per week — see Reminders per member per week in Settings).`;
+    } else if (summary.heldByBalanceCount > 0) {
+      summary.note =
+        `Nobody to email today. ${summary.heldByBalanceCount} `
+        + `${summary.heldByBalanceCount === 1 ? 'member is' : 'members are'} behind on a closed `
+        + `week but ${summary.heldByBalanceCount === 1 ? 'holds' : 'hold'} at least `
+        + `${summary.moneyLimit.toLocaleString('en-KE')} — above the group's own line, so `
+        + `${summary.heldByBalanceCount === 1 ? 'he is' : 'they are'} not told (Settings → Reminders).`;
+    } else {
+      summary.note = 'Nobody reachable is behind. Nothing to send.';
+    }
     return summary;
   }
 
@@ -177,6 +212,9 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
   // Anybody this batch left at the cap because the count moved between the two reads — the
   // check above chose the targets, this one is the record of what actually went.
   summary.skippedByWeeklyLimit = delivered.skippedByWeeklyLimit;
+  // And anybody the money line turned away inside the batch: a member can cross it between the
+  // report and the send (a payment lands), and the sweep must record what it actually did.
+  summary.skippedByMoneyLimit = delivered.skippedByMoneyLimit;
   summary.mailed = true;
   summary.creditedTo = actor.email;
   logEvent('reminder_sweep_sent', {

@@ -12,7 +12,7 @@ const AuditLog = require('../models/AuditLog');
 // model \"FineType\"" instead of sending anything.
 require('../models/FineType');
 const { getOrCreateSettings } = require('../utils/settings');
-const { resolveConfig } = require('../utils/weekCycle');
+const { resolveConfig, currentWeekNumber } = require('../utils/weekCycle');
 const { WEEKLY_TYPE_NAME, bucketForType } = require('../utils/ledgerTypes');
 const { computeMemberLedger } = require('../utils/memberLedger');
 const {
@@ -43,6 +43,14 @@ const {
   HISTORY_LIMIT,
   HISTORY_MAX,
 } = require('../utils/reminderLog');
+// Who the group stops chasing: a member holding at least this much is not told he is behind, and
+// the line moves 1,400 a week with the collection itself. See utils/reminderLimit — and note that
+// it decides who is written to and never what the books say.
+const {
+  moneyLimitForWeek,
+  coveredByBalance,
+  aboveLimitReason,
+} = require('../utils/reminderLimit');
 
 // One request should never try to email the whole group and then time out — the
 // page selects a handful at a time, and the sends happen inside this request. Fifty
@@ -56,13 +64,22 @@ const MAX_RECIPIENTS = 50;
 // contribution weeks and unpaid fines. This is the same maths the member's own
 // page shows (computeMemberLedger), so an email can never claim something
 // the member's own statement contradicts.
-async function computeMemberDues(members) {
+//
+// **And it works out who is not to be told about it.** A member holding at least the group's own
+// moving line (Settings.reminderMoneyLimit, utils/reminderLimit) has his late weeks taken out of
+// what he "owes" for the purpose of being written to: he is behind on the week-by-week count and by
+// that count alone, and the treasurer's own instruction is that he is not nagged about it. The
+// weeks themselves are kept in `lateWeeksIgnored` rather than thrown away, so the reminders screen
+// can still say why he was left alone. His fines stay: a fine is not a weekly nudge.
+async function computeMemberDues(members, { settings: givenSettings = null } = {}) {
   const ids = members.map((m) => m._id);
   if (ids.length === 0) return new Map();
 
   const [types, settings, contributions, pendingFines] = await Promise.all([
     ContributionType.find().select('name isGroupFund isWeekly').lean(),
-    getOrCreateSettings(),
+    // A caller that already loaded the settings row passes it in: the weekly sweep and the
+    // reminders screen both have it, and a second read would be a second answer waiting to happen.
+    givenSettings ? Promise.resolve(givenSettings) : getOrCreateSettings(),
     Contribution.find({ memberId: { $in: ids }, deleted: false })
       .select('memberId typeId amount grossAmount date')
       .lean(),
@@ -72,6 +89,9 @@ async function computeMemberDues(members) {
   ]);
 
   const config = resolveConfig(settings);
+  // The line as it stands this week, or 0 when the rule is switched off.
+  const weekNumber = currentWeekNumber(config);
+  const moneyLimit = moneyLimitForWeek(settings, config, weekNumber);
   const typeById = new Map(types.map((t) => [String(t._id), t]));
   const byMember = new Map();
   for (const c of contributions) {
@@ -127,12 +147,24 @@ async function computeMemberDues(members) {
     const finesTotal = fines.reduce((sum, f) => sum + f.remaining, 0);
     const lateTotal = lateWeeks.reduce((sum, w) => sum + w.shortfall, 0);
 
+    // Above the line, the late weeks stop being something he is told about. They are not thrown
+    // away: `lateWeeksIgnored` carries how many there were, so a screen can explain the row instead
+    // of leaving the office to wonder whether the engine saw them.
+    const covered = coveredByBalance(ledger.money, moneyLimit) && lateWeeks.length > 0;
+
     dues.set(String(member._id), {
-      lateWeeks: lateWeeks.sort((a, b) => a.weekNumber - b.weekNumber),
+      lateWeeks: covered ? [] : lateWeeks.sort((a, b) => a.weekNumber - b.weekNumber),
+      lateWeeksIgnored: covered ? lateWeeks.length : 0,
       fines,
       finesTotal,
-      lateTotal,
-      total: finesTotal + lateTotal,
+      lateTotal: covered ? 0 : lateTotal,
+      // What the group is holding for him, and the line it was measured against. On the payload so
+      // the screen and the audit trail can both say what the decision was made of.
+      moneyHeld: ledger.money,
+      moneyLimit,
+      weekNumber,
+      coveredByBalance: covered,
+      total: finesTotal + (covered ? 0 : lateTotal),
     });
   }
 
@@ -160,19 +192,31 @@ async function listReminders(req, res, next) {
       .sort({ name: 1 })
       .lean();
 
-    const dues = await computeMemberDues(members);
+    // One read of the group's policy row, used for both the money line and the weekly budget — and
+    // handed to computeMemberDues so the two cannot be answering from different copies of it.
+    const settings = await getOrCreateSettings();
+    const dues = await computeMemberDues(members, { settings });
 
     // What each member has already been sent this week, so the screen can say so before anybody
     // ticks a name — and so a member who is already at his limit cannot be ticked by accident.
     // Read from the audit trail rather than tracked separately: a send that happened is a fact
     // already written down, and a second counter is a second thing that can disagree with it.
-    const settings = await getOrCreateSettings();
     const weeklyLimit = normaliseMaxPerWeek(settings.reminderMaxPerWeek);
     const { since, weekStart } = weekWindow();
     const sentThisWeek = await sendsSince(members.map((m) => m._id), since);
 
     const rows = members.map((m) => {
-      const due = dues.get(String(m._id)) || { lateWeeks: [], fines: [], finesTotal: 0, lateTotal: 0, total: 0 };
+      const due = dues.get(String(m._id)) || {
+        lateWeeks: [],
+        lateWeeksIgnored: 0,
+        fines: [],
+        finesTotal: 0,
+        lateTotal: 0,
+        total: 0,
+        moneyHeld: 0,
+        moneyLimit: 0,
+        coveredByBalance: false,
+      };
       const sent = sentThisWeek.get(String(m._id));
       const allowance = allowanceFor(sent?.count || 0, weeklyLimit);
       return {
@@ -188,6 +232,11 @@ async function listReminders(req, res, next) {
         finesCount: due.fines.length,
         finesTotal: due.finesTotal,
         total: due.total,
+        // What he holds, and whether that is why he is missing from "who owes what". On the row so
+        // the screen can name the reason instead of leaving a name unexplained.
+        moneyHeld: due.moneyHeld,
+        coveredByBalance: due.coveredByBalance,
+        lateWeeksIgnored: due.lateWeeksIgnored || 0,
         // Reminders already sent this contribution week, and whether the budget is spent. The
         // screen disables a member at the limit rather than letting a send come back skipped.
         remindersThisWeek: allowance.sent,
@@ -199,6 +248,14 @@ async function listReminders(req, res, next) {
     const visible = rows.filter((r) => !onlyOwing || r.total > 0);
     visible.sort((a, b) => b.total - a.total);
 
+    // Members the money line took off this list. Counted here rather than left implicit: a screen
+    // that silently showed fewer names than the week-by-week schedule has would look like a bug.
+    const covered = rows.filter((r) => r.coveredByBalance);
+    // The line itself, read off the dues rather than recomputed here — every entry carries the same
+    // figure, so a second calculation would only be a second chance to disagree with the rows.
+    const config = resolveConfig(settings);
+    const moneyLimit = [...dues.values()][0]?.moneyLimit || 0;
+
     res.json({
       // The host, the port and the sending address travel with the list, so the screen
       // can say what a batch will be sent as, and from where, without a second request.
@@ -209,6 +266,13 @@ async function listReminders(req, res, next) {
       // Why a member can't be emailed — surfaced in the UI so it's obvious the
       // fix is to add an address, not to keep pressing send.
       missingEmailCount: visible.filter((r) => !r.email).length,
+      // The line, and who it took off the list: the money a member must be holding to be left
+      // alone, where that line stands this week, and how many names it explains (utils/reminderLimit).
+      moneyLimit,
+      weeklyAmount: config.weeklyAmount,
+      currentWeek: currentWeekNumber(config),
+      coveredCount: covered.length,
+      coveredNames: covered.slice(0, 5).map((r) => r.name),
       // The budget, and how much of it has been spent: the window is the group's own week, so
       // the numbers here are comparable with the weeks on the member's passbook.
       weeklyLimit,
@@ -328,6 +392,10 @@ async function deliverReminders({
   let skipped = 0;
   let failed = 0;
   let skippedByWeeklyLimit = 0;
+  // Named separately for the same reason as the weekly cap: "he holds enough that the group does
+  // not chase him" is a decision, not a fault, and a batch that reported it as a plain skip would
+  // have somebody hunting for a bug in the ledger.
+  let skippedByMoneyLimit = 0;
   const startedAt = Date.now();
 
   // How many reminders each member in this batch has already had this contribution week, and
@@ -376,6 +444,22 @@ async function deliverReminders({
     }
     if (member.emailNotifications === false) {
       skip(member, 'Member has switched email reminders off');
+      continue;
+    }
+    // Above the group's money line, the late weeks are not something he is written to about. This
+    // is checked before "nothing outstanding", because a member over the line *does* have closed
+    // weeks the engine counted (due.lateWeeksIgnored) — the row has to say which reason it was, or
+    // the office reads "nothing outstanding" about a member whose page shows a week he missed.
+    if (includeLate && due.coveredByBalance) {
+      skippedByMoneyLimit += 1;
+      skip(
+        member,
+        aboveLimitReason({
+          moneyHeld: due.moneyHeld,
+          limit: due.moneyLimit,
+          weekNumber: due.weekNumber,
+        })
+      );
       continue;
     }
     if (lateWeeks.length === 0 && fines.length === 0 && !cleanNote) {
@@ -487,6 +571,9 @@ async function deliverReminders({
     // person can decide to overrule, and a batch that quietly sent nothing because of it must
     // not look the same as a batch that found nobody to email.
     skippedByWeeklyLimit,
+    // And separately again: a member left alone because he holds more than the group chases. The
+    // office needs to be able to tell that from a failure, since nothing is wrong with him.
+    skippedByMoneyLimit,
     results,
     weeklyLimit: maxPerWeek,
     weekStart,
@@ -525,7 +612,8 @@ async function sendReminders(req, res, next) {
       .select('name phone email emailNotifications')
       .lean();
 
-    const [dues, settings] = await Promise.all([computeMemberDues(members), getOrCreateSettings()]);
+    const settings = await getOrCreateSettings();
+    const dues = await computeMemberDues(members, { settings });
 
     const summary = await deliverReminders({
       members,
@@ -546,6 +634,9 @@ async function sendReminders(req, res, next) {
       // The one skip the caller can do something about, named on its own: the screen offers to
       // send anyway rather than leaving "skipped 4" to be interpreted.
       skippedByWeeklyLimit: summary.skippedByWeeklyLimit,
+      // And the skip nobody can overrule from this screen: a member holding more than the group
+      // chases is not told he is behind, at any batch size. Named so the row can explain itself.
+      skippedByMoneyLimit: summary.skippedByMoneyLimit,
       weeklyLimit: summary.weeklyLimit,
       weekStart: summary.weekStart,
       results: summary.results,

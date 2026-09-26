@@ -383,7 +383,7 @@ async function exportStatementExcel() {
               {money(ledger ? ledger.money : totalContributed)}
             </p>
             <p className="mt-0.5 text-[11px] leading-4 text-muted">
-              (carried in + paid in − due so far − tea)
+              (carried in + paid in − tea)
             </p>
             {ledger && (
               <p className="amount mt-1 text-xs text-muted">

@@ -121,3 +121,45 @@ test('the list projection carries the engine\'s own closed-week count', () => {
   assert.equal(summariseMember(member, nextFriday).weeksScored, 1);
   assert.equal(summariseMember(member, nextFriday).arrears, 1400);
 });
+
+test('a closed week nobody paid is reported as owed, never taken off his money', () => {
+  // The week that closed on 24 September was not paid, so 1,400 is owed and the week's 100 of tea
+  // is the only money that leaves him. This is the rule the paper ledger's total column held
+  // ("Previous + Weekly + Extra − Chai"), and the figure the group is actually holding for him.
+  const ledger = computeMemberLedger({
+    member: { openingBalance: 5000 },
+    contributions: [],
+    config,
+    now: parseEatDate('2026-09-25'),
+  });
+
+  assert.equal(ledger.weeksScored, 1);
+  assert.equal(ledger.required, 1400, 'one week has closed and was expected of him');
+  assert.equal(ledger.arrears, 1400, 'and it was not paid');
+  assert.equal(ledger.chai.due, 100);
+  assert.equal(ledger.money, 4900, 'he still holds what he brought in, less the tea');
+  assert.equal(ledger.moneyNetOfDues, 3500);
+  // The bridge the office reconciles an older statement with: the figure the books showed while
+  // the expectation was still being deducted is today's figure less the weeks that have closed.
+  assert.equal(ledger.moneyNetOfDues, ledger.money - ledger.required);
+});
+
+test('paying a later week does not move what he holds by more than was paid', () => {
+  // Two closed weeks of expectation against one payment of 4,000: the surplus is credit (§7.5),
+  // not a bigger balance, and nothing that was never collected appears in the held figure.
+  const ledger = computeMemberLedger({
+    member: { openingBalance: 0 },
+    contributions: [weekly(4000)],
+    config,
+    // The Friday after week 94's Thursday: weeks 93 and 94 have closed.
+    now: parseEatDate('2026-10-02'),
+  });
+
+  assert.equal(ledger.required, 2800);
+  assert.equal(ledger.paid, 4000);
+  assert.equal(ledger.arrears, 0);
+  assert.equal(ledger.credit, 1200);
+  assert.equal(ledger.chai.due, 200);
+  assert.equal(ledger.money, 3800, '4,000 paid in, less two weeks of tea — and nothing else');
+  assert.equal(ledger.moneyNetOfDues, 1000, 'the old figure: the same money, less the 2,800 due');
+});

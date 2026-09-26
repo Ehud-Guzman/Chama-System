@@ -261,10 +261,15 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   counts. Per member:
   `required so far = weeklyAmount × the weeks that have closed` (0 while week 93 is running, 1,400
   from the day after it closes, 2,800 the week after, …), and
-  `his money = openingBalance + what he has paid since the cycle opened − required − tea`.
-  Paying above the 1,400 pushes his money up instead of being swallowed; a closed week with nothing
-  paid takes 1,400 back off it — the "expected total deducted from his money" the members already
-  work to, which is the accumulated credit/arrears of constitution §7.5. **Tea is automatic**:
+  `his money = openingBalance + what he has paid since the cycle opened − tea`.
+  Paying above the 1,400 pushes his money up instead of being swallowed, and **a closed week nobody
+  paid is reported rather than taken off his money**: it is the accumulated credit/arrears of §7.5,
+  shown as `owed` beside the figure, which is how the paper ledger's total column read it
+  ("Previous + Weekly + Extra − Chai"). Nobody's balance is ever reduced for money that was never
+  collected — a member holding 1,400 who misses a week reads 1,300 held and 1,400 owed, not a
+  negative balance — and the figure the older statements printed is still on the payload as
+  `moneyNetOfDues` (`money − required`), so a statement from before the change reconciles against
+  today's with one subtraction. **Tea is automatic**:
   `chaiAmount` is deducted from every member for every closed scored week of the cycle whether or
   not anybody logged anything, it needs no entry, it can never be in arrears, and it is shown per
   member so each can see the total he has put into the Group's Tea Fund. That mirrors the paper
@@ -320,11 +325,15 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   used for the same thing on every screen — the dashboard and finance list (which set the pattern,
   `frontend/src/components/ledger/MemberLedgerList.jsx`), the member's page, the passbook, the
   reports and the PDF/Excel statements (`backend/src/utils/memberStatement.js`):
-  - **money held by member** — carried in + paid in − due so far − tea
+  - **money held by member** — carried in + paid in − tea
   - **carried in at week 92** — what the paper ledger held when these books opened
   - **paid in since week 92** — contributions logged on this ledger
-  - **due so far** — the weekly amount × the weeks that have closed
-  - **owed** — closed weeks still unpaid (never a week still running: its Thursday is to come)
+  - **weeks that have closed** — the weekly amount × the number of closed weeks: what was *expected*
+    of him, reported and never taken off the money held (the paper ledger's total column read it the
+    same way)
+  - **owed** — closed weeks still unpaid (never a week still running: its Thursday is to come). The
+    figure the older statements netted out of the balance is `held − owed` where nothing is saved
+    ahead, and `moneyNetOfDues` (= held − weeks that have closed) exactly
   - **tea** — deducted automatically, the weekly tea × the weeks that have closed
   - **settled** — every closed week paid, by payment or by earlier extra saved
   - **nothing due yet** — no week has closed, so nobody owes and nobody has settled anything; the
@@ -603,6 +612,21 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   to the member rather than nudging him about it. `GET /api/notifications/history` answers the
   other half of the same question: who has actually been emailed, about what, when and by whom,
   read from those same audit entries, so it can never report a message that did not go.
+  **And nobody holding enough money is told he is behind.** A member who brought a hundred
+  thousand shillings into the cycle and then missed a Thursday is behind on the week-by-week count
+  and by that count alone, so `Settings.reminderMoneyLimit` (114,600 measured in week 92 by
+  default, 0 for off) is a line in *money*: at or above it, his closed weeks stop being something
+  he is written to about — his unpaid fines still are, and his own passbook still reports the week,
+  because that is his record. The line **moves with the cycle**: `weeklyAmount` is added every week
+  after the week it was measured in (114,600 in week 92, 116,000 in week 93, 117,400 in week 94,
+  …), because what it is compared against is what the group expected a member to have put in by
+  then — a frozen figure would stop excluding anybody within a fortnight. It is compared against
+  the money the group is actually holding for him (`ledger.money`, carried in + paid in − tea), the
+  decision is the pure `coveredByBalance` in `utils/reminderLimit`, the reminders screen says how
+  many names the line took off the list and why, and the weekly sweep names them in its report
+  rather than reporting a smaller number than the ledger holds. A member the line covers cannot be
+  emailed from the screen either: the send is skipped with the reason on the row, and the response
+  counts those skips separately (`skippedByMoneyLimit`).
 - **Fund spending, and the fines that email themselves:** `/admin/finance/expenses` (admins, the
   treasurer and the super admin) is where money leaves the funds. An expense carries the fund it
   came from, the amount, the date, what it was for, the voucher or receipt number it is backed by
@@ -982,18 +1006,22 @@ already has. An admin whose phone is gone is unblocked by another admin from the
 panel, which leaves the loudest entry the trail takes.
 
 **How often a member may be emailed is the committee's decision, not a deploy's.** Settings →
-**Reminders** carries one number: *reminders per member per week*, 1 by default, 0 for no limit.
-It is the other half of the fine-email and sweeping machinery above — a member who is behind stays
-behind until he pays, so without it the Sunday sweep and a treasurer with the screen open would
-say the same thing four times in a month, and the message people learn to ignore is the one that
-matters the week the meeting is on Thursday. The count is taken over the group's own week
-(Friday → Thursday, `utils/weekCycle`) from the `Notification` entry every send already writes
-(`utils/reminderLog`), which is why nothing has to be reset on a Friday and why the reminders
-screen can show its work: each row says "already emailed once this week", a member at the limit
-cannot be ticked, and **Send anyway** exists for a correction or a member who asked to be told
-again — off by default, and named in the audit entry when it is used. The weekly sweep leaves
-those members out and reports how many of the people who are behind have already had theirs, so a
-quiet Sunday is not mistaken for a Sunday with nothing to do. The same audit entries are read back
+**Reminders** carries two things: *reminders per member per week*, 1 by default, 0 for no limit,
+and *leave members alone above this much* — the money line described above
+(`reminderMoneyLimit`, 114,600 in week 92, and the week it was measured in; 0 tells every member
+who is behind). The first is the other half of the fine-email and sweeping machinery above — a
+member who is behind stays behind until he pays, so without it the Sunday sweep and a treasurer
+with the screen open would say the same thing four times in a month, and the message people learn
+to ignore is the one that matters the week the meeting is on Thursday. The count is taken over the
+group's own week (Friday → Thursday, `utils/weekCycle`) from the `Notification` entry every send
+already writes (`utils/reminderLog`), which is why nothing has to be reset on a Friday and why the
+reminders screen can show its work: each row says "already emailed once this week", a member at the
+limit cannot be ticked, and **Send anyway** exists for a correction or a member who asked to be
+told again — off by default, and named in the audit entry when it is used. The money line has no
+"send anyway": it is a statement about the member's own money rather than a budget, so it is
+changed in Settings or not at all. The weekly sweep leaves those members out and reports how many
+of the people who are behind have already had theirs, so a quiet Sunday is not mistaken for a
+Sunday with nothing to do. The same audit entries are read back
 as `GET /api/notifications/history` — who was emailed, in what words, when and by whom — which is
 the question "was Joseph actually told?" that no screen used to answer.
 
@@ -1143,8 +1171,12 @@ as at the period's two ends (`utils/statementPeriod`):
 ```
 opening (at the start)              = computeMemberLedger(…, now = from).money
 closing (at the end)                = computeMemberLedger(…, now = to).money
-paid in / weeks that closed / tea   = the differences of the same three figures
+paid in / tea                       = the differences of the same two figures
 ```
+
+and the balance moves by what actually came in — the weeks that closed are printed as what was
+*expected* of him and what of it is still unpaid, never subtracted from the figure (a closed week
+nobody paid is arrears, exactly as utils/memberLedger reads the paper ledger's total column).
 
 which turns the reconciliation into an identity rather than an assertion:
 

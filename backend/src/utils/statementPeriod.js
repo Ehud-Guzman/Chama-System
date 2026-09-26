@@ -6,21 +6,26 @@
 // reason this module is careful: a ledger is not a transaction list.
 //
 // **Why filtering rows is not enough.** A member's money is not the sum of his contributions. It is
-// `openingBalance + paid − required − tea`, where `required` and `tea` accrue automatically for
-// every week that has *closed* since the books opened (utils/memberLedger). Slice the rows to March
-// and add them up and the total will not be his balance in March, or in April, or anywhere — it
-// will be a number that appears nowhere in the system and that nobody can reconcile. A statement
-// whose figures do not add up is worse than no statement, because it will be argued with.
+// `openingBalance + paid − tea`, where `tea` accrues automatically for every week that has *closed*
+// since the books opened (utils/memberLedger). Slice the rows to March and add them up and the total
+// will not be his balance in March, or in April, or anywhere — it will be a number that appears
+// nowhere in the system and that nobody can reconcile. A statement whose figures do not add up is
+// worse than no statement, because it will be argued with.
 //
-// So the period's figures are not computed here at all. They are **differences of two calls to the
-// same engine** that produces the passbook:
+// The weeks that closed are *reported* rather than deducted: a closed week nobody paid leaves the
+// held figure alone and shows as arrears (§7.5), which is the paper ledger's own reading of its
+// total column. So `required` is printed on the statement as what was expected in the period, while
+// the balance moves by what actually came in.
+//
+// The period's figures are not computed from the rows at all. They are **differences of two calls to
+// the same engine** that produces the passbook:
 //
 //     opening (at the start of the period) = computeMemberLedger(…, now = from).money
 //     closing (at the end of the period)   = computeMemberLedger(…, now = to).money
 //
 // which makes the reconciliation an identity rather than an assertion:
 //
-//     closing − opening  =  (paid − required − tea)  over the same window
+//     closing − opening  =  (paid − tea)  over the same window
 //
 // `balanced` checks exactly that and the renderers print it, so a statement that does not add up is
 // visible on its own page instead of being discovered in an argument.
@@ -244,11 +249,16 @@ function computePeriodBlock({ member, config, all = [], visible = [], period, no
   const paidIn = toMoney(closing.paid - opening.paid);
   const required = toMoney(closing.required - opening.required);
   const tea = toMoney(closing.chai.due - opening.chai.due);
+  // Arrears carried through the period, on the same footing as `required`: reported beside the
+  // balance rather than taken out of it, so a statement whose member missed a week shows the week
+  // and the money held at both ends rather than silently reading as though it had been paid.
+  const arrears = toMoney(closing.arrears - opening.arrears);
   const movement = toMoney(closingMoney - openingMoney);
 
   // The identity, checked rather than assumed. Both sides go through the same rounding helper, so
-  // this is a real check and not a tolerance that would hide a bug.
-  const accountedFor = toMoney(paidIn - required - tea);
+  // this is a real check and not a tolerance that would hide a bug. `required` is deliberately not
+  // in it: a closed week nobody paid is arrears, not a movement of the money he holds.
+  const accountedFor = toMoney(paidIn - tea);
 
   const rows = visible.filter((contribution) => at(contribution) >= period.from && at(contribution) <= period.to);
 
@@ -296,11 +306,14 @@ function computePeriodBlock({ member, config, all = [], visible = [], period, no
     what: period.what,
     note: period.note,
     openEnded: period.openEnded,
-    // What he held at each end, and the three things that moved it.
+    // What he held at each end, and what moved it: what came in, what went out as tea, and the
+    // weeks that closed — which are reported rather than deducted, so a NILL week shows in `arrears`
+    // and leaves `closing` alone.
     opening: openingMoney,
     closing: closingMoney,
     paidIn,
     required,
+    arrears,
     tea,
     movement,
     accountedFor,

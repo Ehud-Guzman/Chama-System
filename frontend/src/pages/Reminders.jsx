@@ -168,6 +168,33 @@ export default function Reminders() {
         </p>
       </header>
 
+      {data && data.moneyLimit > 0 && (
+        /* The money line, said out loud on the screen it changes the numbers on. Without it the
+           treasurer sees a shorter list than the week-by-week schedule has and has no way to know
+           that it is the group's own policy rather than a bug. */
+        <div className="rounded-xl border border-rule bg-canvas px-4 py-3 text-xs leading-5 text-muted">
+          <span className="font-semibold text-ink">
+            Members holding {money(data.moneyLimit)} or more are not told they are behind.
+          </span>{' '}
+          A member with that much in the group&rsquo;s hands has paid more into the cycle than it has
+          asked of him, so a closed week he missed is not a reason to write to him — his unpaid fines
+          still are. The line rises {money(data.weeklyAmount)} a week with the collection itself
+          ({money(data.moneyLimit)} in week {data.currentWeek}).{' '}
+          {data.coveredCount > 0
+            ? `${data.coveredCount} ${
+                data.coveredCount === 1 ? 'member is' : 'members are'
+              } left off this list for that reason${
+                data.coveredNames?.length
+                  ? `: ${data.coveredNames.join(', ')}${
+                      data.coveredCount > data.coveredNames.length ? '…' : ''
+                    }`
+                  : ''
+              }.`
+            : 'Nobody is above it at the moment.'}{' '}
+          Change it under Reminders in Settings.
+        </div>
+      )}
+
       {data && !data.configured && (
         <div className="rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-sm">
           <p className="font-semibold">Email sending isn&apos;t set up yet</p>
@@ -348,6 +375,16 @@ export default function Reminders() {
               &ldquo;Send anyway…&rdquo; above to overrule that for a batch.
             </p>
           )}
+          {results.skippedByMoneyLimit > 0 && (
+            /* Not overrulable, and said so: a member holding more than the group chases is not
+               told he is behind, whoever presses send. */
+            <p className="mt-1 text-xs text-muted">
+              {results.skippedByMoneyLimit}{' '}
+              {results.skippedByMoneyLimit === 1 ? 'member was' : 'members were'} left out because he
+              already holds more than the group chases. That is not a limit this screen can overrule —
+              change it under Reminders in Settings.
+            </p>
+          )}
           <ul className="mt-2 space-y-1 text-xs">
             {results.results.map((r) => (
               <li key={String(r.id)} className="flex items-start justify-between gap-3">
@@ -452,6 +489,17 @@ export default function Reminders() {
                         <span className="text-muted">
                           {m.finesCount} fine{m.finesCount === 1 ? '' : 's'} ·{' '}
                           <span className="amount font-medium text-ink">{money(m.finesTotal)}</span>
+                        </span>
+                      )}
+                      {/* Only shown when he is in the list for another reason (a fine) but has
+                          closed weeks the money line took off the count — otherwise a row with
+                          "0 late weeks" beside a passbook that shows a missed week reads as a bug. */}
+                      {m.lateWeeksIgnored > 0 && (
+                        <span className="text-muted">
+                          {m.lateWeeksIgnored} closed week{m.lateWeeksIgnored === 1 ? '' : 's'} not
+                          counted · holds{' '}
+                          <span className="amount font-medium text-ink">{money(m.moneyHeld)}</span>,
+                          above the line
                         </span>
                       )}
                     </span>

@@ -8,7 +8,7 @@ const { weekNumberForDate, weekRange, currentWeekNumber, scoredWeeks } = require
 //                     week (0 while a week is still running, 1,400 the day after its
 //                     Thursday passes, 2,800 the week after, …)
 //   his money       = openingBalance + what he has paid since the cycle opened
-//                     − required − tea
+//                     − tea
 //   tea             = totalled on its own (§7.2) but still comes *out* of his
 //                     money, exactly as the paper ledger's
 //                     "Previous + Weekly + Extra − Chai = Member Total" did
@@ -25,10 +25,26 @@ const { weekNumberForDate, weekRange, currentWeekNumber, scoredWeeks } = require
 // it again would bill a week that was already settled.
 //
 // "What he has paid" is the weekly contribution plus anything extra, so paying
-// above 1,400 in a week pushes his money up instead of being swallowed. A scored
-// week where nothing was paid takes 1,400 back off it — that is the "expected
-// total deducted from his money" the members already work to, which is also the
-// accumulated credit/arrears of constitution §7.5.
+// above 1,400 in a week pushes his money up instead of being swallowed.
+//
+// **A closed week nobody paid is reported, never taken off his money.** The old
+// arithmetic netted `required` out of the held figure, so a member holding 1,400
+// who missed a week read −100 rather than 1,400 with 1,400 owed — the money that
+// had never been paid looking as though it had been collected and spent. The
+// paper ledger never did that: its total column was "Previous + Weekly + Extra −
+// Chai", and the week's 1,400 was a line the member *owed* against the next
+// collection. So the engine keeps the two questions apart and answers both:
+//
+//   money           = what the group is actually holding for him
+//   arrears         = the weeks that have closed and are still unpaid (§7.5)
+//   moneyNetOfDues  = money − required, which is exactly what the old figure read
+//
+// That last field is why this change is reconcilable rather than a fork in the
+// books: every member's figure before this rule equals `moneyNetOfDues` now, so
+// a statement printed last week and one printed today can be read against each
+// other (`held − dues = what the books used to show`). Nothing was ever stored
+// netted — the deduction was derived on the way out — so the whole book moves at
+// once and no member's opening balance has to be touched.
 //
 // Tea is deducted as it is *recorded*, never as an assumption: the ledger only
 // ever moves money somebody actually entered, and the tea shortfall is reported
@@ -187,14 +203,28 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   const weeksBehind = weeks.filter((w) => !w.isCurrent && !w.settled).length;
 
   const openingBalance = Number(member.openingBalance) || 0;
+  // What he has paid against what the cycle expected of him. Positive is credit
+  // carried forward (§7.5's "cumulative actual less cumulative required"),
+  // negative is arrears. It is a *measure of standing*, not a movement of money:
+  // the held figure below is built from money that actually came in.
   const movement = paid - required;
   const chaiWeek = weeks.find((w) => w.isCurrent);
-  // Tea comes out of his money like the week's other deduction, so the balance he
-  // sees is the same figure the paper ledger's total column used to hold. The
-  // automatic figure covers the scored weeks; tea collected for the weeks before
-  // the cycle opened was logged, so it is added to it here.
+  // Tea comes off his money every closed week, whether or not he paid: it is money the Group has
+  // spent on his behalf, so unlike a missed contribution it is a real movement of that money. The
+  // automatic figure covers the scored weeks; tea collected for the weeks before the cycle opened
+  // was logged, so it is added to it here.
   const teaOffMoney = chaiDue + chaiBeforeCycle;
-  const money = openingBalance + movement - teaOffMoney;
+  // The money the group is holding for him: what he carried in, plus what he has
+  // actually paid in, less the tea that came off it. A closed week nobody paid
+  // does NOT come off it — see the rule at the top of this file; that week shows
+  // as `arrears` and is collected against the next week's payment.
+  const money = openingBalance + paid - teaOffMoney;
+  // The figure the books showed while the week's expectation was still being
+  // netted out of the held money: carried in + paid in − dues so far − tea. Kept
+  // on the payload because "it has already happened" is answerable with it — a
+  // member's statement from before this rule, or a screenshot of it, reconciles
+  // as `money − required`, figure for figure, with nothing else moving.
+  const moneyNetOfDues = openingBalance + movement - teaOffMoney;
 
   return {
     currentWeek,
@@ -214,6 +244,11 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
     required,
     movement,
     money,
+    // Held less every week that has closed (`money − required`): what this member's
+    // figure read while the dues were still being netted out of it. Printed by the
+    // screens that have to reconcile against an older statement, and the reason
+    // "it has already happened" is a subtraction rather than a restatement.
+    moneyNetOfDues,
     arrears: movement < 0 ? -movement : 0,
     credit: movement > 0 ? movement : 0,
     chai: {
@@ -257,6 +292,10 @@ function summariseMember(member, ledger) {
     active: member.active,
     openingBalance: ledger.openingBalance,
     money: ledger.money,
+    // The same figure as the old arithmetic read — see computeMemberLedger. On the
+    // list so the treasurer's ledger can show what a member's page said last week
+    // beside what it says now, and reconcile the two without a second query.
+    moneyNetOfDues: ledger.moneyNetOfDues,
     required: ledger.required,
     paid: ledger.paid,
     extraPaid: ledger.extraPaid,
@@ -284,6 +323,9 @@ function totalLedger(ledgers) {
   return ledgers.reduce(
     (acc, l) => ({
       money: acc.money + l.money,
+      // The same total as the old arithmetic read, kept beside it: the two differ
+      // by exactly the members' arrears, which is the sentence the header prints.
+      moneyNetOfDues: acc.moneyNetOfDues + l.moneyNetOfDues,
       openingBalance: acc.openingBalance + l.openingBalance,
       paid: acc.paid + l.paid,
       required: acc.required + l.required,
@@ -292,7 +334,17 @@ function totalLedger(ledgers) {
       chaiPaid: acc.chaiPaid + l.chai.due,
       chaiRecorded: acc.chaiRecorded + l.chai.recorded,
     }),
-    { money: 0, openingBalance: 0, paid: 0, required: 0, arrears: 0, credit: 0, chaiPaid: 0, chaiRecorded: 0 }
+    {
+      money: 0,
+      moneyNetOfDues: 0,
+      openingBalance: 0,
+      paid: 0,
+      required: 0,
+      arrears: 0,
+      credit: 0,
+      chaiPaid: 0,
+      chaiRecorded: 0,
+    }
   );
 }
 

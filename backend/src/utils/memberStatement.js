@@ -148,18 +148,27 @@ function buildStatement(profile) {
   const figures = period
     ? [
         // The period's own arithmetic, in the order it is checked: what he held, what came in, what
-        // the weeks took out, and what he held at the end.
+        // the group took out (the tea), and what he held at the end. The weeks that closed are
+        // printed here as what was *expected* — a closed week nobody paid is arrears below, and the
+        // one thing that moves the money held is the payment itself.
         { label: `Money at the start (${period.from})`, value: period.opening, strong: true },
         { label: 'Paid in during the period', value: period.paidIn },
-        {
-          label: `Weeks that closed (${period.weeksClosed})`,
-          value: period.required,
-        },
         { label: 'Tea deducted (Group fund)', value: period.tea },
         {
           label: `Money at the end (${period.to})`,
           value: period.closing,
           strong: true,
+        },
+        {
+          // Not a deduction: what the weeks expected of him, reported so a reader can see the two
+          // figures side by side. The arrears line names what of it is still unpaid.
+          label: `Weeks that closed (${period.weeksClosed}) — expected, not taken off the money held`,
+          value: period.required,
+        },
+        {
+          label: 'Owed at the end (closed weeks still unpaid)',
+          value: period.arrears,
+          alert: period.arrears > 0,
         },
         { label: 'Contributions in the period', value: period.contributionsCount },
         // The question that always follows the period one, so it is answered on the same page.
@@ -183,9 +192,13 @@ function buildStatement(profile) {
           value: ledger ? ledger.paid : profile.totalContributed || 0,
         },
         {
-          // One deduction figure for a member's own copy: the weekly contribution and
-          // what the Group deducts alongside it. The office's copy breaks the tea out.
-          label: 'Due so far (the weeks that have closed)',
+          // One expectation figure for a member's own copy: the weekly contribution and
+          // what the Group charges alongside it. The office's copy breaks the tea out.
+          //
+          // Worded as an expectation rather than a deduction because that is what it is: the money
+          // held above is what he actually handed over, and a week he has not paid is the `Owed`
+          // line below rather than something already taken off him.
+          label: 'Expected so far (the weeks that have closed) — not taken off the money held',
           value: ledger
             ? profile.teaFundIncluded
               ? ledger.required
@@ -244,18 +257,27 @@ function buildStatement(profile) {
 
 // The arithmetic, as a block the renderers print under the figures.
 //
+// The sum, as an equation, for the one block somebody checks by hand across a table.
+//
 // It exists as its own array rather than three more entries in `figures` because it is not a list
-// of facts about the member — it is the sum that proves the three above it belong together, and it
+// of facts about the member — it is the sum that proves the figures above it belong together, and it
 // has to read as an equation to do its job. `balanced` is computed, never assumed
 // (utils/statementPeriod): a statement that does not add up says so on its own page rather than
 // being handed over as though it did.
+//
+// The weeks that closed are named *below* the total rather than subtracted inside it: a closed week
+// nobody paid is money that never came in, so taking it off the balance would read as though it had
+// been collected and spent (see utils/memberLedger). What it is, is owed — and the line says so.
 function reconciliationLines(period) {
   return [
     { label: `Money at the start (${period.from})`, value: period.opening },
     { label: 'Plus what he paid in', value: period.paidIn, sign: '+' },
-    { label: `Less the weeks that closed (${period.weeksClosed})`, value: period.required, sign: '−' },
     { label: 'Less tea (Group fund)', value: period.tea, sign: '−' },
     { label: `Money at the end (${period.to})`, value: period.closing, sign: '=' },
+    {
+      label: `Of which owed: weeks that closed, still unpaid (${period.weeksClosed} closed)`,
+      value: period.arrears,
+    },
   ];
 }
 
@@ -282,10 +304,10 @@ function memberStatementSheets(profile, chamaName) {
     // up arguing about the same statement (utils/aboutSheet makes the same point about exports).
     //
     // The arithmetic itself is not repeated here: `statement.figures` already reads as the equation
-    // — money at the start, paid in, the weeks that closed, the tea, money at the end — and printing
-    // the start and end twice on one sheet is how a reader starts wondering which one is the real
-    // figure. The PDF prints them again with + and − signs, where there is room for it to read as a
-    // sum rather than a list.
+    // — money at the start, paid in, the tea, money at the end, with the weeks that closed and what
+    // is owed named under it — and printing the start and end twice on one sheet is how a reader
+    // starts wondering which one is the real figure. The PDF prints them again with + and − signs,
+    // where there is room for it to read as a sum rather than a list.
     ...(period
       ? [
           { Field: 'Period covered', Value: period.label },

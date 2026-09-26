@@ -345,15 +345,15 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         <Stat
           label="Money he holds"
           value={money(ledger.money)}
-          hint="(carried in + paid in − due so far − tea)"
+          hint="(carried in + paid in − tea)"
           accent
         />
         <Stat
-          label="Due so far"
+          label="Weeks that have closed"
           value={money(ledger.required)}
-          hint={`(${money(ledger.weeklyAmount)} × the ${ledger.chai.weeks} week${
+          hint={`(expected so far: ${money(ledger.weeklyAmount)} × the ${ledger.chai.weeks} week${
             ledger.chai.weeks === 1 ? '' : 's'
-          } that have closed)`}
+          } — not taken off the money he holds)`}
         />
         <Stat
           label={owed ? 'Owed' : 'Extra saved'}
@@ -370,9 +370,14 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
 
       <p className="rounded-xl border border-rule bg-canvas px-4 py-3 text-xs leading-5 text-muted">
         {money(ledger.openingBalance)} carried in at week {data.week.cycleStartWeek} +{' '}
-        {money(ledger.paid)} paid in since then −{' '}
-        {money(ledger.required)} due so far − {money(ledger.chai.due)} tea ={' '}
-        <span className="amount font-semibold">{money(ledger.money)}</span> held for him. Tea is{' '}
+        {money(ledger.paid)} paid in since then − {money(ledger.chai.due)} tea ={' '}
+        <span className="amount font-semibold">{money(ledger.money)}</span> held for him. The weeks
+        that have closed ({money(ledger.required)}) are what the group expected of him, not money
+        taken off him: a week he has not paid is the {money(ledger.arrears)} he owes beside it, and
+        his held figure is what he actually handed over. While the expectation was still being
+        deducted, this figure read{' '}
+        <span className="amount font-semibold">{money(ledger.moneyNetOfDues ?? ledger.money)}</span>{' '}
+        — the same books, with the {money(ledger.required)} shown as owed instead of taken out. Tea is{' '}
         {money(ledger.chai.perWeek)} a week, deducted automatically from every member and paid into the
         Group’s Tea Fund — nobody owes it and nobody pays arrears on it.
         {ledger.nillWeeksDueFine.length > 0 &&

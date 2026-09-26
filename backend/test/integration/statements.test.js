@@ -244,7 +244,12 @@ test('a period statement reconciles against the real stored contributions', { sk
   // And it says, in words, whether the arithmetic worked.
   assert.equal(fields['The arithmetic adds up'], 'Yes');
 
-  // The figures are the engine's, so the identity holds: opening + in − weeks − tea = closing.
+  // The figures are the engine's, so the identity holds: opening + in − tea = closing. The weeks
+  // that closed are reported beside the balance rather than taken off it (utils/memberLedger), so
+  // they are deliberately outside this sum: a closed week nobody paid is arrears, not money that
+  // moved. The old reading — opening + in − weeks − tea — is asserted under it, as today's figure
+  // less every week that closed, because that is what every statement printed before the rule
+  // changed reads as and the office has to be able to reconcile the two.
   const keyFor = (pattern) => Object.keys(fields).find((key) => pattern.test(key));
   const opening = Number(fields[`Money at the start (${year}-01-01)`]);
   const paidIn = Number(fields['Paid in during the period']);
@@ -254,9 +259,14 @@ test('a period statement reconciles against the real stored contributions', { sk
 
   assert.ok(Number.isFinite(opening) && Number.isFinite(closing));
   assert.equal(
-    Math.round((opening + paidIn - weeks - tea) * 100) / 100,
+    Math.round((opening + paidIn - tea) * 100) / 100,
     closing,
-    `${opening} + ${paidIn} − ${weeks} − ${tea} should be ${closing}`
+    `${opening} + ${paidIn} − ${tea} should be ${closing}`
+  );
+  assert.equal(
+    Math.round((opening + paidIn - weeks - tea) * 100) / 100,
+    Math.round((closing - weeks) * 100) / 100,
+    'the old arithmetic is today\'s figure less the weeks that closed'
   );
 
   // He was carried in with 20,000, and the payments logged this year are inside the period — so this

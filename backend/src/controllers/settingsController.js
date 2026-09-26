@@ -3,6 +3,11 @@ const { logAudit, snapshot } = require('../utils/auditLogger');
 const { syncLedgerTypeAmounts } = require('../utils/ledgerTypes');
 const { destroyImage } = require('../utils/cloudinary');
 const { normaliseMaxPerWeek, MAX_PER_WEEK_CEILING } = require('../utils/reminderLog');
+const {
+  MONEY_LIMIT_CEILING,
+  normaliseMoneyLimit,
+  normaliseMoneyLimitWeek,
+} = require('../utils/reminderLimit');
 
 // The vision and mission statements travel in the public overview, so every
 // visitor's page load carries them. That is why they are capped while the
@@ -41,6 +46,8 @@ async function updateSettings(req, res, next) {
       autoSettleFines,
       twoFactorAuthEnabled,
       reminderMaxPerWeek,
+      reminderMoneyLimit,
+      reminderMoneyLimitWeek,
     } = req.body || {};
     if (chamaName !== undefined) {
       if (!String(chamaName).trim()) {
@@ -165,6 +172,43 @@ async function updateSettings(req, res, next) {
         });
       }
       settings.reminderMaxPerWeek = normaliseMaxPerWeek(value);
+    }
+    // Who the group stops chasing, and the week that figure belongs to. Any admin may set these,
+    // for the same reason as the weekly cap above: they decide how the group talks to its members,
+    // not what the books say, and the person who feels a wrong number first is the one pressing
+    // send. Out of range is refused rather than clamped, with the same reasoning as the cap.
+    if (reminderMoneyLimit !== undefined) {
+      // Money typed by hand, in the formats the ledger screen already accepts: "114,600",
+      // "Ksh 114600", " 114600 ". The same person types into both screens, and a 400 about a comma
+      // would teach nobody anything.
+      const text = String(reminderMoneyLimit).trim().replace(/^ksh/i, '').replace(/[\s,\u00a0]/g, '');
+      const value = Number(text);
+      if (text === '' || !Number.isFinite(value) || value < 0 || value > MONEY_LIMIT_CEILING) {
+        return res.status(400).json({
+          message:
+            `The money a member may be left alone with must be between 0 and `
+            + `${MONEY_LIMIT_CEILING.toLocaleString('en-KE')} (0 tells every member who is behind).`,
+          field: 'reminderMoneyLimit',
+        });
+      }
+      settings.reminderMoneyLimit = normaliseMoneyLimit(value);
+    }
+    // Blank is a real answer here: it means "the week the books opened", which is the week the
+    // figure above was measured in unless somebody says otherwise.
+    if (reminderMoneyLimitWeek !== undefined) {
+      const value = String(reminderMoneyLimitWeek ?? '').trim();
+      if (value === '') {
+        settings.reminderMoneyLimitWeek = null;
+      } else {
+        const week = Number(value);
+        if (!Number.isInteger(week) || week < 1) {
+          return res.status(400).json({
+            message: 'The week the limit was measured in must be a whole week number, like 92.',
+            field: 'reminderMoneyLimitWeek',
+          });
+        }
+        settings.reminderMoneyLimitWeek = normaliseMoneyLimitWeek(week);
+      }
     }
     if (weeklyTrackingStartDate !== undefined) {
       if (weeklyTrackingStartDate === null || weeklyTrackingStartDate === '') {
