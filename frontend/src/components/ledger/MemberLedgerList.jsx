@@ -122,21 +122,28 @@ function StatusPill({ member, baselineWeek }) {
 // what is this money doing? — so it changes with his position rather than
 // restating the group's clock at him:
 //
-//   paid and nothing due yet   → extra saved, waiting for the weeks to close
-//   paid more than is due      → the rest is extra saved
+//   paid and nothing due yet   → all of it is his money, nothing due yet
+//   paid more than is due      → the closed weeks asked only the minimum; the rest is his money too
 //   paid, less than is due     → the closed weeks he has covered
 //   paid nothing, nothing due  → the state, with the rule that produces it
+//
+// Nothing here calls a surplus "extra saved": the 1,400 is the *minimum* the cycle asks for, not a
+// pot of its own, and every shilling a member hands over is his money (utils/memberLedger keeps the
+// whole row against him). A member who pays 2,000 has 2,000 more money in the group's hands —
+// nothing was set aside from it.
 //
 // Kept short on purpose: these lines share a phone screen with a member's name, and
 // an explanation that wraps to four lines is its own kind of breakage.
 function paidLine(m) {
   if (m.required > 0) {
     return m.paid > m.required
-      ? `${money(m.paid)} paid of ${money(m.required)} due (the rest is extra saved)`
+      ? `${money(m.paid)} paid in (his money — the weeks that have closed asked only ${money(
+          m.required
+        )})`
       : `${money(m.paid)} paid of ${money(m.required)} due (weeks that have closed)`;
   }
   return m.paid > 0
-    ? `${money(m.paid)} paid in (extra saved — nothing due yet)`
+    ? `${money(m.paid)} paid in (his money — nothing due yet)`
     : `${money(m.paid)} paid in (nothing due yet — no week has closed)`;
 }
 

@@ -107,7 +107,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
   );
 
   // What the selected week still needs from him. Left blank once that week is
-  // covered — logging the full amount again would silently become extra credit.
+  // covered — logging the full amount again would silently become money on top.
   const weekDue = selectedWeek
     ? Math.max(0, (ledger?.weeklyAmount || 0) - (selectedWeek.personalPaid || 0))
     : 0;
@@ -356,7 +356,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
           } — not taken off the money he holds)`}
         />
         <Stat
-          label={owed ? 'Owed' : 'Extra saved'}
+          label={owed ? 'Owed' : 'Paid ahead'}
           value={money(owed ? ledger.arrears : ledger.credit)}
           hint={
             owed
@@ -365,7 +365,9 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                 : `(closed weeks still unpaid — not chased: he holds more than ${money(
                     ledger.moneyLimit
                   )})`
-              : '(paid more than was due so far)'
+              : // Not a pot called "savings": the weekly amount is the minimum, and this is simply
+                // money he has put in beyond the weeks that have closed. It is all in `money` above.
+                '(more than the weeks that have closed asked for — all of it is his money)'
           }
           alert={owed && (ledger.chasedArrears ?? ledger.arrears) > 0}
         />
@@ -457,7 +459,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                       ledger.openingBalance
                     )} he carried in; the week's ${money(
                       ledger.weeklyAmount
-                    )} is still collected, and it stands as extra saved against week ${
+                    )} is still collected, and it is simply his money against week ${
                       selectedWeek.weekNumber + 1
                     }.`
                   : selectedWeek.isCurrent
@@ -465,7 +467,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                         ledger.weeklyAmount
                       )} is only counted the day after it closes, so logging it here is what settles it.`
                     : selectedWeek.settled
-                      ? ' — already settled, so anything logged now counts as extra saved.'
+                      ? ' — already settled, so anything logged now is simply more of his money.'
                       : ` — ${money(weekDue)} of the ${money(ledger.weeklyAmount)} still due.`}
               </p>
             )}
@@ -559,7 +561,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
 
           {kind === 'weekly' && weekDue === 0 && (
             <p className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
-              That week is already settled. Anything logged now counts as extra credit on top.
+              That week is already settled. Anything logged now is more of his money.
             </p>
           )}
 
@@ -713,7 +715,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                               : w.status === 'partial'
                                 ? 'partly paid'
                                 : 'nothing paid'}
-                          {w.coveredByCredit ? ' (covered by earlier extra)' : ''}
+                          {w.coveredByCredit ? ' (covered by what he paid earlier)' : ''}
                         </span>
                       </td>
                       <td className="amount px-3 py-2 text-muted">

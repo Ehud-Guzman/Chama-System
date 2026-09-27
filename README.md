@@ -353,10 +353,14 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
     of him, reported and never taken off the money held (the paper ledger's total column read it the
     same way)
   - **owed** — closed weeks still unpaid (never a week still running: its Thursday is to come). The
-    figure the older statements netted out of the balance is `held − owed` where nothing is saved
+    figure the older statements netted out of the balance is `held − owed` where nothing has been paid
     ahead, and `moneyNetOfDues` (= held − weeks that have closed) exactly
+  - **paid ahead** — money he has put in beyond the weeks that have closed. The weekly 1,400 is the
+    *minimum* the cycle asks for, not a pot of its own: a member who pays 2,000 has 2,000 more of his
+    own money in the group's hands, and nothing is set aside from it. No screen calls that surplus
+    "savings" any more, because there is nothing separate to call it.
   - **tea** — deducted automatically, the weekly tea × the weeks that have closed
-  - **settled** — every closed week paid, by payment or by earlier extra saved
+  - **settled** — every closed week paid, by payment or by money he paid earlier
   - **nothing due yet** — no week has closed, so nobody owes and nobody has settled anything; the
     pill says this rather than "settled" while the first week is still running
 - **One-time opening balances:** `/admin/finance/setup` is where each member's current total is

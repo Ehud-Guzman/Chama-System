@@ -1609,6 +1609,40 @@ FILES
   frontend/src/utils/passbookPosition.js   aheadText, and upToDate from what is chased
 
 
+A SURPLUS IS HIS MONEY, NOT "EXTRA SAVED"
+------------------------------------------
+
+The 1,400 a week is the *minimum* the cycle asks of a member, not a pot with anything set aside from
+it: when a member pays 2,000, the whole 2,000 is his money in the group's hands (that is what the
+ledger has always done — the row is kept at its full value and the balance moves by all of it). The
+screens, though, kept describing the part above the closed weeks' expectation as "extra saved",
+"extra credit" and "the rest is extra saved", which reads as though the money had been split into two
+piles: the week's payment and something else. It has not.
+
+So the wording changed wherever it appeared, and nothing else did:
+
+  the row under a member's money   "Ksh 2,000 paid in (his money — the weeks that have closed asked
+                                   only Ksh 1,400)"
+  the member's page stat           "Extra saved" → "Paid ahead" (more than the weeks that have closed
+                                   asked for — all of it is his money)
+  the statement                    "Extra saved (paid more than was due)" → "Paid ahead (more than
+                                   the weeks that have closed asked for)"
+  the week table                   "(covered by earlier extra)" → "(covered by what he paid earlier)"
+  the log panel                    "counts as extra saved / extra credit on top" → "is simply more of
+                                   his money"
+
+There is no "Extra savings" contribution type in the group's books to go with the old wording (their
+types are Weekly Contribution, Chai, and the non-weekly ones: registration, fines, welfare, funds), so
+nothing was being diverted anywhere — it was the labels that suggested a split that does not exist.
+
+FILES
+
+  frontend/src/components/ledger/MemberLedgerList.jsx  the row's line under his money
+  frontend/src/pages/FinanceMemberLedger.jsx           the stat, the log panel and the week table
+  backend/src/utils/memberStatement.js                 the statement's line
+  README.md                                            the label list gains "paid ahead"
+
+
 END OF DOCUMENT
 ===============
 
