@@ -30,7 +30,7 @@ const ContributionType = require('../src/models/ContributionType');
 const Settings = require('../src/models/Settings');
 const { computeMemberLedger } = require('../src/utils/memberLedger');
 const { bucketForType } = require('../src/utils/ledgerTypes');
-const { resolveConfig, scoredWeeks, weekNumberForDate } = require('../src/utils/weekCycle');
+const { resolveConfig, scoredWeeks, weekNumberForDate, currentWeekNumber } = require('../src/utils/weekCycle');
 
 const money = (n) => 'Ksh ' + Number(n || 0).toLocaleString('en-KE');
 const filterArg = (flag) => {
@@ -59,6 +59,7 @@ async function main() {
     process.exit(1);
   }
   const config = resolveConfig(settings);
+  const currentWeek = currentWeekNumber(config);
   const weeksClosed = scoredWeeks(config);
   // What the cycle expects of every member right now, and what it has charged them for tea.
   const requiredEach = config.weeklyAmount * weeksClosed;
@@ -116,6 +117,9 @@ async function main() {
     // ---------------------------------------------------------------- the long way
     let paid = 0;
     let teaBeforeCycle = 0;
+    // What he paid inside each week of the cycle, because a week is answered by its own 1,400 and
+    // never by a surplus somewhere else (utils/memberLedger).
+    const paidByWeek = new Map();
     for (const row of own) {
       const type = typeById.get(String(row.typeId));
       const bucket = bucketForType(type);
@@ -128,13 +132,22 @@ async function main() {
       } else if (!type?.isGroupFund && (bucket === 'weekly' || bucket === 'extra')) {
         // Only rows dated inside the cycle: what came before is already inside his carried-in
         // balance, which is where the week-92 reset folded it.
-        if (week >= config.cycleStartWeek) paid += cash;
+        if (week >= config.cycleStartWeek) {
+          paid += cash;
+          paidByWeek.set(week, (paidByWeek.get(week) || 0) + cash);
+        }
       }
     }
     const opening = Number(member.openingBalance) || 0;
     const tea = teaEach + teaBeforeCycle;
     const expectedHeld = opening + paid - tea;
-    const expectedOwed = Math.max(0, requiredEach - paid);
+    // Each closed week stands on its own: the weeks that have closed, each asking weeklyAmount and
+    // answered by what arrived in it. The opening week asks nothing, and the week still running has
+    // not closed.
+    let expectedOwed = 0;
+    for (let week = config.cycleStartWeek + 1; week < currentWeek; week++) {
+      expectedOwed += Math.max(0, config.weeklyAmount - (paidByWeek.get(week) || 0));
+    }
 
     // ---------------------------------------------------------------- the engine
     const annotated = own.map((row) => {

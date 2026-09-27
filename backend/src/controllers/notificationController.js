@@ -142,12 +142,10 @@ async function computeMemberDues(members, { settings: givenSettings = null } = {
       config,
     });
 
-    // The weeks the money is still short of — `behind`, not `!settled`: a member who paid a week
-    // late has an unsettled week in the paper ledger's column and nothing owing now, and telling
-    // him "Week 93 — 1,400 short" when his passbook says he owes nothing is the kind of
-    // contradiction that gets a system distrusted. `w.owed` is the amount still outstanding
-    // against that week, so these shortfalls add up to exactly the arrears on his own page, which
-    // is what the ledger's own `weeksBehind` counts.
+    // The weeks the money is missing from — `behind`, and `shortfall` is what that week itself is
+    // short. Each closed week carries its own 1,400 (no surplus from another week answers it), so
+    // these add up to exactly the arrears on the member's own page, which is what the ledger's own
+    // `weeksBehind` counts.
     const lateWeeks = ledger.weeks
       .filter((w) => w.behind)
       .map((w) => ({
@@ -156,7 +154,7 @@ async function computeMemberDues(members, { settings: givenSettings = null } = {
         typeName: WEEKLY_TYPE_NAME,
         expected: ledger.weeklyAmount,
         paid: w.personalPaid,
-        shortfall: w.owed,
+        shortfall: w.shortfall,
       }));
 
     const fines = pendingFines

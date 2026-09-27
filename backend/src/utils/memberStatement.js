@@ -213,7 +213,6 @@ function buildStatement(profile) {
           value: ledger ? ledger.arrears : 0,
           alert: Boolean(ledger && ledger.arrears > 0),
         },
-        { label: 'Paid ahead (more than the weeks that have closed asked for)', value: ledger ? ledger.credit : 0 },
         { label: 'Contributions logged', value: profile.contributionsCount || contributions.length },
         { label: 'Paid in the rows below', value: profile.totalContributed || 0 },
         {

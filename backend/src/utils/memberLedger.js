@@ -173,81 +173,49 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   });
 
 
-  // Credit-aware walk. Money paid above the requirement in one week covers a
-  // later week nobody paid, exactly as §7.5's "cumulative actual less cumulative
-  // required" describes — so a member clearing three weeks of arrears in one
-  // entry shows all three settled, not three NILL weeks plus loose credit.
+  // Every closed week stands on its own. It asks for `weeklyAmount`, and what answers it is what he
+  // paid **in that week** — a surplus in one week is his money, it is not the next week's payment, so
+  // the weeks are never netted against each other. A week nobody paid is 1,400 short whatever he paid
+  // in some other week, which is also what the week table and the weekly reconciliation report show,
+  // and what the paper ledger's per-week columns said: "Weekly" was what that week collected, and the
+  // extra line was his money, not next week's subscription.
   //
-  // `status` stays the raw record (was anything paid *that* week); `settled` is
-  // what the treasurer cares about (is that week covered, by payment or credit).
-  // §7.5 — a NILL week only attracts the KES 50 fine when the credit standing
-  // before it is less than one week's requirement; a NILL week the member had
-  // already covered out of earlier surplus attracts nothing. Credit here is
-  // cycle-only (openingBalance is deliberately excluded: it is pre-cycle money,
-  // not a qualifying weekly contribution). The fine is reported, never charged:
-  // a fine must be issued with its week, reason and calculation, so the figure
-  // stays advisory until somebody actually issues it. A week still running is
-  // never "unpaid yet" — its deadline hasn't passed.
-  let credit = 0;
+  // `status` stays the raw record (what arrived *that* week); `settled` is whether that week's own
+  // 1,400 is in; `shortfall` is what the week is short. §7.5's KES 50 fine is about the deadline, so a
+  // closed week with nothing paid in it is flagged for one — reported, never charged, because a fine
+  // must be issued with its week, reason and calculation. A week still running is never short: its
+  // Thursday has not passed.
   for (const w of weeks) {
     if (w.isBaseline) {
-      // Nothing is expected of the opening week and nothing can be outstanding
-      // against it, so it never sets a shortfall and never attracts the fine. It
-      // also contributes no credit: the money paid during it covers the weeks that
-      // follow, and the walk below starts from zero.
+      // Nothing is expected of the opening week (its money is inside the carried-in balance), so it
+      // can never be short and never attracts the fine.
       w.settled = true;
       w.shortfall = 0;
-      w.coveredByCredit = false;
+      w.behind = false;
       w.nillFineDue = false;
       continue;
     }
-    const available = credit + w.personalPaid;
-    w.settled = config.weeklyAmount > 0 && available >= config.weeklyAmount;
-    // Cumulative gap at the end of that week, not a fresh per-week figure.
-    w.shortfall = Math.max(0, config.weeklyAmount - available);
-    w.coveredByCredit = w.status === 'nill' && w.settled;
+    w.settled = config.weeklyAmount > 0 && w.personalPaid >= config.weeklyAmount;
+    w.shortfall = Math.max(0, config.weeklyAmount - w.personalPaid);
+    // `behind` is the debt: a closed week with money missing from it. The week still running is not
+    // one — nobody is behind on a week whose Thursday is to come.
+    w.behind = !w.isCurrent && w.shortfall > 0;
     w.nillFineDue = !w.isCurrent && w.status === 'nill' && !w.settled;
-    credit = available - config.weeklyAmount;
   }
 
-  // What is still **owing**, week by week — a different question from `settled` above.
-  //
-  // `settled` is the paper ledger's weekly column: was this week's money in by the time the week
-  // closed? A member who pays his 1,400 on the Friday after the Thursday is NILL in that column,
-  // and rightly so — nothing came in that week, and §7.5's fine is about the deadline.
-  //
-  // What a member is *told he owes* has to be the money, not the deadline. A later payment settles
-  // an earlier shortfall: 3,000 handed over the day after a missed week covers it and leaves credit
-  // behind, so nothing is outstanding even though that week was never paid in its own week. Quoting
-  // the weekly column as the debt is how a member who has paid everything gets emailed "Week 93 —
-  // 1,400 short" while his own passbook, built from `arrears`, says he owes nothing. Those two
-  // sentences may never disagree: the arrears are handed out to the weeks oldest-first — the
-  // deficits always sit at the oldest unsettled week, because credit carries forward — so the
-  // amounts add up to `arrears` exactly, and the weeks that are going to be named as owing are the
-  // ones the money is actually short of.
-  //
-  // Nothing here changes a figure: `settled`, `shortfall` and the NILL fine flag are untouched, and
-  // the sum of `owed` is `arrears` (see the assertions in test/memberLedger.test.js).
-  let outstanding = Math.max(0, required - paid);
-  for (const w of weeks) {
-    if (w.isBaseline || w.isCurrent) {
-      // Nothing is owed against the opening week, and the week still running has not closed.
-      w.owed = 0;
-      w.behind = false;
-      continue;
-    }
-    w.owed = Math.min(Math.max(0, w.shortfall), outstanding);
-    outstanding -= w.owed;
-    w.behind = w.owed > 0;
-  }
+  // What the weeks add up to: the money that should be in and is not. Nothing is netted off it — a
+  // surplus in another week does not reduce this week's shortfall, which is the whole point of the
+  // per-week rule above (see test/memberLedger.test.js: the member who pays 2,000 one week and
+  // nothing the next owes the full 1,400 for the week he missed).
+  const arrears = weeks.reduce((sum, w) => sum + (w.behind ? w.shortfall : 0), 0);
 
   const weeksBehind = weeks.filter((w) => w.behind).length;
 
   const openingBalance = Number(member.openingBalance) || 0;
-  // What he has paid against what the cycle expected of him. Positive is credit
-  // carried forward (§7.5's "cumulative actual less cumulative required"),
-  // negative is arrears. It is a *measure of standing*, not a movement of money:
-  // the held figure below is built from money that actually came in.
+  // What he has paid against what the weeks have asked so far — a net figure, and deliberately not
+  // the arrears any more: the arrears come from the weeks themselves (above), because a surplus in
+  // one week does not answer another week's 1,400. Kept because it is still the honest sum of the
+  // two columns, and because the statement's arithmetic uses it.
   const movement = paid - required;
   const chaiWeek = weeks.find((w) => w.isCurrent);
   // Tea comes off his money every closed week, whether or not he paid: it is money the Group has
@@ -270,7 +238,6 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   // every screen that shows the money reads `arrears` — one policy, everywhere, visibly.
   const moneyLimit = moneyLimitForWeek(config, config, currentWeek);
   const coveredByBalance = holdsAtLeastTheLine(money, moneyLimit);
-  const arrears = movement < 0 ? -movement : 0;
   // The figure the books showed while the week's expectation was still being
   // netted out of the held money: carried in + paid in − dues so far − tea. Kept
   // on the payload because "it has already happened" is answerable with it — a
@@ -309,7 +276,6 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
     coveredByBalance,
     chasedArrears: coveredByBalance ? 0 : arrears,
     chasedWeeksBehind: coveredByBalance ? 0 : weeksBehind,
-    credit: movement > 0 ? movement : 0,
     chai: {
       // Everything taken off his money for tea: the automatic figure for every
       // scored week of the cycle, plus the tea logged for the weeks before it
@@ -373,7 +339,6 @@ function summariseMember(member, ledger) {
     coveredByBalance: ledger.coveredByBalance,
     chasedArrears: ledger.chasedArrears,
     chasedWeeksBehind: ledger.chasedWeeksBehind,
-    credit: ledger.credit,
     chaiPaid: ledger.chai.due,
     chaiThisWeek: ledger.chai.thisWeek,
     chaiWeeks: ledger.chai.weeks,
@@ -408,7 +373,6 @@ function totalLedger(ledgers) {
       // are. The header prints both, so nothing the line leaves alone disappears from the total.
       chasedArrears: acc.chasedArrears + l.chasedArrears,
       notChasedArrears: acc.notChasedArrears + (l.arrears - l.chasedArrears),
-      credit: acc.credit + l.credit,
       chaiPaid: acc.chaiPaid + l.chai.due,
       chaiRecorded: acc.chaiRecorded + l.chai.recorded,
     }),
@@ -421,7 +385,6 @@ function totalLedger(ledgers) {
       arrears: 0,
       chasedArrears: 0,
       notChasedArrears: 0,
-      credit: 0,
       chaiPaid: 0,
       chaiRecorded: 0,
     }

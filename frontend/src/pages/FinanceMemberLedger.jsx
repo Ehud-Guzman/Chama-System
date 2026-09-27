@@ -126,9 +126,9 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
       return;
     }
     if (kind === 'weekly') {
-      // The opening week asks nothing of anybody, but the group still collects
-      // that week's 1,400 — logged against it, the money becomes the credit that
-      // covers the week after, so the same one-tap prefill applies there.
+      // The opening week asks nothing of anybody, but the group still collects that week's 1,400 —
+      // logged against it, it is simply his money (nothing was due for the opening week, and each
+      // later week still asks for its own 1,400).
       const prefill = selectedWeek.isBaseline ? ledger.weeklyAmount : weekDue;
       setAmount(prefill > 0 ? String(prefill) : '');
     } else {
@@ -148,16 +148,16 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
   }, [selectedWeek]);
 
 
-  // One tap for the common catch-up case: he owes three weeks, so log the lot
-  // against the earliest week he is behind on. The credit then flows forward
-  // through the later weeks on its own, which is why there is no need to enter a
-  // line per week — §7.5's cumulative credit does that work.
+  // What the earliest closed week still short is asking for — one tap per week, because each week
+  // carries its own 1,400: a surplus logged on an earlier week is that week's money for the group,
+  // never the next week's payment (utils/memberLedger). So catching him up is one line per week he
+  // missed, dated in the week it belongs to, exactly as the paper ledger was written.
   function coverArrears() {
-    const firstUnsettled = ledger?.weeks?.find((w) => !w.settled);
-    if (!firstUnsettled) return;
-    pendingFillRef.current = String(ledger.arrears);
+    const firstShort = ledger?.weeks?.find((w) => w.behind);
+    if (!firstShort) return;
+    pendingFillRef.current = String(firstShort.shortfall);
     setKind('weekly');
-    setTargetWeek(firstUnsettled.weekNumber);
+    setTargetWeek(firstShort.weekNumber);
   }
 
   async function submit(e) {
@@ -287,7 +287,12 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
 
   const { member, week, logs, expenses } = data;
   const teaFund = (data.funds || []).find((f) => f.name.toLowerCase().includes('chai')) || null;
-  const owed = ledger.movement < 0;
+  // Whether anything is being asked of him at all: below the group's line and short of a closed
+  // week, he is chased; above it, nothing is asked (utils/reminderLimit).
+  const owed = (ledger.chasedArrears ?? ledger.arrears) > 0;
+  // The earliest closed week the money is missing from — the one a catch-up payment is logged
+  // against. Each week carries its own 1,400, so there is one line per week, never a lump.
+  const firstShortWeek = (ledger.weeks || []).find((w) => w.behind) || null;
 
   return frame(
     <div className="space-y-5">
@@ -356,8 +361,8 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
           } — not taken off the money he holds)`}
         />
         <Stat
-          label={owed ? 'Owed' : 'Paid ahead'}
-          value={money(owed ? ledger.arrears : ledger.credit)}
+          label={owed ? 'Owed' : 'Paid in'}
+          value={money(owed ? ledger.arrears : ledger.paid)}
           hint={
             owed
               ? (ledger.chasedArrears ?? ledger.arrears) > 0
@@ -365,9 +370,9 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                 : `(closed weeks still unpaid — not chased: he holds more than ${money(
                     ledger.moneyLimit
                   )})`
-              : // Not a pot called "savings": the weekly amount is the minimum, and this is simply
-                // money he has put in beyond the weeks that have closed. It is all in `money` above.
-                '(more than the weeks that have closed asked for — all of it is his money)'
+              : // Just what he has given: the weekly 1,400 is the minimum each closed week asks for,
+                // not a pot, so there is nothing to call "extra" and nothing to keep a running total of.
+                '(what he has given since the books opened)'
           }
           alert={owed && (ledger.chasedArrears ?? ledger.arrears) > 0}
         />
@@ -402,7 +407,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         {money(ledger.chai.perWeek)} a week, deducted automatically from every member and paid into the
         Group’s Tea Fund — nobody owes it and nobody pays arrears on it.
         {ledger.nillWeeksDueFine.length > 0 &&
-          ` ${ledger.nillWeeksDueFine.length} closed week(s) were NILL with no credit standing (${ledger.nillWeeksDueFine
+          ` ${ledger.nillWeeksDueFine.length} closed week(s) had nothing paid in them (${ledger.nillWeeksDueFine
             .map((w) => 'W' + w)
             .join(', ')}) — the 50 fine under clause 7.5 has not been charged.`}
       </p>
@@ -481,14 +486,16 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
             )}
           </fieldset>
 
-          {ledger.weeksBehind > 0 && (
+          {ledger.chasedWeeksBehind > 0 && firstShortWeek && (
             <button
               type="button"
               onClick={coverArrears}
               className="min-h-11 w-full rounded-lg border border-alert/40 bg-alert/5 px-3 text-xs font-semibold text-alert"
             >
-              He is {ledger.weeksBehind} week{ledger.weeksBehind === 1 ? '' : 's'} behind ({' '}
-              {money(ledger.arrears)} owed) — log it all and catch him up
+              Week {firstShortWeek.weekNumber} is {money(firstShortWeek.shortfall)} short — log it
+              {ledger.chasedWeeksBehind > 1
+                ? ` (${ledger.chasedWeeksBehind} closed weeks unpaid — one line each, in its own week)`
+                : ''}
             </button>
           )}
           {/* Above the group's line the uncollected week is not chased (utils/reminderLimit): the
@@ -715,7 +722,6 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                               : w.status === 'partial'
                                 ? 'partly paid'
                                 : 'nothing paid'}
-                          {w.coveredByCredit ? ' (covered by what he paid earlier)' : ''}
                         </span>
                       </td>
                       <td className="amount px-3 py-2 text-muted">

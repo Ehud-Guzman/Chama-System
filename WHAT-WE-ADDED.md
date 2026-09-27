@@ -1533,6 +1533,12 @@ the answer, rather than by reasoning about the code. Both are fixed, and neither
    `backend/test/memberLedger.test.js` pins both halves — the deadline record and the debt — on the
    ordinary case, the paid-late case, and the part-paid case.
 
+   SUPERSEDED, ONE PART OF IT: the weekly rules were changed again the same day — each closed week
+   now carries its own 1,400 and a surplus is never the next week's payment, so the late payment
+   above does NOT clear the week he missed (see the last section, "Each week carries its own 1,400").
+   What survives from this entry is the naming: `settled` is the paper ledger's column, and what a
+   member is *told* he owes is the money.
+
 WHAT CAME OUT OF IT BESIDES THE FIXES: two read-only tools, for a committee that doubts a number
 (see the maintenance-scripts table in the README). `node scripts/reportMoneyLine.js` prints every
 member's held money, what he owes, his fines, whether he is told about any of it and why.
@@ -1641,6 +1647,67 @@ FILES
   frontend/src/pages/FinanceMemberLedger.jsx           the stat, the log panel and the week table
   backend/src/utils/memberStatement.js                 the statement's line
   README.md                                            the label list gains "paid ahead"
+
+
+EACH WEEK CARRIES ITS OWN 1,400 — A SURPLUS IS NEVER NEXT WEEK'S PAYMENT
+-----------------------------------------------------------------------
+
+This replaces the credit-carrying rule that shipped a week earlier, and the committee asked for it in
+as many words: *"even though he paid 'extra' in one week, the next week it should not depend on that,
+so long he has not passed the weekly line he'll be told less by 1,400."*
+
+WHAT WAS WRONG WITH THE OLD RULE. The engine walked the weeks with a running credit: money paid above
+one week's requirement was carried forward and settled the next week nobody paid. So a member who paid
+2,000 in week 93 and nothing in week 94 owed 800 — his 600 surplus was quietly paying for part of a
+week he never paid. That reads as one pot of money against a total, and it is not how the group works
+or how the paper ledger was written: the weekly column was what that week collected, and the extra
+line was his money.
+
+WHAT IT DOES NOW. Every closed week stands on its own. It asks for the weekly amount (1,400), and what
+answers it is what he paid **in that week**:
+
+  paid 2,000 in week 93, nothing in week 94   →  week 93 settled, week 94 short 1,400. He is told
+                                                 1,400, and the 600 is his money.
+  paid 1,000 in week 93, nothing in week 94   →  week 93 short 400, week 94 short 1,400. Owed 1,800.
+  paid 1,400 dated in week 94 (a late week 93) → week 94 settled, week 93 still short 1,400, and the
+                                                 §7.5 NILL flag is raised for it.
+
+The arrears are the sum of the per-week shortfalls, so the weeks add up to what he owes to the
+shilling. Nothing about the money moved: what he holds is still what he handed over less the tea, and
+the totals on the live books are identical to the day before this change (held 3,398,080; the group's
+arrears went from 23,800 to 25,200 because a member whose 3,000 arrived the day after a missed week is
+now properly short for that week — and he is above the money line, so nothing is asked of him).
+
+WHAT ELSE HAD TO FOLLOW, because the arithmetic promised it:
+
+  - **Catching up is one line per week.** The treasurer's one-tap catch-up used to log the whole
+    arrears total against the earliest week and let credit flow forward; it now fills that week's own
+    shortfall and moves to the next week when it is logged.
+  - **The week table's "(covered by what he paid earlier)"** is gone: with no credit carrying, a week
+    is either paid in its own week or it is short.
+  - **"Extra saved" / "Paid ahead" / "extra credit" are gone from the words**, and with them the
+    surplus's own figure: the member page's fourth stat is now simply *Paid in* (what he has given)
+    when he owes nothing, and the row under his money says "Ksh 2,000 paid in (his money — the weeks
+    that have closed asked only Ksh 1,400)".
+  - **The independent checker changed with it.** `scripts/verifyLedgerFigures.js` re-derives each
+    member the long way, week by week, and it now proves the per-week rule: on the live books all 31
+    members agree and the totals reconcile (3,370,830 carried in + 30,350 paid − 3,100 tea =
+    3,398,080 held, 25,200 owed).
+
+FILES
+
+  backend/src/utils/memberLedger.js       the walk is per week; `arrears` is the sum of the weeks'
+                                          shortfalls; `credit` is gone
+  backend/src/controllers/notificationController.js  the late weeks are the weeks short, each with
+                                          its own shortfall
+  backend/src/controllers/memberController.js  the payloads no longer carry `credit`
+  backend/src/utils/memberStatement.js    the statement's "paid ahead" line is gone
+  frontend/src/pages/FinanceMemberLedger.jsx  catch-up per week; "Paid in" instead of "Paid ahead";
+                                          the week table's credit note removed
+  frontend/src/components/ledger/MemberLedgerList.jsx  the row states what he gave
+  backend/test/memberLedger.test.js       the surplus case, the late case, the part-paid case, and
+                                          the invariant that the weeks add up to the arrears
+  backend/scripts/verifyLedgerFigures.js  the independent check re-derives the per-week rule
 
 
 END OF DOCUMENT

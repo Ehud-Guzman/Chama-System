@@ -145,8 +145,9 @@ test('a closed week nobody paid is reported as owed, never taken off his money',
 });
 
 test('paying a later week does not move what he holds by more than was paid', () => {
-  // Two closed weeks of expectation against one payment of 4,000: the surplus is credit (§7.5),
-  // not a bigger balance, and nothing that was never collected appears in the held figure.
+  // One payment of 4,000 in week 93 against two closed weeks: week 93 is settled, week 94 was never
+  // paid for, and what he holds is what he handed over less the tea — nothing that was never
+  // collected appears in it.
   const ledger = computeMemberLedger({
     member: { openingBalance: 0 },
     contributions: [weekly(4000)],
@@ -157,43 +158,75 @@ test('paying a later week does not move what he holds by more than was paid', ()
 
   assert.equal(ledger.required, 2800);
   assert.equal(ledger.paid, 4000);
-  assert.equal(ledger.arrears, 0);
-  assert.equal(ledger.credit, 1200);
+  assert.equal(weekOf(ledger, 93).status, 'paid');
+  assert.equal(weekOf(ledger, 94).status, 'nill', 'nothing was paid in week 94');
   assert.equal(ledger.chai.due, 200);
   assert.equal(ledger.money, 3800, '4,000 paid in, less two weeks of tea — and nothing else');
   assert.equal(ledger.moneyNetOfDues, 1000, 'the old figure: the same money, less the 2,800 due');
 });
 
 // ---------------------------------------------------------------------------------------------
-// Behind is money, not a deadline
+// Every closed week stands on its own
 //
-// `settled` is the paper ledger's weekly column — was that week's money in by its Thursday — and
-// the §7.5 NILL fine is built on it. `behind` is the question a reminder, a statement and the
-// member's own passbook all have to answer the same way: is any of it still owing? A payment that
-// arrives after a missed Thursday clears the shortfall, so the week stops being a debt even though
-// it was never paid in its own week. These tests pin both halves, and the invariant that ties them
-// together: what the weeks say is owed adds up to the arrears.
+// The weekly 1,400 is the *minimum* a week asks for, and what answers it is what he paid **in that
+// week**. A surplus in one week is his money — it is not the next week's payment — so a week nobody
+// paid is 1,400 short whatever he paid in some other week, and a member below the group's line is
+// told he is short by 1,400 for it. That is also what the week table and the weekly reconciliation
+// report show, and what the paper ledger's per-week columns said. The money he holds is never
+// touched by any of it: it moves by what he actually handed over.
 // ---------------------------------------------------------------------------------------------
 
-const PAY_DATE = parseEatDate('2026-10-02'); // the Friday that opens week 95
+const PAY_DATE = parseEatDate('2026-10-02'); // the Friday that opens week 95: 93 and 94 closed
 
-// A row dated inside week 94, i.e. after week 93's Thursday had passed.
-const paidInWeek94 = (amount) => ({
-  _id: `contribution-${amount}`,
+const paidOn = (date, amount) => ({
+  _id: `contribution-${date}-${amount}`,
   amount,
   grossAmount: null,
-  date: parseEatDate('2026-09-25'),
+  date: parseEatDate(date),
   bucket: 'weekly',
   isGroupFund: false,
 });
 
-const owedByWeek = (ledger) => ledger.weeks.map((w) => w.owed);
-const sumOwed = (ledger) => owedByWeek(ledger).reduce((sum, n) => sum + n, 0);
+// A row dated inside week 94, i.e. after week 93's Thursday had passed.
+const paidInWeek94 = (amount) => paidOn('2026-09-25', amount);
 
-test('a week paid late is behind in the paper column and not a debt', () => {
-  // 3,000 handed over the day after week 93 had closed: week 93 was NILL (nothing came in that
-  // week), the money has since covered it, and nothing is owed. This is the case that used to be
-  // emailed as "Week 93 — 1,400 short" while the same member's passbook said he owed nothing.
+const shortByWeek = (ledger) => ledger.weeks.map((w) => w.shortfall);
+// What the closed weeks add up to — the independent check on `arrears`, which is why it counts the
+// closed weeks itself rather than reading the engine's `behind` flag. The week still running is
+// left out: its 1,400 is money still to come, not money short (nobody is behind on a week whose
+// Thursday has not passed).
+const closedShort = (ledger) =>
+  ledger.weeks
+    .filter((w) => !w.isBaseline && !w.isCurrent)
+    .reduce((sum, w) => sum + w.shortfall, 0);
+
+test('a surplus in one week does not pay for the next', () => {
+  // 2,000 in week 93 and nothing in week 94. The 600 above the minimum is his money, not week 94's
+  // subscription, so week 94 is 1,400 short — the full weekly amount, not 800.
+  const ledger = computeMemberLedger({
+    member: { openingBalance: 0 },
+    contributions: [paidOn('2026-09-18', 2000)],
+    config,
+    now: PAY_DATE,
+  });
+
+  assert.equal(weekOf(ledger, 93).shortfall, 0, 'week 93 got its 1,400 — and 600 more');
+  assert.equal(weekOf(ledger, 94).shortfall, 1400, 'week 94 asked its own 1,400 and got nothing');
+  assert.equal(ledger.arrears, 1400, 'so he is short 1,400, not 800');
+  assert.equal(ledger.weeksBehind, 1);
+  assert.deepEqual(
+    shortByWeek(ledger),
+    [0, 0, 1400, 1400],
+    'baseline, week 93, week 94, the week running — the last has its own money still to come'
+  );
+  assert.equal(closedShort(ledger), ledger.arrears);
+  // And the money is untouched by any of it: 2,000 handed over, 200 of tea, 1,800 held.
+  assert.equal(ledger.money, 1800);
+});
+
+test('a week paid late is still the week he missed', () => {
+  // 3,000 handed over the day after week 93 had closed: nothing came in during week 93, so it is
+  // NILL, it is flagged for the §7.5 fine, and it is still 1,400 short. The 3,000 answers week 94.
   const ledger = computeMemberLedger({
     member: { openingBalance: 0 },
     contributions: [paidInWeek94(3000)],
@@ -202,53 +235,55 @@ test('a week paid late is behind in the paper column and not a debt', () => {
   });
 
   const week93 = weekOf(ledger, 93);
-  assert.equal(week93.status, 'nill', 'nothing was paid during week 93');
-  assert.equal(week93.settled, false, 'and the weekly column says so');
+  assert.equal(week93.status, 'nill');
   assert.equal(week93.nillFineDue, true, '§7.5 fines the deadline, which was missed');
-
-  assert.equal(ledger.arrears, 0, 'but he owes nothing');
-  assert.equal(ledger.weeksBehind, 0, 'so he is not behind');
-  assert.equal(week93.behind, false);
-  assert.equal(week93.owed, 0);
-  assert.equal(sumOwed(ledger), ledger.arrears);
+  assert.equal(week93.behind, true);
+  assert.equal(week93.shortfall, 1400);
+  assert.equal(weekOf(ledger, 94).shortfall, 0, 'the 3,000 covers the week it landed in');
+  assert.equal(ledger.arrears, 1400);
+  assert.equal(closedShort(ledger), ledger.arrears);
 });
 
-test('the weeks that are owed are the ones the money is short of, oldest first', () => {
-  const nothing = computeMemberLedger({
-    member: { openingBalance: 0 },
-    contributions: [],
-    config,
-    now: PAY_DATE,
-  });
-  assert.equal(nothing.arrears, 2800);
-  assert.equal(nothing.weeksBehind, 2);
-  assert.deepEqual(owedByWeek(nothing), [0, 1400, 1400, 0], 'baseline, week 93, week 94, running');
-  assert.equal(sumOwed(nothing), nothing.arrears);
-
-  // 1,400 on the Friday after week 93 closed: it pays for the week it landed in, so week 93 is
-  // still the week owed and week 94 is not.
-  const settledLater = computeMemberLedger({
+test('the week he missed is cleared only by paying that week', () => {
+  // 1,400 dated in week 94 pays for week 94; week 93 is still 1,400 short.
+  const nextWeek = computeMemberLedger({
     member: { openingBalance: 0 },
     contributions: [paidInWeek94(1400)],
     config,
     now: PAY_DATE,
   });
-  assert.equal(settledLater.arrears, 1400);
-  assert.equal(settledLater.weeksBehind, 1);
-  assert.deepEqual(owedByWeek(settledLater), [0, 1400, 0, 0]);
-  assert.equal(sumOwed(settledLater), settledLater.arrears);
+  assert.equal(nextWeek.arrears, 1400);
+  assert.equal(nextWeek.weeksBehind, 1);
+  assert.equal(weekOf(nextWeek, 93).behind, true);
+  assert.equal(weekOf(nextWeek, 94).behind, false);
 
-  // 500 of it: week 93's 1,400 is still owed first, and only part of week 94's gap is left.
-  const partWay = computeMemberLedger({
+  // The same 1,400 dated inside week 93 clears week 93 and leaves week 94 short — which is what
+  // logging a catch-up payment against the week it belongs to does.
+  const theMissedWeek = computeMemberLedger({
     member: { openingBalance: 0 },
-    contributions: [paidInWeek94(500)],
+    contributions: [paidOn('2026-09-21', 1400)],
     config,
     now: PAY_DATE,
   });
-  assert.equal(partWay.arrears, 2300);
-  assert.equal(partWay.weeksBehind, 2);
-  assert.deepEqual(owedByWeek(partWay), [0, 1400, 900, 0]);
-  assert.equal(sumOwed(partWay), partWay.arrears, 'the weeks add up to the arrears, to the shilling');
+  assert.equal(theMissedWeek.arrears, 1400);
+  assert.equal(weekOf(theMissedWeek, 93).behind, false);
+  assert.equal(weekOf(theMissedWeek, 94).behind, true);
+});
+
+test('a part payment leaves the rest of that week owing, and no more', () => {
+  const ledger = computeMemberLedger({
+    member: { openingBalance: 0 },
+    contributions: [paidOn('2026-09-21', 1000)],
+    config,
+    now: PAY_DATE,
+  });
+
+  assert.equal(weekOf(ledger, 93).status, 'partial');
+  assert.equal(weekOf(ledger, 93).shortfall, 400, "1,000 of the week's 1,400");
+  assert.equal(weekOf(ledger, 94).shortfall, 1400, 'and week 94 is its own week');
+  assert.equal(ledger.arrears, 1800);
+  assert.equal(ledger.weeksBehind, 2);
+  assert.equal(closedShort(ledger), ledger.arrears, 'the weeks add up to the arrears, to the shilling');
 });
 
 test('a week nobody paid at all is behind, exactly as the arrears say', () => {
@@ -266,9 +301,9 @@ test('a week nobody paid at all is behind, exactly as the arrears say', () => {
   // (nothing has settled it yet — its Thursday is still to come), which is why no screen reads
   // this field as "weeks owing". `weeksBehind` above is the one that means a debt.
   assert.equal(ledger.weeksUnsettled, 2);
-  assert.equal(weekOf(ledger, 93).owed, 1400);
+  assert.equal(weekOf(ledger, 93).shortfall, 1400);
   assert.equal(weekOf(ledger, 93).behind, true);
-  assert.equal(sumOwed(ledger), ledger.arrears);
+  assert.equal(closedShort(ledger), ledger.arrears);
   // Every screen reads these two together, so they may never disagree: the count of weeks and the
   // money are one statement.
   assert.equal(summariseMember({ _id: 'm1', name: 'A', active: true }, ledger).weeksBehind, 1);

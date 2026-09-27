@@ -274,12 +274,15 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   **Two questions live side by side in the engine, and confusing them is what makes a member argue
   with his own passbook.** `settled` is the paper ledger's weekly column — was that week's money in
   by the time the week closed — and it is what the §7.5 NILL fine is built on. `weeksBehind` and the
-  per-week `owed` are the *money*: is any of it still owing now. A week paid the day after its
-  Thursday is NILL in the column (the deadline was missed) and not a debt (the money arrived), and
-  what a reminder may quote is the money — a member who has paid everything must never be emailed
-  "week 93 — 1,400 short" while his passbook says he owes nothing. The arrears are handed to the
-  weeks oldest-first, so the weeks' `owed` amounts add up to `arrears` to the shilling, and
-  `test/memberLedger.test.js` pins both halves of that.
+  per-week `shortfall` are the *money*: is any of it still owing now. And **each closed week carries
+  its own 1,400**: what answers a week is what he paid **in that week**, so a surplus in one week is
+  his money — it is not the next week's payment — and a week nobody paid is 1,400 short whatever he
+  paid somewhere else. A member below the group's line is therefore told he is short by 1,400 for the
+  week he missed, never by 800 because he overpaid the week before. The arrears are the sum of those
+  per-week shortfalls, so the weeks add up to `arrears` to the shilling, and
+  `test/memberLedger.test.js` pins both halves of that — the record and the money. Catching up is one
+  line per week, dated in the week it belongs to, exactly as the paper ledger was written: the
+  treasurer's page logs the earliest week still short and moves on to the next.
   **The group's money line governs every use of the word "behind", not just the emails.** A member
   holding at least `Settings.reminderMoneyLimit` is above the line (utils/reminderLimit), and the
   engine reports the policy beside the money: `arrears` and `weeksBehind` stay the record of what is
@@ -355,10 +358,11 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   - **owed** — closed weeks still unpaid (never a week still running: its Thursday is to come). The
     figure the older statements netted out of the balance is `held − owed` where nothing has been paid
     ahead, and `moneyNetOfDues` (= held − weeks that have closed) exactly
-  - **paid ahead** — money he has put in beyond the weeks that have closed. The weekly 1,400 is the
-    *minimum* the cycle asks for, not a pot of its own: a member who pays 2,000 has 2,000 more of his
-    own money in the group's hands, and nothing is set aside from it. No screen calls that surplus
-    "savings" any more, because there is nothing separate to call it.
+  - **paid in** — what he has given: "Ksh 2,000 paid in (his money — the weeks that have closed asked
+    only Ksh 1,400)". The weekly 1,400 is the *minimum* each closed week asks for, not a pot of its
+    own, so nothing is called "extra saved" or "paid ahead" anywhere: a member who pays 2,000 has
+    2,000 more of his own money in the group's hands, and the surplus is never counted as the next
+    week's payment.
   - **tea** — deducted automatically, the weekly tea × the weeks that have closed
   - **settled** — every closed week paid, by payment or by money he paid earlier
   - **nothing due yet** — no week has closed, so nobody owes and nobody has settled anything; the

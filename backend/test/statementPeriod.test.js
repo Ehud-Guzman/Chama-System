@@ -231,12 +231,13 @@ test('a month inside the cycle carries its own weeks, and neither baseline nor r
 
   // A month nothing was paid in still accrues what was due, and that is now reported rather than
   // taken off the balance: the only money that leaves him in February is the tea. The four closed
-  // weeks (5,600) are settled out of January's surplus — the credit-aware walk (§7.5) — so the
-  // arrears through the month are nil, and the figure he holds moves by nothing but the tea.
+  // weeks are four weeks he did not pay for, and each of them is its own 1,400 — January's surplus
+  // is his money, not February's subscription (utils/memberLedger) — so the month adds 5,600 to
+  // what he owes, and the figure he holds moves by nothing but the tea.
   assert.equal(february.paidIn, 0);
   assert.equal(february.contributionsCount, 0);
   assert.equal(february.movement, -400, 'only the tea left his money');
-  assert.equal(february.arrears, 0, 'January surplus covered the four weeks that closed');
+  assert.equal(february.arrears, 5600, 'four closed weeks, nothing paid in any of them');
   assert.equal(
     february.movement,
     -february.tea,
