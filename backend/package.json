@@ -22,6 +22,7 @@
     "seed:constitution": "node src/scripts/seedConstitution.js",
     "seed:super-admin": "node src/scripts/seedSuperAdmin.js",
     "balances:restore": "node src/scripts/restoreOpeningBalances.js",
+    "minutes:count-pages": "node src/scripts/countMinutePages.js",
     "ledger:clear-contributions": "node src/scripts/clearContributions.js"
   },
   "dependencies": {

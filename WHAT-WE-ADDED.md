@@ -1864,6 +1864,98 @@ HOW IT WAS CHECKED
   gone, box kept.
 
 
+THE PAGE COUNT OF A MINUTE: A4, 12PT, COUNTED NOT GUESSED
+=========================================================
+
+The ask: how many pages is a minute? The office bills by the page, and a figure it bills by has to be
+one somebody can check — a number that says four when the paper says three is an argument, and it is
+the treasurer who has to have it.
+
+WHAT THE NUMBER IS
+
+  Each minute carries the number of A4 pages it is at 12pt with one-inch margins — the group's own
+  rule, chosen by the treasurer. It is not a word count divided by a constant: the minute is laid out
+  at that page size with **pdfkit**, already a backend dependency (the member statements, the fines
+  reports and the expense reports are rendered with it), and the count is the page range that layout
+  reports. Line breaks are the real line breaks, from the real font metrics, so a minute of bullet
+  lists and a minute of prose are both right rather than both approximated.
+
+  On this library: 66 minutes, two at one page, 47 at two, 17 at three — **147 pages in total**, laid
+  out in 1.9 seconds.
+
+WHY IT IS COUNTED AT SAVE TIME
+
+  One layout is 10-30ms. A hundred of them — the office's list loads a hundred minutes — would be two
+  seconds on every visit, so the count is worked out when a minute is written (`Minute.pages`, saved on
+  create and recomputed on every update, because the title, the date and the body are all the
+  document) and read off the payload thereafter. `npm run minutes:count-pages` fills in the minutes
+  saved before the field existed: a dry run by default that prints every minute and the page
+  distribution, `--confirm-write` to save, `--all` to recount the lot (which is what to run if the rule
+  ever changes). A minute never counted shows **no figure** rather than "0 pages".
+
+WHY IT AGREES WITH THE PAPER
+
+  A page count only means something if the document it counts is the document somebody prints. The
+  Word download was quietly Letter at 11pt in the library's default font — so the screen and the
+  printer were two different documents. `frontend/utils/exportDocx` now writes **A4, 12pt, one-inch
+  margins, Arial**, and Arial is metrically compatible with the Helvetica the counter measures, so Word
+  breaks the lines in the same places and paginates the same way. The heading sizes are pinned in both
+  (16pt, 14pt, 13pt) for the same reason. A figure whose rule cannot be stated is a figure somebody
+  can argue with, so the rule travels with it: the count carries *"A4 at 12pt, one-inch margins,
+  counted from the minute as a document"* as its hover text on every screen.
+
+WHERE IT SHOWS
+
+  - **The office's list** — a pill beside each minute's date, so a month's work can be added up without
+    opening anything, and the open minute's header carries it too (it hides while the minute has
+    unsaved edits, because the count is of what is stored).
+  - **The members' page** — beside each minute in the list and in the minute once opened: a member on a
+    data bundle can see that this is a three-page note before he opens it.
+  - **Not in the totals above the panels.** That line counts minutes on file, and the panel behind it is
+    truncated at a hundred; a page total built from a truncated list would read as the whole library.
+    The script's dry run prints the true total instead.
+
+FILES
+
+  backend/src/utils/minutePages.js          NEW - the document and its page count: the layout
+                                            (A4/12pt/1in), the HTML block walker (headings, lists,
+                                            quotes, pre, rules), and `countMinutePages`
+  backend/src/utils/minuteSearch.js         `entityText` exported, so `&amp;` is one character to the
+                                            counter as it is to a search
+  backend/src/models/Minute.js              `pages` (Number, null = never counted)
+  backend/src/controllers/minuteController.js  counted on create and update; `pages` on the office's
+                                            and the members' payloads
+  backend/src/scripts/countMinutePages.js   NEW - the backfill, dry run by default
+  backend/package.json                      `npm run minutes:count-pages`
+  backend/test/minutePages.test.js          NEW - 11 checks: an empty minute is one page; ~500 words of
+                                            prose is a page; more words never means fewer pages;
+                                            headings, lists, quotes and rules take their own room; a
+                                            forced line break is a line; entities are one character;
+                                            the 200k-character ceiling is a document, not a hang
+  frontend/src/utils/exportDocx.js          the Word file is now the page the count counts
+  frontend/src/utils/minutePages.js         NEW - "3 pages", and the rule, in one place
+  frontend/test/minutePages.test.js         NEW - 5 checks: "1 page" not "1 pages"; no figure for a
+                                            minute nobody has counted; a count arriving as text;
+                                            nonsense treated as no answer
+  frontend/src/components/minutes/MinuteListRow.jsx  the pill on every row, browse and search results
+  frontend/src/pages/Minutes.jsx            the count in the open minute's header
+  frontend/src/components/public/PublicRecords.jsx   the count in the members' list and reader
+  README.md, WHAT-WE-ADDED.md               this
+
+WHAT IT DOES NOT DO
+
+  - It does not put a **total** on a screen. That is the natural next ask — a month heading carrying
+    "14 minutes · 38 pages" is the shape of an invoice — and it is a small piece of work once the
+    counts are stored, but the office asked for the number of pages, and the script prints the
+    library's total today.
+  - It does not give the minute a PDF. Everything for one is now in place — `drawMinute` is the whole
+    document, and a route streaming it would carry a "Page 2 of 3" footer for free — so a member,
+    whose phone cannot open a .docx at all, is one small step from a readable copy that matches the
+    bill exactly.
+  - It does not charge anything. The figure is there to be billed on; nothing in the app reads it for
+    anything else.
+
+
 END OF DOCUMENT
 ===============
 

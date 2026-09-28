@@ -2,6 +2,10 @@ const Minute = require('../models/Minute');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { findActiveMemberByNationalId } = require('../utils/publicAccess');
 const { sanitizeMinuteHtml } = require('../utils/sanitizeHtml');
+// How many A4/12pt pages a minute is — the figure the office bills on. Counted when a minute is
+// written rather than when one is read: it is a real layout of the whole document, not a sum of
+// its words, and laying out a hundred of them on every list load would cost seconds.
+const { countMinutePages } = require('../utils/minutePages');
 const {
   MAX_SEARCH_RESULTS,
   plainTextOf,
@@ -26,6 +30,9 @@ function publicShape(minute, match) {
     title: minute.title,
     date: minute.date,
     preview: snippet || previewOf(minute.content),
+    // How long the minute is, before a member on a phone spends his bundle opening it — and the
+    // figure the office bills on, so both sides read the same number.
+    pages: minute.pages ?? null,
     updatedAt: minute.updatedAt,
   };
 }
@@ -121,15 +128,20 @@ async function createMinute(req, res, next) {
       return res.status(400).json({ message: 'Title is required' });
     }
 
+    // The body cleaned once, against the editor's own schema, before it is stored: the API is what
+    // every client talks to, so it cannot rely on the one editor that happens to be in the admin app
+    // to keep scripts out of a member-visible page. The page count is taken from the same cleaned
+    // body the document would be built from — a minute is billed on it, and counting it again on
+    // every list would mean laying out every minute on every screen (utils/minutePages).
+    const body = sanitizeMinuteHtml(content);
+
     const minute = await Minute.create({
       title: String(title).trim(),
       date: date ? new Date(date) : new Date(),
-      // Cleaned against the editor's own schema before storage: the API is what
-      // every client talks to, so it cannot rely on the one editor that happens to
-      // be in the admin app to keep scripts out of a member-visible page.
-      content: sanitizeMinuteHtml(content),
+      content: body,
       visibleToMembers: visibleToMembers === undefined ? true : Boolean(visibleToMembers),
       createdBy: req.user._id,
+      pages: countMinutePages({ title: String(title).trim(), date, content: body }),
     });
 
     await logAudit({
@@ -165,6 +177,11 @@ async function updateMinute(req, res, next) {
     if (content !== undefined) minute.content = sanitizeMinuteHtml(content);
     if (visibleToMembers !== undefined) minute.visibleToMembers = Boolean(visibleToMembers);
     minute.updatedBy = req.user._id;
+    // Recounted from what the minute now is: the title, the date and the body are the document, so
+    // editing any of them can change how many pages it runs to. Recomputing on every save (rather
+    // than only when the body changes) is what keeps the stored figure from being a memory of an
+    // older version of the minute, and it costs one layout of one document.
+    minute.pages = countMinutePages(minute);
 
     await minute.save();
     await logAudit({
@@ -228,7 +245,7 @@ async function publicListMinutes(req, res, next) {
 
     const [minutes, total] = await Promise.all([
       Minute.find(visible)
-        .select('title date content updatedAt')
+        .select('title date content pages updatedAt')
         .sort({ date: -1, createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -260,7 +277,7 @@ async function publicGetMinute(req, res, next) {
       deleted: false,
       visibleToMembers: { $ne: false },
     })
-      .select('title date content updatedAt')
+      .select('title date content pages updatedAt')
       .lean();
 
     if (!minute) return res.status(404).json({ message: 'not_found' });
@@ -271,6 +288,7 @@ async function publicGetMinute(req, res, next) {
         title: minute.title,
         date: minute.date,
         content: minute.content || '',
+        pages: minute.pages ?? null,
         updatedAt: minute.updatedAt,
       },
     });

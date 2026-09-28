@@ -953,6 +953,22 @@ whole page sideways on a phone, in the office's copy and the member's reader ali
 quiet mistakes live: a month key that sorts as a word, and a label built from the wrong
 index.
 
+**How many pages a minute is.** Every minute carries its own page count — A4 at 12pt with
+one-inch margins, counted from the document itself (`utils/minutePages`) — which is the figure the
+office bills by, and which tells a member on a phone whether he is opening a two-page note or a
+fifty-page record before he spends his bundle. It is not an estimate of a page: the minute is laid
+out at the group's own page size with pdfkit (the engine the statements and the fines reports are
+already rendered with), and the count is the page range that layout reports — roughly 10-30ms a
+minute, so it is worked out when the minute is *saved* and stored, never recomputed for a list of a
+hundred. The Word copy the office downloads is set to the same page (A4, 12pt, one-inch margins,
+Arial — metrically compatible with the face the counter measures), so the sheets on the printer and
+the figure on the screen are the same document; that alignment is why the count is worth anything at
+all, and it is what the `title` on the figure states. A minute saved before this existed shows no
+figure rather than a wrong one, and `npm run minutes:count-pages` (dry run by default;
+`--confirm-write` to save, `--all` to recount the lot) fills them in — on this library, 66 minutes
+came to 147 pages. The number is counted, never derived from a word count, so a minute of bullet
+lists and a minute of prose are both right.
+
 **The audit trail** (`/admin/audit`, its own destination — it was a panel under the reports). The
 trail is read when something needs explaining, by whoever has to explain it, so it is not buried
 under four cards of figures. Every entry arrives read by `utils/auditFlags.js`: put in one of four

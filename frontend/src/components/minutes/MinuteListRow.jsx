@@ -1,4 +1,5 @@
 import HighlightedText from '../shared/HighlightedText';
+import { pageCountLabel, pageCountTitle } from '../../utils/minutePages';
 
 // One line in a minutes list.
 //
@@ -32,6 +33,11 @@ export default function MinuteListRow({
     ? at.toLocaleDateString('en-KE', { month: 'short', day: 'numeric', year: 'numeric' })
     : 'No date';
 
+  // How long the minute is, which is what the office bills on and what tells a reader whether this
+  // is a two-minute skim or a fifty-page record. Null when the minute has never been counted — it
+  // says nothing rather than "0 pages".
+  const pages = pageCountLabel(minute.pages);
+
   return (
     <div
       className={`flex items-start gap-2 border-b border-rule p-3 last:border-b-0 ${
@@ -51,6 +57,16 @@ export default function MinuteListRow({
         />
         <span className="mb-1 mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
           {dateLabel}
+          {/* The page count sits with the date because it is the other thing an office reads off a
+              row: what this minute is worth and how far back it goes. */}
+          {pages && (
+            <span
+              className="amount rounded bg-canvas px-1.5 py-0.5 text-[11px] font-medium"
+              title={pageCountTitle(minute.pages)}
+            >
+              {pages}
+            </span>
+          )}
           {minute.visibleToMembers === false && (
             <span className="rounded bg-alert/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-widest text-alert">
               Not for members

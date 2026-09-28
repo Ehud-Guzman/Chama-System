@@ -183,6 +183,9 @@ module.exports = {
   MAX_SEARCH_RESULTS,
   SNIPPET_RADIUS,
   escapeRegex,
+  // Exported so the page counter (utils/minutePages) resolves `&amp;` and `&#39;` exactly as a
+  // search does: the same document read two ways must not disagree about a word.
+  entityText,
   plainTextOf,
   minuteSearchConditions,
   snippetAround,

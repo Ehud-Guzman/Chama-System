@@ -7,6 +7,7 @@ import Loader from '../components/shared/Loader';
 import MinuteListRow from '../components/minutes/MinuteListRow';
 import RichTextEditor from '../components/minutes/RichTextEditor';
 import { groupMinutesByMonth } from '../utils/minuteGroups';
+import { pageCountLabel, pageCountTitle } from '../utils/minutePages';
 import { todayISO } from '../utils/format';
 
 const BLANK = { title: '', date: todayISO(), content: '', visibleToMembers: true };
@@ -84,6 +85,18 @@ export default function Minutes() {
   // The first search has nothing to show yet. Saying "no matches" for the half
   // second before the answer arrives would be saying something untrue.
   const waiting = Boolean(term) && searching && searchResults === null;
+
+  // The minute on screen, found among the ones loaded — it is the payload that carries its page
+  // count, and the form deliberately holds only the four fields a person edits.
+  const openMinute =
+    selectedId && selectedId !== 'new'
+      ? [...minutes, ...results].find((m) => m._id === selectedId) || null
+      : null;
+
+  // "3 pages", and the rule it was counted under, in one place for all three screens
+  // (utils/minutePages) — the office bills by this figure.
+  const pageCountOf = (minute) => pageCountTitle(minute?.pages) || '';
+  const pageLabelOf = (minute) => pageCountLabel(minute?.pages);
 
   // Whether the browse panel should stand down so the right-hand panel can take the whole
   // phone screen. This began as the search fix — a phone would otherwise scroll past every
@@ -662,6 +675,20 @@ export default function Minutes() {
                     <h2 className="mt-1 truncate text-lg font-bold">
                       {form.title.trim() || 'Untitled minute'}
                     </h2>
+                    {/* How many pages this minute is on A4 at 12pt — the group's own rule, and
+                        the figure the office bills by. Counted from the document when it was
+                        saved (utils/minutePages), so it is a page count rather than a guess at
+                        one, and it is what a printed copy will run to. It disappears while the
+                        minute has unsaved edits, because the count is of what is stored: an
+                        edited minute's real figure is the one it gets when it is saved. */}
+                    {openMinute && !isDirty && pageLabelOf(openMinute) && (
+                      <p
+                        className="amount mt-1 text-xs text-muted"
+                        title={pageCountOf(openMinute)}
+                      >
+                        {pageLabelOf(openMinute)}
+                      </p>
+                    )}
                     {isDirty && <p className="mt-1 text-xs font-medium text-alert">Unsaved changes</p>}
                   </div>
                   <div className="flex flex-wrap gap-2">

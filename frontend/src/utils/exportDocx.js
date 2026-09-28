@@ -64,6 +64,33 @@ function parseMinuteContent(html) {
   return sections;
 }
 
+// The page a minute is printed on, and the one its page count is measured against
+// (backend/src/utils/minutePages counts A4 at 12pt with one-inch margins).
+//
+// This used to be whatever the document library defaults to — Letter, 11pt, Calibri — which meant
+// the screen's page count and the sheets coming out of the printer were two different documents.
+// A4 with one-inch margins is the group's own rule; Arial is chosen for the body because it is
+// metrically compatible with the Helvetica the counter measures, so Word breaks the lines in the
+// same places and the two agree.
+//
+// Twips: 1/20th of a point, which is what the library wants. Sizes are half-points, so 24 is 12pt.
+const A4 = { width: 11906, height: 16838 };
+const INCH = 1440;
+const PAGE_SETTINGS = {
+  size: A4,
+  margin: { top: INCH, right: INCH, bottom: INCH, left: INCH },
+};
+const PAGE_STYLES = {
+  default: {
+    document: { run: { font: 'Arial', size: 24 } },
+    // The heading sizes the page counter measures with, so a heading takes the same room in both
+    // documents: 16pt, 14pt and 13pt.
+    heading1: { run: { font: 'Arial', size: 32, bold: true } },
+    heading2: { run: { font: 'Arial', size: 28, bold: true } },
+    heading3: { run: { font: 'Arial', size: 26, bold: true } },
+  },
+};
+
 export async function exportMinuteAsDocx({ title, date, content, chamaName = 'Chama Minutes' }) {
   const sections = parseMinuteContent(content);
   const plainText = htmlToPlainText(content);
@@ -129,7 +156,10 @@ export async function exportMinuteAsDocx({ title, date, content, chamaName = 'Ch
     });
   }
 
-  const doc = new Document({ sections: [{ children: docElements }] });
+  const doc = new Document({
+    styles: PAGE_STYLES,
+    sections: [{ properties: { page: PAGE_SETTINGS }, children: docElements }],
+  });
   const blob = await Packer.toBlob(doc);
 
   const url = URL.createObjectURL(blob);

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../../services/api';
 import { normalizeNationalId, maskNationalId, NATIONAL_ID_ERROR } from '../../utils/nationalId';
 import { shortDate, formatBytes } from '../../utils/format';
+import { pageCountLabel, pageCountTitle } from '../../utils/minutePages';
 import { documentCategoryLabel } from '../../utils/documentCategories';
 import { opensInBrowser } from '../../utils/documentFiles';
 import { blobErrorMessage } from '../../utils/blobError';
@@ -439,7 +440,17 @@ export default function PublicRecords({ verifiedId }) {
               <div className="flex items-start justify-between gap-3 bg-page p-4">
                 <div className="min-w-0">
                   <h3 className="text-sm font-bold">{openMinute.title}</h3>
-                  <p className="mt-0.5 text-xs text-muted">{shortDate(openMinute.date)}</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {shortDate(openMinute.date)}
+                    {/* How long the minute he has just opened is — the same figure the office
+                        reads on its own copy of it, so the two can never disagree. */}
+                    {pageCountLabel(openMinute.pages) && (
+                      <span className="amount" title={pageCountTitle(openMinute.pages)}>
+                        {' · '}
+                        {pageCountLabel(openMinute.pages)}
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -530,7 +541,9 @@ export default function PublicRecords({ verifiedId }) {
                 )
               ) : (
                 <ul className="mt-4 space-y-2">
-                  {visibleMinutes.map((m) => (
+                  {visibleMinutes.map((m) => {
+                    const pages = pageCountLabel(m.pages);
+                    return (
                     <li
                       key={m.id}
                       className="rounded-xl border border-rule bg-page px-4 py-3 lg:flex lg:items-center lg:justify-between lg:gap-6"
@@ -541,7 +554,12 @@ export default function PublicRecords({ verifiedId }) {
                           term={minuteQuery}
                           className="block text-sm font-semibold"
                         />
-                        <p className="mt-0.5 text-xs text-muted">{shortDate(m.date)}</p>
+                        <p className="mt-0.5 text-xs text-muted">
+                          {shortDate(m.date)}
+                          {/* How long it is, before he spends his bundle opening it — and the same
+                              figure the office reads on its own copy (utils/minutePages). */}
+                          {pages ? ` · ${pages}` : ''}
+                        </p>
                         {m.preview && (
                           <HighlightedText
                             // A search result's preview is the sentence the word was
@@ -563,7 +581,8 @@ export default function PublicRecords({ verifiedId }) {
                         {openingMinuteId === m.id ? 'Opening…' : 'Read minute'}
                       </button>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </div>
