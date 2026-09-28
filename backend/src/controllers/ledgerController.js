@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const Expense = require('../models/Expense');
+const Fine = require('../models/Fine');
 const ContributionType = require('../models/ContributionType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { getOrCreateSettings, invalidateSettings } = require('../utils/settings');
@@ -19,6 +20,9 @@ const {
 } = require('../utils/weekCycle');
 const { getLedgerTypes, bucketForType, syncLedgerTypeAmounts, seedGroupFunds } = require('../utils/ledgerTypes');
 const { computeMemberLedger, summariseMember, totalLedger } = require('../utils/memberLedger');
+// The working behind one member's figure, step by step, for the "Show the working" panel on his
+// page (utils/ledgerWalk).
+const { buildLedgerWalk } = require('../utils/ledgerWalk');
 const { suggestedOpeningBalances } = require('../utils/suggestedBalances');
 const { fundBalance } = require('../utils/fundBalance');
 const {
@@ -54,7 +58,9 @@ async function loadContext(memberFilter) {
     memberIds.length === 0
       ? Promise.resolve([])
       : Contribution.find({ memberId: { $in: memberIds }, deleted: false })
-          .select('memberId typeId amount grossAmount date method note createdAt')
+          // `fineDeducted` rides along because the member's walk names it on the row ("Ksh 400 of
+          // this cleared his fines") — the ledger follows cash in, so a reader owed that sentence.
+          .select('memberId typeId amount grossAmount fineDeducted date method note createdAt')
           .sort({ date: -1, createdAt: -1 })
           .lean(),
   ]);
@@ -131,7 +137,7 @@ async function memberLedger(req, res, next) {
     const fundTypes = types.filter((t) => t.tracksExpenses && t.active);
     const fundTypeIds = fundTypes.map((t) => t._id);
     const chaiType = types.find((t) => bucketForType(t) === 'chai') || null;
-    const [activeMembers, expenses, teaBeforeCycle] = await Promise.all([
+    const [activeMembers, expenses, teaBeforeCycle, fines] = await Promise.all([
       Member.countDocuments({ active: true }),
       fundTypeIds.length === 0
         ? Promise.resolve([])
@@ -150,6 +156,13 @@ async function memberLedger(req, res, next) {
             { $group: { _id: null, total: { $sum: { $ifNull: ['$grossAmount', '$amount'] } } } },
           ])
         : Promise.resolve([]),
+      // His fines, for the walk's own column. Loaded on this page rather than only on the member
+      // record because "how did the figure get here?" has to answer the fine he was charged and the
+      // payment that cleared it too — and this is the screen he sits in front of with the treasurer.
+      Fine.find({ memberId: member._id, deleted: false })
+        .sort({ date: 1 })
+        .populate('typeId', 'name')
+        .lean(),
     ]);
     // The Tea Fund's income is automatic — 100 per member per scored week of the
     // cycle, the opening week taking none — so it is derived here rather than
@@ -172,6 +185,10 @@ async function memberLedger(req, res, next) {
     res.json({
       member: summariseMember(member, ledger),
       ledger,
+      // The same figures, one step at a time — what the panel behind "Show the working" prints. The
+      // rows it walks are the same annotated logs returned below, so the working and the figures it
+      // explains are built from one set of rows (utils/ledgerWalk).
+      walk: buildLedgerWalk({ member, contributions, fines, config }),
       week: {
         currentWeek: ledger.currentWeek,
         cycleStartWeek: config.cycleStartWeek,

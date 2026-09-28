@@ -8,6 +8,7 @@ import ErrorState from '../components/shared/ErrorState';
 import { money, shortDate, todayISO, isoDateOf, METHOD_LABELS } from '../utils/format';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import BackLink from '../components/shared/BackLink';
+import LedgerWalk from '../components/shared/LedgerWalk';
 import Loader from '../components/shared/Loader';
 import { fetchMember, getCachedMember, invalidateLedger } from '../services/ledgerCache';
 
@@ -411,6 +412,14 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
             .map((w) => 'W' + w)
             .join(', ')}) — the 50 fine under clause 7.5 has not been charged.`}
       </p>
+
+      {/* =====================================================
+          THE WORKING — the same figures as the tiles above, one
+          step at a time, closed to a line until the treasurer asks
+          for it. It lives just under the sentence that states the
+          sum, because it is that sentence spelled out.
+      ====================================================== */}
+      <LedgerWalk walk={data.walk} />
 
       <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.85fr)] lg:items-start">
         {/* Add a log — the one write the treasurer needs */}

@@ -367,6 +367,24 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   - **settled** — every closed week paid, by payment or by money he paid earlier
   - **nothing due yet** — no week has closed, so nobody owes and nobody has settled anything; the
     pill says this rather than "settled" while the first week is still running
+- **"Show the working" — the same figures, one step at a time.** Every member screen carries one
+  closed line, *How this figure was worked out*, and nothing else until somebody taps it. Opened, it
+  walks the money in the order it happened — what he carried in at the opening week, every payment
+  with the week it belongs to, the tea each closed week took, and the fines **on a column of their
+  own** — with the running figure after each step and the closing sum printed in the same words the
+  card above it uses (`backend/src/utils/ledgerWalk.js`,
+  `frontend/src/components/shared/LedgerWalk.jsx`). It is the same arithmetic as the card, not a
+  second opinion about it: the walk calls `computeMemberLedger` itself and reports `balanced` against
+  its own answer, so a panel that ever disagreed with the office's page would say so out loud instead
+  of quietly printing a second total. Two rules ride with it, because a member reading his own page
+  asks about both: a closed week nobody paid is never taken *off* the money (it is what he owes, named
+  at the foot of the walk), and a fine never moves the money held — only the fines column. Money the
+  weekly figure does not follow (a group fund, tea paid at the desk, a personal fund outside the
+  cycle) is still listed, with no effect and a line saying why, so nothing a member paid is missing
+  from the page. It sits on the member's own passbook, his record page and the treasurer's member
+  page; a record with a single step in its walk draws nothing at all. See
+  `backend/test/ledgerWalk.test.js` (eleven cases, including that the walk closes on the engine's own
+  `money`, `arrears` and fines) and the rehearsal's own check on both endpoints.
 - **One-time opening balances:** `/admin/finance/setup` is where each member's current total is
   keyed in at go-live. Every member is listed with his ledger figure already filled in as a
   suggestion, any of them can be typed over, and one save applies the lot. That is the only manual

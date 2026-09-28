@@ -243,6 +243,41 @@ test('a fine can be issued and settled, and settling it moves no week', { skip }
   assert.equal(stored.settlements.length, 2);
 });
 
+test('the working behind the figure adds up to the figure, on both screens', { skip }, async () => {
+  // The treasurer's page: the walk it hands over has to close on the very figure above it, or the
+  // panel behind "Show the working" is a second answer to a question the group has one answer for.
+  const ledger = await json(await api('GET', `/api/ledger/members/${memberB._id}`));
+  assert.equal(ledger.status, 200);
+  const walk = ledger.body.walk;
+  assert.ok(walk, 'the ledger payload carries the working');
+  assert.equal(walk.balanced, true);
+  assert.equal(walk.closing.held, ledger.body.ledger.money);
+  assert.equal(walk.steps[0].kind, 'opening');
+
+  // The fine issued against B and paid off in two goes: three steps of it, and not one of them
+  // moved the money he holds (a fine is chased on its own line).
+  const fineSteps = walk.steps.filter((s) => s.kind === 'fineIssued' || s.kind === 'fineSettled');
+  assert.equal(fineSteps.length, 3);
+  assert.equal(fineSteps[0].owedIn, 500);
+  assert.equal(fineSteps[0].held, 0);
+  assert.equal(fineSteps[1].owedOut, 200);
+  assert.equal(fineSteps[2].owedOut, 300);
+  assert.equal(walk.closing.finesOwed, 0);
+  assert.equal(walk.closing.finesRecorded, 0);
+
+  // And the same working on the member's own record, built from the same rows.
+  const record = await json(await api('GET', `/api/members/${memberA._id}`));
+  assert.equal(record.status, 200);
+  assert.equal(record.body.walk.balanced, true);
+  assert.equal(record.body.walk.closing.held, record.body.ledger.money);
+  assert.equal(
+    record.body.walk.totals.paidIn,
+    1400,
+    'the one payment logged against A is what the walk credits'
+  );
+});
+
+
 test('a save that cuts the members total hard is refused until it is confirmed', { skip }, async () => {
   // 10,000 + 0 down to 1,000 is a 90% cut: the guard has to stop it before it writes.
   const balances = [

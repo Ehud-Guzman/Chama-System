@@ -1710,6 +1710,94 @@ FILES
   backend/scripts/verifyLedgerFigures.js  the independent check re-derives the per-week rule
 
 
+"SHOW THE WORKING" — THE MATHS, ON REQUEST AND NOWHERE ELSE
+==========================================================
+
+The ask: a member or the office should be able to see *how* a balance was arrived at — "this day he
+had 23,000, then 1,400 came in, then the week's tea came off, then a fine was charged; which of those
+got him to what he holds now?" — without that working cluttering the screens that already answer a
+dozen other questions.
+
+WHAT IT IS
+
+  - **One closed line on each member screen** ("How this figure was worked out"), which opens into a
+    step-by-step walk: the carried-in figure at the opening week, every payment with the week it
+    belongs to, the tea each closed week took on its own Thursday, and the fines on a column of their
+    own — each step carrying the running figure after it, so a row can be read on its own.
+  - **The same arithmetic as the card above it, not a second opinion.** The walk calls
+    `computeMemberLedger` itself and carries its `money`, `arrears` and the fines' own total through
+    as `closing.*`; `balanced` is the walk's own check that it arrived at the same numbers, and the
+    panel prints the closing sum in the card's own words when it did — and says so out loud when it
+    did not, rather than quietly showing a second total.
+  - **The two rules that make it reconcilable, kept exactly as the engine keeps them.** A closed week
+    nobody paid is *never* taken off the money held: it is money that never came in, so it is reported
+    at the foot as what is owed ("the week table says which weeks") and is not a step at all. And a
+    fine never moves the money held — paying one is not money that went missing — so fines ride the
+    walk's own column, "fines owed", ending on the figure the passbook prints as outstanding.
+  - **Nothing a member paid is missing from it.** Money the weekly figure does not follow — a group
+    fund, tea paid at the desk inside the cycle (already inside the automatic deduction), a personal
+    fund outside the weekly cycle — is listed, with no effect on either column and a line saying why.
+  - **Hidden until asked, and absent when there is nothing to explain.** Collapsed to a single line at
+    the foot of the position card / under the money figure; a record whose walk is one step (nothing
+    but "carried in 0") draws nothing at all.
+
+THREE SCREENS, ONE BUILD
+
+  The member's own passbook (`PassbookCard`), the member's record (`MemberDetail`) and the treasurer's
+  member page (`FinanceMemberLedger`) each mount the same component; the walk arrives on the payload
+  each of them already fetches (`walk`), built from the same annotated rows the ledger above it was
+  built from — no second query, no second endpoint, and nothing that can disagree about a figure.
+
+FILES
+
+  backend/src/utils/ledgerWalk.js             NEW - the walk itself: pure, no database, `now` passed in
+  backend/src/controllers/ledgerController.js  the treasurer's payload carries `walk` (plus the fines
+                                             query behind its column)
+  backend/src/controllers/memberController.js  the member's record and the public passbook both carry
+                                             `walk`, from the annotated rows each already loads
+  frontend/src/components/shared/LedgerWalk.jsx   NEW - the panel: one line closed, the walk open
+  frontend/src/components/public/PassbookCard.jsx  mounted under the position card (his own page)
+  frontend/src/pages/MemberDetail.jsx         mounted under the money figure (the office's copy)
+  frontend/src/pages/FinanceMemberLedger.jsx  mounted under the sentence that states the sum
+  backend/test/ledgerWalk.test.js             NEW - 11 cases: the walk closes on the engine's `money`,
+                                             `arrears` and fines; a NILL week is not deducted; a fine
+                                             steps only the fines column; a fine cleared from a payment
+                                             credits the whole cash and names the 400; tea before the
+                                             cycle; the roll-up after twelve weeks; rows that move
+                                             nothing; the grouped and flat fine shapes
+  backend/test/integration/ledger.test.js     the rehearsal now checks both endpoints close on the
+                                             figure above them, with a real fine issued and settled in
+                                             two payments
+  README.md                                   the money-labels list carries the new panel
+
+WHAT IT DOES NOT DO
+
+  - It changes no figure anywhere: `memberLedger`, the statements, the reports and the reminders are
+    untouched, and the walk exists only to explain what they already say.
+  - It does not print the members' M-Pesa notes twice. The ledger rows on all three screens already
+    carry each note verbatim, so the walk keeps only what a row alone cannot say — "Ksh 400 of this
+    cleared his fines".
+
+TWO THINGS THE WALK EXPOSED WHILE BEING BUILT (not changed — both need the treasurer's decision)
+
+  1. **A payment that clears a fine credits the money held with the whole cash.** The engine "follows
+     cash in" (`utils/memberLedger`), so 1,400 handed over with 400 going to a fine adds 1,400 to the
+     member's held money *and* collects 400 of fine income — 1,800 of value from 1,400 of cash. It
+     only bites with `Settings.autoSettleFines` switched on (off by default), and it is the one case
+     the walk cannot make read as a single equation; the walk mirrors the engine and names the 400 on
+     the row. `utils/finesCollected` exists for exactly this money, which is how the two halves are
+     reconciled today.
+  2. **A personal contribution outside the weekly cycle is not in the money held.** `bucketForType`
+     puts any personal type that is not the weekly one (or the retired "Extra") into `other`, and
+     `memberLedger` adds `otherPaid` to the payload without counting it in `paid` — so a Welfare
+     Contribution of 5,000 (a type seeded as "held as his") moves no member's figure today. The walk
+     mirrors that too, and lists the row as "outside the weekly cycle" rather than hiding it.
+
+  Fixing either means moving members' figures, which is a decision about the books rather than
+  something to slip into a screen. Both are named here so nobody finds them for the first time on a
+  member's phone.
+
+
 END OF DOCUMENT
 ===============
 

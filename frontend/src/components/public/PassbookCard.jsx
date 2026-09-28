@@ -6,6 +6,7 @@ import { blobErrorMessage } from '../../utils/blobError';
 import { passbookPosition } from '../../utils/passbookPosition';
 import MemberAvatar from '../members/MemberAvatar';
 import FinesPanel from '../shared/FinesPanel';
+import LedgerWalk from '../shared/LedgerWalk';
 import WeeklyScheduleTable from '../shared/WeeklyScheduleTable';
 import StatementPeriodPicker, { useStatementPeriod } from '../shared/StatementPeriodPicker';
 
@@ -170,6 +171,16 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl }
               </p>
             ) : null}
           </section>
+
+          {/* ===================================================
+              HOW HE GOT THERE — the working behind the figure
+              above, closed to one line until somebody asks for
+              it. It sits with the position card rather than down
+              by the ledger, because it is that card's own
+              explanation: every step of "carried in + paid in −
+              tea", in the order it happened.
+          ==================================================== */}
+          <LedgerWalk walk={result.walk} />
 
           {/* ===================================================
               His details — and, when the caller proved his own number at the

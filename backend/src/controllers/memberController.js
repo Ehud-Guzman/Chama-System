@@ -13,6 +13,8 @@ const { buildWeeklySchedule } = require('../utils/weeklySchedule');
 const { resolveConfig, cycleHistory, weekNumberForDate, toEatDateString } = require('../utils/weekCycle');
 const { bucketForType } = require('../utils/ledgerTypes');
 const { computeMemberLedger } = require('../utils/memberLedger');
+// The working behind a member's figure: the same arithmetic, one step at a time (utils/ledgerWalk).
+const { buildLedgerWalk } = require('../utils/ledgerWalk');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { renderMemberStatementPdf } = require('../utils/memberStatementPdf');
 const { memberStatementSheets } = require('../utils/memberStatement');
@@ -389,15 +391,17 @@ async function getMember(req, res, next) {
     // The same cycle figures the treasurer's ledger shows. A record page that
     // summed contribution rows instead would read "Ksh 0" for every member, since
     // the money carried across from the paper ledger lives in his opening balance.
-    const ledger = computeMemberLedger({
-      member,
-      contributions: contributions.map((c) => ({
-        ...c,
-        bucket: bucketForType(c.typeId),
-        isGroupFund: Boolean(c.typeId && c.typeId.isGroupFund),
-      })),
-      config,
-    });
+    // The rows as the cycle engine reads them:
+    // `bucket` and `isGroupFund` decided once, from each row's type. Built once and handed to
+    // both the ledger and the walk below, so the working and the figure it explains can only
+    // ever be built from the same rows.
+    const annotated = contributions.map((c) => ({
+      ...c,
+      bucket: bucketForType(c.typeId),
+      isGroupFund: Boolean(c.typeId && c.typeId.isGroupFund),
+      typeName: c.typeId?.name || '',
+    }));
+    const ledger = computeMemberLedger({ member, contributions: annotated, config });
 
     res.json({
       // nextOfKin is normalised on the way out: records created before the list
@@ -444,6 +448,10 @@ async function getMember(req, res, next) {
         weeksScored: ledger.weeksScored,
         weeksBehind: ledger.weeksBehind,
       },
+      // How the figure above was arrived at, step by step — hidden behind "Show the working" on
+      // the member's page, and built from the very rows the ledger above was built from
+      // (utils/ledgerWalk).
+      walk: buildLedgerWalk({ member, contributions: annotated, fines, config }),
     });
   } catch (err) {
     next(err);
@@ -1093,6 +1101,13 @@ async function buildPublicProfile(member, options = {}) {
     totalOwed: fines.totalOwed,
   };
 
+  // The working behind `ledger.money`, one step at a time: the same rows and the same engine the
+  // figures above come from, so the passbook's own "Show the working" cannot disagree with the
+  // figure it is explaining (utils/ledgerWalk). The fines ride the walk's own column, exactly as
+  // they are kept out of the money held. The raw fines are used rather than `publicFines`, because
+  // a settlement's date is what puts it on the right day of the walk.
+  const walk = buildLedgerWalk({ member, contributions: annotated, fines, config });
+
   return {
     name: member.name,
     regNumber: member.regNumber || null,
@@ -1139,6 +1154,10 @@ async function buildPublicProfile(member, options = {}) {
     })),
     contributions,
     fines: publicFines,
+    // The same rows, the same engine, in the order they happened — what the passbook's own position
+    // card is made of, and what "Show the working" prints. On a member's own lookup it is what stops
+    // the biggest figure on the page from being a number nobody can check against anything.
+    walk,
     // The period block, when the caller asked for one. Deliberately not exposed on the passbook
     // JSON: the lookup has no period, and a field nobody asked for is a field somebody will
     // misread. It is attached here because the PDF and the workbook both render this same object.

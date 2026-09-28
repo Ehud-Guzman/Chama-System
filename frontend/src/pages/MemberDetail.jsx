@@ -14,6 +14,7 @@ import IssueFineForm from '../components/members/IssueFineForm';
 import SettleFineForm from '../components/members/SettleFineForm';
 import MessageMemberPanel from '../components/members/MessageMemberPanel';
 import FinesPanel from '../components/shared/FinesPanel';
+import LedgerWalk from '../components/shared/LedgerWalk';
 import WeeklyScheduleTable from '../components/shared/WeeklyScheduleTable';
 import Loader from '../components/shared/Loader';
 import MemberAvatar from '../components/members/MemberAvatar';
@@ -662,6 +663,15 @@ async function exportStatementExcel() {
         </div>
       </section>
 
+
+      {/* =====================================================
+          HOW THE FIGURE ABOVE WAS ARRIVED AT — every movement
+          since the books opened, in the order it happened, closed
+          to a single line until somebody asks for it. The office
+          needs it most often when a member is standing at the
+          desk asking exactly this question.
+      ====================================================== */}
+      <LedgerWalk walk={data.walk} />
 
       <div className="md:grid md:grid-cols-[320px_1fr] md:items-start md:gap-6">
         <section className="space-y-4">
