@@ -41,3 +41,29 @@
   color: var(--color-muted);
   pointer-events: none;
 }
+
+/* What a minute is written *from* is a Word document, and a Word document carries
+   whatever Word put in it: a table three columns wider than a phone, a 900px image, a
+   reference number nobody broke up. On a phone the minute has to contain that, not the
+   page — and the panel is one of two columns, so the whole screen scrolling sideways
+   because of a pasted table is the difference between a readable minute and a broken
+   app. The text wraps anywhere; a table gets its own horizontal scroll rather than
+   being clipped at the panel's edge. Applies to the reader as much as the editor: both
+   render `.minute-editor`, and both are opened on the same phones. */
+.minute-editor {
+  overflow-wrap: anywhere;
+}
+.minute-editor img {
+  max-width: 100%;
+  height: auto;
+}
+.minute-editor table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.minute-editor pre,
+.minute-editor code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

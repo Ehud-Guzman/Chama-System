@@ -935,7 +935,20 @@ filter that panel: the answer takes the wide panel on the right, where a
 snippet has room, and the term stays in the box so following a word through the next meeting
 it was said in is one tap — `← Back to the search results`. On a phone the record's list
 stands down while a search is running, so the answer comes directly under the search box
-instead of below a year of months. The grouping itself is a plain module
+instead of below a year of months. Opening a minute does the same thing on a phone, and for
+the same reason: the two panels are one column there, so the minute used to sit *below* every
+month in the record — tapping a title highlighted a row and otherwise looked like it had done
+nothing at all, and the minute itself was a screen of scrolling away. With a minute open the
+whole record panel stands down (search box included), the panel comes to the top of the screen
+by itself (`scroll-mt-20` clears the sticky phone header), and `← All minutes` on the panel is
+the way back — guarded by the same unsaved-changes question as every other way out of a minute.
+The one control needed *while writing* rides with the writer there: on a phone the Save row is
+sticky above the tab bar (64px plus the home-indicator inset), because a 384px editor plus a
+wrapping toolbar puts a plain row at its foot below the fold for the whole time somebody is
+typing. Both columns carry `min-w-0`, and `.minute-editor` wraps long words and gives a pasted
+table its own horizontal scroll (`components/minutes/minutes.css`) — a minute imported from
+Word carries whatever Word put in it, and a wide table or a 900px image used to stretch the
+whole page sideways on a phone, in the office's copy and the member's reader alike. The grouping itself is a plain module
 (`utils/minuteGroups.js`, covered by `test/minuteGroups.test.js`), which is where the two
 quiet mistakes live: a month key that sorts as a word, and a label built from the wrong
 index.

@@ -69,6 +69,9 @@ export default function Minutes() {
   // that has just been edited out of a minute must stop being a result.
   const [searchNonce, setSearchNonce] = useState(0);
   const searchTimer = useRef(null);
+  // The panel on the right — the minute being written or read. Only ever scrolled to on a
+  // phone, where opening a minute replaces the list (see the effect below).
+  const panelRef = useRef(null);
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(baseline);
 
@@ -81,6 +84,19 @@ export default function Minutes() {
   // The first search has nothing to show yet. Saying "no matches" for the half
   // second before the answer arrives would be saying something untrue.
   const waiting = Boolean(term) && searching && searchResults === null;
+
+  // Whether the browse panel should stand down so the right-hand panel can take the whole
+  // phone screen. This began as the search fix — a phone would otherwise scroll past every
+  // month to reach the answer it had just asked for — and opening a minute is the same
+  // situation, on the same phone: the minute used to be *below* a year of months, so
+  // tapping a title in the list looked like it had done nothing at all. On a wide screen
+  // both panels are on show and this is false; on a phone the panel carrying the minute is
+  // the one on screen, and the way back to the record is on it.
+  //
+  // An open minute takes the search box with it, because the box belongs to the record and
+  // the record is one tap away again ("← All minutes"). A search *answer* keeps its box:
+  // the answer is not a place you stay in, and refining the word is the whole point of it.
+  const browsePanelHidden = selectedId !== null;
 
   // The list on the left as months, newest first.
   const groups = useMemo(() => groupMinutesByMonth(minutes), [minutes]);
@@ -162,6 +178,18 @@ export default function Minutes() {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [isDirty]);
 
+  // A minute opened on a phone replaced the list, so the tap has to land somewhere that
+  // reads as an answer. Left to the browser the page simply gets shorter, and the scroll
+  // position it clamps to can be halfway down the editor — the office taps a title and
+  // arrives in the middle of a minute. So the panel comes to the top itself. Never on a
+  // wide screen: there the panel is beside the list, nothing moved, and jumping the page
+  // would be the app being twitchy for no reason.
+  useEffect(() => {
+    if (selectedId === null) return;
+    if (!window.matchMedia('(max-width: 1023px)').matches) return;
+    panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [selectedId]);
+
   function applyNew() {
     setSelectedId('new');
     setForm(BLANK);
@@ -201,6 +229,7 @@ export default function Minutes() {
     if (pendingSwitch?.type === 'new') applyNew();
     else if (pendingSwitch?.type === 'select') applySelect(pendingSwitch.minute);
     else if (pendingSwitch?.type === 'results') applyResults();
+    else if (pendingSwitch?.type === 'list') applyToList();
     setPendingSwitch(null);
   }
 
@@ -224,6 +253,23 @@ export default function Minutes() {
     setSelectedId(null);
     setForm(BLANK);
     setBaseline(BLANK);
+  }
+
+  // Back to the record from an open minute. On a wide screen this is bookkeeping — the list
+  // is still in its own panel to the left — but on a phone the minute *replaced* the list
+  // (see where the browse panel stands down), so this is the only way back to it.
+  function applyToList() {
+    setSelectedId(null);
+    setForm(BLANK);
+    setBaseline(BLANK);
+  }
+
+  function backToList() {
+    if (isDirty) {
+      setPendingSwitch({ type: 'list' });
+      return;
+    }
+    applyToList();
   }
 
   function backToResults() {
@@ -346,7 +392,15 @@ export default function Minutes() {
       {loadError && <ErrorState title="Could not load the minutes" message={loadError} onRetry={load} />}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] lg:items-start">
-        <section className="overflow-hidden rounded-xl border border-rule bg-surface">
+        {/* On a phone this panel is the record, and the panel beside it is the minute: one
+            or the other is on screen, never both. With a minute open it stands down
+            entirely — the search box above an open minute is chrome between the office and
+            what it just tapped, and "← All minutes" on the panel is the way back. */}
+        <section
+          className={`min-w-0 overflow-hidden rounded-xl border border-rule bg-surface ${
+            browsePanelHidden ? 'hidden lg:block' : ''
+          }`}
+        >
           <div className="border-b border-rule p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">Documents</h2>
@@ -483,7 +537,12 @@ export default function Minutes() {
           </div>
         </section>
 
-        <section>
+        {/* min-w-0 on both columns: a grid item's automatic minimum width is its content,
+            and rich text brought in from a Word document can be wider than a phone (a
+            wide table, a long URL). Without this the panel stretches the page instead of
+            the text wrapping inside it. scroll-mt-20 clears the sticky phone header when
+            the panel is brought to the top on a tap (see the effect above). */}
+        <section ref={panelRef} className="min-w-0 scroll-mt-20">
           {selectedId === null && term ? (
             // The answer to a search, in the room an answer needs. Every word of every
             // minute was searched — the body as well as the title — so a result has to
@@ -572,7 +631,7 @@ export default function Minutes() {
           ) : (
             <div className="rounded-xl border border-rule bg-surface">
               <div className="border-b border-rule p-4">
-                {term && (
+                {term ? (
                   // The search is still there behind this minute — the term stays in the
                   // box — so the other results are one tap away, and a minute opened
                   // from the results can be read without losing the search.
@@ -582,6 +641,17 @@ export default function Minutes() {
                     className="mb-1 inline-flex min-h-11 items-center text-xs font-semibold text-primary"
                   >
                     ← Back to the search results
+                  </button>
+                ) : (
+                  // Not a search: the minute was opened from the record, and on a phone it
+                  // took the screen. The list is not beside it to be tapped, so the way
+                  // back has to be on the panel itself.
+                  <button
+                    type="button"
+                    onClick={backToList}
+                    className="mb-1 inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-primary lg:hidden"
+                  >
+                    ← All minutes
                   </button>
                 )}
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -681,7 +751,13 @@ export default function Minutes() {
               />
               </div>
 
-              <div className="flex flex-wrap gap-3 border-t border-rule p-4">
+              {/* Save is the one control needed while writing, and on a phone the editor is
+                  tall enough that a plain row at its foot sits below the fold the whole time
+                  somebody is typing — so the office had to scroll to the bottom of a minute
+                  to keep what it had just written. It rides above the tab bar there instead
+                  (the bar is 64px, plus the home-indicator inset), and is ordinary markup
+                  from md up, where the panel is wide and the button is always in sight. */}
+              <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 flex flex-wrap gap-3 border-t border-rule bg-surface p-4 md:static md:z-auto">
                 <button
                   type="button"
                   onClick={save}

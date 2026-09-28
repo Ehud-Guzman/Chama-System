@@ -1798,8 +1798,76 @@ TWO THINGS THE WALK EXPOSED WHILE BEING BUILT (not changed — both need the tre
   member's phone.
 
 
+MINUTES ON A PHONE: ONE PANEL AT A TIME
+======================================
+
+The complaint: the office's minutes screen is badly broken on a phone. It was — and the reason was
+one line of the layout.
+
+WHAT WAS WRONG
+
+  The screen has been two panels since the search work: the record on the left, the minute being
+  written or read on the right. On a wide screen that is exactly right. On a phone the two panels
+  become one column, in that order — so the minute sat *below* the whole record, which is months of
+  meetings, each month holding rows. Tapping a title in the list did select the minute (the row
+  turned green) and then left the office where they were, looking at a list, with "now scroll past
+  every month you already scrolled past" as the only instruction. The search case had already been
+  fixed this way — the list stands down so the answer is under the box — and selection, the far more
+  common tap, never was.
+
+WHAT IT IS NOW
+
+  - **The record stands down while a minute is open.** One panel at a time on a phone, both on a wide
+    screen. Opening a minute replaces the list, so the tap visibly does something.
+  - **The panel comes to the top of the screen itself.** The page gets shorter when the list goes, and
+    a browser left to its own devices clamps the scroll somewhere inside a newly-shortened page — the
+    office could land halfway down the editor. The panel scrolls itself to the top instead, with
+    `scroll-mt-20` so the sticky phone header does not cover it. Never on a wide screen: there nothing
+    moved, and a page that jumps for no reason is its own kind of broken.
+  - **`← All minutes` is on the panel** (phone only), because the list is no longer beside it to be
+    tapped. It goes through the same unsaved-changes question as every other way out of a minute, and
+    the search case keeps its own `← Back to the search results`.
+  - **Save rides with the writer.** On a phone the Save/Delete row is sticky above the tab bar (64px
+    plus the home-indicator inset), instead of sitting below a 384px editor and a wrapping toolbar —
+    it was below the fold for the entire time somebody was typing a minute.
+  - **Imported Word content cannot stretch the page.** Both panels carry `min-w-0` (a grid item's
+    automatic minimum width is its content), and `.minute-editor` now wraps long words and gives a
+    pasted table its own horizontal scroll rather than being clipped at the panel's edge. A minute
+    imported from Word carries whatever Word put in it — a wide table, a 900px image, a reference
+    number nobody broke up — and the editor is one of two columns, so that content used to drag the
+    whole screen sideways. It applies to the member's reader as much as the office's editor: both
+    render `.minute-editor`, and both are opened on the same phones.
+
+WHAT DID NOT CHANGE
+
+  The two panels on a wide screen, the month grouping, the hundred-minute ask, the counts, the search
+  behaviour (term stays in the box, answer takes the right panel), and the members' own minutes view —
+  which already swaps its list for the minute it opens, and only gained the wrapping fix.
+
+FILES
+
+  frontend/src/pages/Minutes.jsx                 one panel at a time on a phone; the panel scrolls
+                                                itself to the top; `← All minutes`; the Save row
+                                                sticky above the tab bar; `min-w-0` on both columns
+  frontend/src/components/minutes/minutes.css     `.minute-editor` wraps long words, caps images, and
+                                                gives tables their own horizontal scroll
+  README.md                                       the minutes-screen paragraph carries the phone
+                                                behaviour
+
+HOW IT WAS CHECKED
+
+  The frontend suite (45 checks) passes, the screen still builds as its own lazy chunk (19.8 KB /
+  6.5 KB gzipped — a member's page still pays nothing for it), and the critical path is 147.3 KB
+  gzipped against the 150 KB budget. The behaviour itself is layout, so it is checked the way layout
+  is: at 360px, the three paths are — record → tap a title → the minute on screen with `← All minutes`
+  and Save in reach; `New minute` → the editor, list gone; search → the answer under the box, list
+  gone, box kept.
+
+
 END OF DOCUMENT
 ===============
+
+
 
 
 
