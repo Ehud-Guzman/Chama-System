@@ -65,7 +65,6 @@ export default function Reports() {
   const mayWorkFines = ['super_admin', 'admin'].includes(user?.role);
   const [tab, setTab] = useState("summary"); // summary | weekly | performance | monthly | fines
   const [summary, setSummary] = useState(null);
-  const [trend, setTrend] = useState(null);
   const [performance, setPerformance] = useState(null);
   const [performanceTotals, setPerformanceTotals] = useState(null);
   const [months, setMonths] = useState(null);
@@ -81,21 +80,18 @@ export default function Reports() {
   const [chartMember, setChartMember] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  // The trend opens folded to a strip. It is context for the figures beneath it
-  // rather than the subject of the screen, and at full height it pushed the four
-  // numbers the office actually reads off the summary below the fold on a phone.
-  const [chartOpen, setChartOpen] = useState(false);
 
   const loadSummary = useCallback(() => {
     setLoading(true);
     setLoadError('');
-    // The summary and the year's trend are read together: the chart is the first
-    // thing on the summary screen, and a summary that arrived without it would
-    // leave a hole where the trend belongs.
-    return Promise.all([api.get("/api/reports/summary"), api.get("/api/reports/trend", { params: { weeks: 12 } })])
-      .then(([summaryRes, trendRes]) => {
+    // One request, and one figure set. The summary used to be read alongside
+    // /api/reports/trend so a twelve-week bar chart could sit above the figures; that chart has
+    // gone (its bars were one unvarying height a week, so it informed nobody and cost a round
+    // trip on the slowest connection in the app), and the summary is what the screen is for.
+    return api
+      .get("/api/reports/summary")
+      .then((summaryRes) => {
         setSummary(summaryRes.data);
-        setTrend(trendRes.data.weeks || []);
       })
       .catch((err) => {
         // A dropped connection on a phone is the common case here, not an empty
@@ -274,57 +270,6 @@ export default function Reports() {
 
       {tab === "summary" && (
         <>
-          {/* The trend, folded small. Twelve weeks of what the members actually
-              paid, so the headline figures below have a shape behind them rather
-              than being four numbers with no history — but as a strip, not as the
-              first screenful. Opening it gives the same bars full height, and the
-              note that explains what they are. */}
-          {trend && (
-            <section className="rounded-xl border border-rule bg-surface p-4">
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                <div className="min-w-0">
-                  <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
-                    Member contributions — last {trend.length} weeks
-                  </h2>
-                  <p className="amount mt-0.5 text-xs text-muted">
-                    {money(trend.reduce((sum, w) => sum + w.memberTotal, 0))} over the period
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setChartOpen((open) => !open)}
-                  aria-expanded={chartOpen}
-                  className="min-h-9 shrink-0 rounded-lg border border-rule px-3 text-xs font-semibold text-primary"
-                >
-                  {chartOpen ? "Hide chart" : "Expand chart"}
-                </button>
-              </div>
-
-              <div className="mt-2">
-                <ContributionChart
-                  height={chartOpen ? 240 : 88}
-                  points={trend.map((w) => ({
-                    label: w.label,
-                    personal: w.memberTotal,
-                    groupFund: w.groupFundTotal,
-                    other: 0,
-                    total: w.total,
-                  }))}
-                  seriesLabel="Members"
-                  emptyMessage="No week has been collected yet, so there is nothing to chart."
-                />
-              </div>
-
-              {chartOpen && (
-                <p className="mt-2 text-[11px] leading-5 text-muted">
-                  Each bar is a week of the cycle: the dark part is what the members paid in,
-                  the pale part the funds collected alongside them. Weeks that closed with
-                  somebody still short are named week by week in the weekly reconciliation.
-                </p>
-              )}
-            </section>
-          )}
-
           {/* The figures width-wise: this was a two-column grid while the audit trail
               sat in the second column. The trail has its own screen now, so the
               summary takes the whole width rather than leaving half of it empty. */}

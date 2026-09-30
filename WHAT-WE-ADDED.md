@@ -1956,6 +1956,35 @@ WHAT IT DOES NOT DO
     anything else.
 
 
+THAT TREND CHART ON THE SUMMARY: GONE
+=====================================
+
+  The summary used to open with "Member contributions — last 12 weeks": a stacked bar per week,
+  the dark part what the members paid in and the pale part the funds collected alongside them,
+  folded to an 88px strip with an Expand button.
+
+  It showed a row of bars of the same height. Every active member pays the same weekly amount, so
+  every week's bar is the same 1,400 × the roster — a chart that says "thirty-one members paid
+  1,400" twelve times, in a shape that cannot show the one thing it looked like it was showing
+  (which is the weeks somebody *didn't* pay, and those are named week by week in the weekly
+  reconciliation, where a name can be read). The user's verdict: "looks kinda useless, what does it
+  even show?" — which is the right test for a figure on a screen, and it failed it.
+
+  Removed: the section, the Expand/Hide toggle, the twelve-week trend request. The summary now makes
+  one request instead of two and opens straight on the four figures it exists for.
+
+  Kept: `ContributionChart` itself (the member's own twelve-month chart in his sheet, and the
+  monthly totals chart on the Reports screen, both of which compare months that genuinely differ),
+  and the `GET /api/reports/trend` endpoint, which now has no screen reading it. That endpoint is
+  the only thing left of this chart; say the word and it and its route go too.
+
+FILES
+
+  frontend/src/pages/Reports.jsx   the summary's chart section, its toggle, its state and the
+                                   /api/reports/trend request are gone
+  WHAT-WE-ADDED.md                 this
+
+
 END OF DOCUMENT
 ===============
 
