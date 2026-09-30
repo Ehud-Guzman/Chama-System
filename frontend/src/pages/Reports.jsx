@@ -12,6 +12,7 @@ import Loader from "../components/shared/Loader";
 import ErrorState from "../components/shared/ErrorState";
 import MemberPerformanceList from "../components/reports/MemberPerformanceList";
 import MemberChartModal from "../components/reports/MemberChartModal";
+import WeekProgressCard from "../components/reports/WeekProgressCard";
 import ContributionChart from "../components/reports/ContributionChart";
 import WhoOwesWhat from "../components/fines/WhoOwesWhat";
 
@@ -270,6 +271,21 @@ export default function Reports() {
 
       {tab === "summary" && (
         <>
+          {/* =====================================================
+              THIS WEEK, AND WHO IS STILL TO PAY.
+              It replaced a twelve-week trend chart whose bars were all the same height — every
+              active member pays the same weekly amount, so it could not show the one thing worth
+              knowing. This shows the week the group is actually in: what it asked for, what has
+              come in, how many members are still to bring theirs, and the gap. It changes as the
+              money comes in — 0% on a Friday morning, full by Thursday night — so it is worth
+              looking at, and it answers "what do I need to chase today?" without a click.
+          ====================================================== */}
+          {summary?.thisWeek && (
+            <div className="mt-5">
+              <WeekProgressCard week={summary.thisWeek} />
+            </div>
+          )}
+
           {/* The figures width-wise: this was a two-column grid while the audit trail
               sat in the second column. The trail has its own screen now, so the
               summary takes the whole width rather than leaving half of it empty. */}

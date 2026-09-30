@@ -4,8 +4,10 @@ const ContributionType = require('../models/ContributionType');
 const Fine = require('../models/Fine');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
 const { buildWeeklySchedule } = require('../utils/weeklySchedule');
-const { resolveConfig, scoredWeeks } = require('../utils/weekCycle');
+const { resolveConfig, scoredWeeks, currentWeekNumber, weekRange } = require('../utils/weekCycle');
 const { getOrCreateSettings } = require('../utils/settings');
+// Where this week stands, for the card at the top of the summary (utils/weekProgress).
+const { summariseWeekProgress } = require('../utils/weekProgress');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { totalFinesCollected } = require('../utils/finesCollected');
 const { computeWeeklyReconciliation } = require('../utils/weeklyReconciliation');
@@ -149,7 +151,21 @@ async function performance(req, res, next) {
 async function summary(req, res, next) {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected, position] =
+    const settings = await getOrCreateSettings();
+    const config = resolveConfig(settings);
+    // The week the group is in, and the money that has come in inside it. The summary opens with
+    // this because it is the one question a collection day asks (utils/weekProgress says why the
+    // twelve-week chart it replaced could not answer anything).
+    const weekNumber = currentWeekNumber(config);
+    const week = weekRange(weekNumber, config);
+    // The personal weekly types: his own 1,400, as against the tea and other group funds collected
+    // in the same week. A member who has brought his 1,400 has brought it whatever else came with it,
+    // and one who has only bought tea has not brought it at all.
+    const weeklyTypeIds = await ContributionType.find({ isWeekly: true, isGroupFund: false })
+      .select('_id')
+      .lean()
+      .then((rows) => rows.map((row) => row._id));
+    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected, position, weekPayments, activeIds] =
       await Promise.all([
         Contribution.aggregate([
           { $match: { deleted: false } },
@@ -174,6 +190,26 @@ async function summary(req, res, next) {
         // money spent out of the funds, and what is left. Shared with the expenses
         // screen and its report (utils/moneyPosition).
         computeMoneyPosition(),
+        // One line per member who has put anything in this week: what the week's card reads. The
+        // weekly contribution only (see weeklyTypeIds above).
+        Contribution.aggregate([
+          {
+            $match: {
+              deleted: false,
+              typeId: { $in: weeklyTypeIds },
+              date: { $gte: week.startDate, $lte: week.endDate },
+            },
+          },
+          {
+            $group: {
+              _id: '$memberId',
+              // Gross cash, so a payment that was partly redirected to a fine still counts as the
+              // money he handed over — the same rule the ledger follows.
+              paid: { $sum: { $ifNull: ['$grossAmount', '$amount'] } },
+            },
+          },
+        ]),
+        Member.find({ active: true }).select('_id').lean(),
       ]);
 
     const totalCount = byMethod.reduce((sum, m) => sum + m.count, 0);
@@ -237,6 +273,22 @@ async function summary(req, res, next) {
     };
 
     res.json({
+      // Where this week stands — the card the summary opens with. The week's asking is the weekly
+      // amount times the active roster; what has come in is the weekly contributions dated inside
+      // the week; the rest is arithmetic over the two (utils/weekProgress, where the rule and its
+      // checks live).
+      thisWeek: {
+        weekNumber,
+        startDate: week.startDate,
+        endDate: week.endDate,
+        weeklyAmount: config.weeklyAmount,
+        ...summariseWeekProgress({
+          rows: weekPayments,
+          activeMemberIds: activeIds.map((m) => m._id),
+          expected: config.weeklyAmount * activeMembers,
+          weeklyAmount: config.weeklyAmount,
+        }),
+      },
       totalContributed: allTime,
       // Named parts, so a screen can show what the total is made of rather than
       // leaving the difference to be guessed at.

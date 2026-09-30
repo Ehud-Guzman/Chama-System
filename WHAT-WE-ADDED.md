@@ -1956,7 +1956,50 @@ WHAT IT DOES NOT DO
     anything else.
 
 
-THAT TREND CHART ON THE SUMMARY: GONE
+AND WHAT REPLACED IT: "THIS WEEK, AND WHO IS STILL TO PAY"
+=========================================================
+
+  The slot the chart occupied is now the one question the office opens the reports screen to ask on a
+  collection day:
+
+    THIS WEEK — WEEK 95                      Fri 25 Sep → Thu 1 Oct
+    Ksh 26,600 of Ksh 43,400
+    ██████████████░░░░░░░░░░░░░░░░░░
+    17 of 31 members have brought the whole Ksh 1,400 · 4 part-paid · 10 still to pay
+    Ksh 16,800 still to come this week
+    The week asks Ksh 1,400 from each of the 31 active members (1,400 × 31 = 43,400). What has come
+    in is counted from the weekly contributions dated inside the week — tea and the other funds are
+    collected alongside it, not instead of it.
+
+  Why this and not another chart: it changes. It reads 0% on a Friday morning and fills through the
+  week to the Thursday collection, so a glance at it says what has happened *since last time* — which
+  is the thing the twelve bars could never say, because they were all the same height. The count is
+  the actionable half: a gap of 16,800 is a figure, "ten members still to pay" is a list of phone
+  calls, and it is the same roster the weekly reconciliation names week by week.
+
+  The rule is a pure function with its own checks (`utils/weekProgress`,
+  `test/weekProgress.test.js`, 7 of them): a week nobody has paid reads as the whole roster still to
+  pay; a part-week reads as a part-week; somebody paying above the week does not make the bar lie; a
+  payment from a member who has since left is money but not a member, so it comes off the gap and is
+  not counted among the people the week is asking; and the three counts always add up to the roster.
+
+  One more request left the screen with it: the summary used to read `/api/reports/summary` and
+  `/api/reports/trend` together (the chart needed the second). It makes one request now — on the app's
+  slowest, most-used screen, that is a round trip back.
+
+FILES
+
+  backend/src/utils/weekProgress.js            NEW - the week's arithmetic, and the reasons it is
+                                               this and not a chart
+  backend/test/weekProgress.test.js            NEW - the 7 checks above
+  backend/src/controllers/reportController.js  `/api/reports/summary` carries a `thisWeek` block:
+                                               the week's number and dates, what it asked for, what
+                                               has come in, how many members are in full / part /
+                                               still to pay, and the gap
+  frontend/src/components/reports/WeekProgressCard.jsx  NEW - the card: the figure, the bar, the
+                                               counts, the gap, and the arithmetic in words
+  frontend/src/pages/Reports.jsx               the card at the top of the summary
+
 =====================================
 
   The summary used to open with "Member contributions — last 12 weeks": a stacked bar per week,
