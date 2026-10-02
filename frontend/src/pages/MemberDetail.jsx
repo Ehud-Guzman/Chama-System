@@ -637,9 +637,11 @@ async function exportStatementExcel() {
 
           {/* Both statement buttons download whatever period is chosen here. The picker sits in the
               action row rather than under the figures because it is an argument to those two
-              buttons, not a fact about the member. */}
+              buttons, not a fact about the member. Its width is the grid column's: a minimum
+              width here (13rem was tried) outgrows the column on a tablet and pushes the page
+              sideways, so the select shrinks with the row instead. */}
           <StatementPeriodPicker
-            className="min-w-[13rem]"
+            className="min-w-0"
             idPrefix="office-period"
             preset={statementPeriod.preset}
             from={statementPeriod.from}
@@ -673,7 +675,20 @@ async function exportStatementExcel() {
       ====================================================== */}
       <LedgerWalk walk={data.walk} />
 
-      <div className="md:grid md:grid-cols-[320px_1fr] md:items-start md:gap-6">
+      {/* The rail and the ledger, side by side once there is room for both. Two things
+          this line has to get right, because getting either wrong scrolls the whole page
+          sideways:
+            * `minmax(0, 1fr)` and not a bare `1fr`. A `1fr` track keeps an `auto`
+              minimum, so it stretches to the widest thing inside it — and the ledger
+              rows carry a bank note that does not wrap (`truncate`), which measures
+              over 800px. The column was being sized for the note instead of for the
+              page. With a zero minimum the note truncates against the column edge, as
+              it was always meant to. Every other two-column screen here does the same.
+            * `lg` and not `md`. The sidebar takes 14rem from the width at md, and this
+              page's rail is a fixed 20rem, so on a tablet the ledger would be left a
+              couple of hundred pixels — narrow enough to cut the amounts and the row
+              buttons off. Below lg the two simply stack. */}
+      <div className="lg:grid lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start lg:gap-6">
         <section className="space-y-4">
           {/* What he has paid into, by type. This was the pledge editor — an amount
               the office set per fund. Pledges are gone: the member's page shows
@@ -752,7 +767,7 @@ async function exportStatementExcel() {
           <MessageMemberPanel member={member} pendingFinesTotal={fines?.totalOwed || 0} />
         </section>
 
-        <section className="mt-5 space-y-4 md:mt-0">
+        <section className="mt-5 space-y-4 lg:mt-0">
           <div>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
               Contributions ({contributions.length})
