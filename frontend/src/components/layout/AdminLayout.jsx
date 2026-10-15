@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import BottomNav from './BottomNav';
 import IdleGuard from './IdleGuard';
 import { Link, useLocation } from 'react-router-dom';
@@ -6,6 +6,7 @@ import Sidebar from './Sidebar';
 import CreditLine from '../shared/CreditLine';
 import { useAuth } from '../../context/AuthContext';
 import { CHAMA_NAME } from '../../utils/branding';
+import { readCollapsed, writeCollapsed } from '../../utils/sidebarPref';
 
 // A link to another screen's section (`/admin/settings#backup`) lands on the top of that screen:
 // the router changes the page but does not scroll to the heading the link promised. The section
@@ -38,10 +39,23 @@ function useScrollToHash() {
 export default function AdminLayout({ children }) {
   const { logout } = useAuth();
   useScrollToHash();
+  // Whether the desktop menu is folded to its icons. Held here, not in the sidebar, because the page
+  // beside it has to make room (or give it back) in step with it; remembered in this browser.
+  const [collapsed, setCollapsed] = useState(() => readCollapsed());
+  function toggleSidebar() {
+    setCollapsed((current) => {
+      writeCollapsed(!current);
+      return !current;
+    });
+  }
 
   return (
-    <div className="min-h-dvh md:pl-56">
-      <Sidebar />
+    <div
+      className={`min-h-dvh transition-[padding] duration-200 motion-reduce:transition-none ${
+        collapsed ? 'md:pl-16' : 'md:pl-56'
+      }`}
+    >
+      <Sidebar collapsed={collapsed} onToggle={toggleSidebar} />
       {/* Mobile top bar: brand, the account screen and sign out (sidebar hidden).
           Sticky so signing out — or just knowing which screen you are on — does not
           mean scrolling back up a long member record. The top inset keeps the brand

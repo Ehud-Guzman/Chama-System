@@ -9,7 +9,12 @@
 // This is a plain module, with no JSX, so `node --test` can cover it (frontend/test/
 // navGroups.test.js). The rules that matter are that a role only ever sees what it may
 // open, and that no destination can silently disappear from the menu.
-export const NAV_GROUP_ORDER = ['Money', 'Records', 'Administration'];
+//
+// The dashboard is the way home, not one of the money screens, so it sits above the sections in a
+// group of its own (HOME_GROUP), which the sidebar draws without a heading: a title over a single
+// row says nothing.
+export const HOME_GROUP = 'Home';
+export const NAV_GROUP_ORDER = [HOME_GROUP, 'Money', 'Records', 'Administration'];
 
 // A destination that names no group is not dropped — it lands in "More", after the groups
 // above. Same for a group this file has not been told about: it appears in the order it
@@ -34,4 +39,22 @@ export function groupNavItems(items = [], role = '') {
     // A heading with nothing under it is worse than no heading: that is what a role with a
     // narrow set of permissions would otherwise see.
     .filter((group) => group.items.length > 0);
+}
+
+// Which destination the page on screen belongs to: the one whose path is the longest match for it.
+//
+// A link matches by prefix, so a plain NavLink lit both "Finance" and "Expenses" on the spending
+// screen (it lives at /admin/finance/expenses). The most specific destination wins instead, so
+// Expenses owns its own screen while /admin/finance/setup and a member's ledger (/admin/finance/:id)
+// still belong to Finance. Only the destinations passed in are considered, so a role that cannot open
+// Expenses is shown Finance there. Returns the `to` of the destination, or null when the page is none
+// of them (My account).
+export function activeNavTo(items = [], pathname = '') {
+  let best = null;
+  for (const item of items) {
+    if (pathname === item.to || pathname.startsWith(item.to + '/')) {
+      if (!best || item.to.length > best.length) best = item.to;
+    }
+  }
+  return best;
 }

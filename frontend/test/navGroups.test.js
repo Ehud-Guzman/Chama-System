@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { NAV_GROUP_ORDER, groupNavItems } from '../src/components/layout/navGroups.js';
+import { HOME_GROUP, NAV_GROUP_ORDER, activeNavTo, groupNavItems } from '../src/components/layout/navGroups.js';
 
 // A small stand-in for NAV_ITEMS: same shape (to / label / group / roles), no icons.
 const ITEMS = [
@@ -46,7 +46,8 @@ test('a destination whose section is not listed still appears, and is never drop
   // A new section added to navItems by name only: it shows up after the known ones,
   // rather than silently disappearing from the menu.
   const groups = groupNavItems([...ITEMS, { to: '/fines', label: 'Fines', group: 'Fines' }], 'admin');
-  assert.deepEqual(groups.map((g) => g.title), [...NAV_GROUP_ORDER, 'Fines']);
+  // (Home holds only the dashboard, which this stand-in menu does not have.)
+  assert.deepEqual(groups.map((g) => g.title), [...NAV_GROUP_ORDER.filter((t) => t !== HOME_GROUP), 'Fines']);
 
   // And one with no group at all lands in More, still visible.
   const ungrouped = groupNavItems([{ to: '/x', label: 'X' }], 'admin');
@@ -60,4 +61,42 @@ test('every destination a role may open appears exactly once', () => {
   // Nothing is dropped on the way into a section, and nothing is listed twice.
   assert.deepEqual([...shown].sort(), [...openable].sort());
   assert.equal(new Set(shown).size, shown.length, 'no destination is listed twice');
+});
+
+test('the dashboard has a group of its own, ahead of the sections', () => {
+  assert.equal(NAV_GROUP_ORDER[0], HOME_GROUP);
+  const groups = groupNavItems(
+    [
+      { to: '/dash', label: 'Dashboard', group: HOME_GROUP },
+      { to: '/fin', label: 'Finance', group: 'Money' },
+    ],
+    'admin'
+  );
+  assert.deepEqual(groups.map((g) => g.title), [HOME_GROUP, 'Money']);
+});
+
+test('the most specific destination owns the page on screen', () => {
+  const items = [
+    { to: '/admin/finance' },
+    { to: '/admin/finance/expenses' },
+    { to: '/admin/members' },
+    { to: '/admin/reports' },
+  ];
+  // Expenses lives under Finance, and only Expenses is lit there.
+  assert.equal(activeNavTo(items, '/admin/finance/expenses'), '/admin/finance/expenses');
+  // The rest of Finance (setup, a member's ledger) still belongs to Finance.
+  assert.equal(activeNavTo(items, '/admin/finance'), '/admin/finance');
+  assert.equal(activeNavTo(items, '/admin/finance/setup'), '/admin/finance');
+  assert.equal(activeNavTo(items, '/admin/finance/64b0c1'), '/admin/finance');
+  assert.equal(activeNavTo(items, '/admin/members/64b0c1'), '/admin/members');
+  // A role that cannot open Expenses is shown Finance on that path, not nothing.
+  const withoutExpenses = items.filter((i) => i.to !== '/admin/finance/expenses');
+  assert.equal(activeNavTo(withoutExpenses, '/admin/finance/expenses'), '/admin/finance');
+});
+
+test('a prefix that is not a path boundary does not match, and a page in no section lights nothing', () => {
+  const items = [{ to: '/admin/fines' }, { to: '/admin/finance' }];
+  assert.equal(activeNavTo(items, '/admin/finesse'), null);
+  assert.equal(activeNavTo(items, '/admin/account'), null);
+  assert.equal(activeNavTo([], '/admin/fines'), null);
 });

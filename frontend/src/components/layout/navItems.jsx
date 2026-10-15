@@ -12,7 +12,7 @@ export const NAV_ITEMS = [
   {
     to: '/admin/dashboard',
     label: 'Dashboard',
-    group: 'Money',
+    group: 'Home',
     roles: ['super_admin', 'admin', 'treasurer'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -84,9 +84,10 @@ export const NAV_ITEMS = [
     roles: ['super_admin', 'admin'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 2 3 6v6c0 5 3.8 8.7 9 10 5.2-1.3 9-5 9-10V6z" />
-        <path d="M12 8v5" />
-        <path d="M12 16h.01" />
+        <rect x="2" y="6" width="20" height="12" rx="2" />
+        <circle cx="12" cy="12" r="2.5" />
+        <path d="M6 12h.01" />
+        <path d="M18 12h.01" />
       </svg>
     ),
   },
@@ -151,6 +152,24 @@ export const NAV_ITEMS = [
         <path d="M12 2 3 6v6c0 5 3.8 8.7 9 10 5.2-1.3 9-5 9-10V6z" />
         <path d="M12 8v5" />
         <path d="M12 16h.01" />
+      </svg>
+    ),
+  },
+  {
+    // Admin only, as the screen's route and the API behind it are. Last in the list on purpose: the
+    // bottom bar takes the first four as its tabs, so this joins the phone's "More" sheet.
+    to: '/admin/settings',
+    label: 'Settings',
+    group: 'Administration',
+    roles: ['super_admin', 'admin'],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M4 7h10" />
+        <path d="M18 7h2" />
+        <circle cx="16" cy="7" r="2" />
+        <path d="M4 17h2" />
+        <path d="M10 17h10" />
+        <circle cx="8" cy="17" r="2" />
       </svg>
     ),
   },
