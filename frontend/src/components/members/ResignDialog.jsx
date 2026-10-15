@@ -13,6 +13,7 @@ import Modal from '../shared/Modal';
 export default function ResignDialog({ open, memberName, held = 0, owed = 0, busy, onConfirm, onCancel }) {
   const [reason, setReason] = useState('');
   const [settlement, setSettlement] = useState('');
+  const [payout, setPayout] = useState('');
   const inputRef = useRef(null);
   const containerRef = useModal(open, onCancel, inputRef);
 
@@ -20,13 +21,18 @@ export default function ResignDialog({ open, memberName, held = 0, owed = 0, bus
     if (open) {
       setReason('');
       setSettlement('');
+      setPayout('');
     }
   }, [open]);
 
   if (!open) return null;
 
   const needsSettlement = held > 0 || owed > 0;
-  const ready = !needsSettlement || settlement.trim().length >= 3;
+  const payoutValue = Number(String(payout).replace(/[,\s]/g, ''));
+  const payoutOk = payout.trim() === '' || (Number.isFinite(payoutValue) && payoutValue >= 0);
+  // A payout is itself the account of what became of his money, so it stands in for the note.
+  const hasPayout = payout.trim() !== '' && payoutOk && payoutValue > 0;
+  const ready = payoutOk && (!needsSettlement || hasPayout || settlement.trim().length >= 3);
 
   return (
     <Modal
@@ -43,7 +49,8 @@ export default function ResignDialog({ open, memberName, held = 0, owed = 0, bus
         <h2 className="text-base font-semibold">Resign {memberName}?</h2>
         <p className="mt-2 text-sm text-muted">
           They're marked inactive and kept out of every member-facing list, so they no longer
-          appear to anyone browsing. Their contribution history is kept.
+          appear to anyone browsing. Their contribution history is kept, and from today nothing more
+          is charged to them: no tea, no weeks counted as missed.
         </p>
 
         {needsSettlement && (
@@ -61,8 +68,24 @@ export default function ResignDialog({ open, memberName, held = 0, owed = 0, bus
               Resigning does not pay him out or clear his fines. Write down what was done, so the
               figure is not left with nobody able to say what became of it.
             </p>
+            <label htmlFor="resign-payout" className="mt-3 block text-sm font-medium">
+              Paid out to him now <span className="font-normal text-muted">(Ksh, if you have)</span>
+            </label>
+            <input
+              id="resign-payout"
+              type="text"
+              inputMode="decimal"
+              value={payout}
+              onChange={(e) => setPayout(e.target.value)}
+              placeholder="0"
+              className="amount mt-1 h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm"
+            />
+            <p className="mt-1 text-xs text-muted">
+              Recorded as the group spending that money today, so the group&apos;s balance drops by it on the
+              day he leaves. Leave it empty if you have not paid him yet.
+            </p>
             <label htmlFor="resign-settlement" className="mt-3 block text-sm font-medium">
-              How was it settled?
+              How was it settled?{hasPayout ? <span className="font-normal text-muted"> (optional with a payout)</span> : null}
             </label>
             <textarea
               id="resign-settlement"
@@ -96,7 +119,7 @@ export default function ResignDialog({ open, memberName, held = 0, owed = 0, bus
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(reason, settlement.trim())}
+            onClick={() => onConfirm(reason, settlement.trim(), hasPayout ? payoutValue : undefined)}
             disabled={busy || !ready}
             className="min-h-11 flex-1 rounded-lg bg-alert px-4 text-sm font-semibold text-white disabled:opacity-60"
           >

@@ -2,6 +2,9 @@ const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const Fine = require('../models/Fine');
 const { memberLedgerNow } = require('../utils/memberMoney');
+const Expense = require('../models/Expense');
+const { readMoney } = require('../utils/money');
+const { withOptionalTransaction } = require('../utils/fineAllocation');
 const ContributionType = require('../models/ContributionType');
 const Counter = require('../models/Counter');
 const { normalizePhone } = require('../utils/phone');
@@ -434,6 +437,8 @@ async function getMember(req, res, next) {
         // Fines that came off the money he holds: paid out of his balance, or out of a payment he
         // handed over. The member page names it in the sentence under his balance.
         finesPaid: ledger.finesPaid,
+        // The day his accounting ended, when he has been made inactive: nothing is charged to him after it.
+        endedAt: ledger.endedAt,
         money: ledger.money,
         // Held less every week that has closed — what this figure read while the dues were still
         // being taken off it (utils/memberLedger). On the payload so the office can reconcile a
@@ -611,9 +616,14 @@ async function updateMember(req, res, next) {
       member.joinDate = d;
     }
     if (active !== undefined) {
+      const wasActive = member.active !== false;
       member.active = Boolean(active);
+      // The day he stopped being a member is the day this was switched, and it is only set once: saving a
+      // form that still says inactive must not move it.
+      if (wasActive && !member.active) member.deactivatedAt = new Date();
       // Reactivating clears the resignation record — they're a current member again.
       if (member.active) {
+        member.deactivatedAt = null;
         member.resignedAt = null;
         member.resignationReason = '';
         member.resignationSettlement = '';
@@ -687,6 +697,7 @@ async function deleteMember(req, res, next) {
     if (!member) return res.status(404).json({ message: 'Member not found' });
     const before = snapshot(member);
 
+    if (member.active) member.deactivatedAt = new Date();
     member.active = false;
     await member.save();
     await logAudit({
@@ -725,7 +736,19 @@ async function resignMember(req, res, next) {
     ]);
     const held = Math.max(0, Math.round((Number(ledger?.money) || 0) * 100) / 100);
     const owed = Math.round((owedRows[0]?.owed || 0) * 100) / 100;
-    const settlement = String(req.body?.settlement || '').trim();
+    // Money paid out to him as he leaves, if any. Recorded as the group spending from its total money, dated
+    // the day he leaves, so the group's balance drops on that day instead of carrying his money for ever.
+    const rawPayout = req.body?.payout;
+    let payout = 0;
+    if (rawPayout !== undefined && rawPayout !== null && String(rawPayout).trim() !== '') {
+      const read = readMoney(rawPayout, { min: 0, label: 'The payout' });
+      if (read.error) return res.status(400).json({ message: read.error });
+      payout = read.value;
+    }
+    const fmtKsh = (n) => `Ksh ${Number(n).toLocaleString('en-KE')}`;
+    let settlement = String(req.body?.settlement || '').trim();
+    // A payout is itself the account of what became of his money.
+    if (payout > 0 && settlement.length < 3) settlement = `Paid out ${fmtKsh(payout)}`;
     if ((held > 0 || owed > 0) && settlement.length < 3) {
       const fmt = (n) => `Ksh ${Number(n).toLocaleString('en-KE')}`;
       return res.status(409).json({
@@ -741,9 +764,37 @@ async function resignMember(req, res, next) {
 
     member.active = false;
     member.resignedAt = new Date();
+    member.deactivatedAt = member.resignedAt;
     member.resignationReason = String(req.body?.reason || '').trim();
     member.resignationSettlement = settlement.slice(0, 500);
-    await member.save();
+    let payoutExpense = null;
+    await withOptionalTransaction(async (session) => {
+      await member.save({ session });
+      if (payout > 0) {
+        [payoutExpense] = await Expense.create(
+          [
+            {
+              source: 'group',
+              amount: payout,
+              date: member.resignedAt,
+              description: `Paid out to ${member.name} on leaving`,
+              note: settlement,
+              loggedBy: req.user._id,
+            },
+          ],
+          { session }
+        );
+      }
+    });
+    if (payoutExpense) {
+      await logAudit({
+        action: 'create',
+        entityType: 'Expense',
+        entityId: payoutExpense._id,
+        performedBy: req.user._id,
+        after: snapshot(payoutExpense),
+      });
+    }
 
     await logAudit({
       action: 'update',
@@ -753,7 +804,7 @@ async function resignMember(req, res, next) {
       before,
       after: snapshot(member),
     });
-    res.json({ member });
+    res.json({ member, paidOut: payout });
   } catch (err) {
     next(err);
   }

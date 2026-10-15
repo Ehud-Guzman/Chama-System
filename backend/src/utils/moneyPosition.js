@@ -5,9 +5,10 @@ const Member = require('../models/Member');
 const { carriedInTotals } = require('./carriedIn');
 const { fundBalance } = require('./fundBalance');
 const { bucketForType } = require('./ledgerTypes');
-const { resolveConfig, scoredWeeks } = require('./weekCycle');
+const { resolveConfig } = require('./weekCycle');
 const { getOrCreateSettings } = require('./settings');
 const { toMoney } = require('./money');
+const { teaMemberWeeks } = require('./teaCharges');
 
 // The group's money, in the three lines a committee asks for: what came in, what has
 // been spent out of the funds, and what that leaves on hand.
@@ -21,7 +22,7 @@ const { toMoney } = require('./money');
 // balance and each fund's float, utils/carriedIn), because a total summed from
 // contribution rows alone reads as if the group had never collected anything.
 async function computeMoneyPosition() {
-  const [contributedRows, expensesAgg, carried, settings, activeMembers] = await Promise.all([
+  const [contributedRows, expensesAgg, carried, settings] = await Promise.all([
     Contribution.aggregate([
       { $match: { deleted: false } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
@@ -59,7 +60,6 @@ async function computeMoneyPosition() {
     ]),
     carriedInTotals(),
     getOrCreateSettings(),
-    Member.countDocuments({ active: true }),
   ]);
 
   // What each fund holds, worked out the way the ledger works it out — with the Tea
@@ -79,8 +79,11 @@ async function computeMoneyPosition() {
         { $group: { _id: null, total: { $sum: { $ifNull: ['$grossAmount', '$amount'] } } } },
       ])
     : [];
-  const teaIncome =
-    config.chaiAmount * scoredWeeks(config) * activeMembers + (teaBeforeCycle[0]?.total || 0);
+  // The automatic tea: every member is charged the week's tea for each week that has closed, until the
+  // day he left. Counting only the members who are active today dropped a leaver's past weeks from the
+  // fund the day he was made inactive, as though he had never paid them.
+  const teaWeekCharges = await teaMemberWeeks(config);
+  const teaIncome = config.chaiAmount * teaWeekCharges + (teaBeforeCycle[0]?.total || 0);
 
   const funds = await Promise.all(
     fundTypes

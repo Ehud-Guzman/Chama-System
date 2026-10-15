@@ -1,4 +1,5 @@
 const { weekNumberForDate, weekRange, currentWeekNumber, scoredWeeks } = require('./weekCycle');
+const { membershipEnd, accountingNow } = require('./membership');
 // The group's own line, and the decision built on it: a member holding at least that much is not
 // told he is behind. The ledger reports the *policy* view of that beside the money — `arrears` and
 // `weeksBehind` stay the plain truth about the weeks, and `chasedArrears`/`chasedWeeksBehind` are
@@ -69,7 +70,13 @@ const {
 // Contributions are expected pre-annotated by the caller with:
 //   bucket      'weekly' | 'extra' | 'chai' | 'other'
 //   isGroupFund whether the money belongs to the Group rather than the member
-function computeMemberLedger({ member, contributions, config, now = Date.now() }) {
+function computeMemberLedger({ member, contributions, config, now: requestedNow = Date.now() }) {
+  // A member who has been made inactive is read as at the day he was made inactive, however long
+  // ago that was: tea stops being charged and missed weeks stop being counted the day he left
+  // (utils/membership). Reading him as at today would go on taking tea off his money, and growing
+  // his arrears, for as long as the system ran.
+  const now = accountingNow(member, requestedNow);
+  const endedAt = membershipEnd(member);
   const currentWeek = currentWeekNumber(config, now);
   const elapsed = currentWeek - config.cycleStartWeek + 1;
   // Weeks that carry an expectation: none of the opening week (92) and none of the
@@ -276,6 +283,8 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   const moneyNetOfDues = openingBalance + movement - teaOffMoney - finesPaid;
 
   return {
+    // When his accounting ended, or null while he is a member: the day he was made inactive.
+    endedAt,
     currentWeek,
     // Calendar weeks since the cycle opened (1 in week 92) and the weeks that
     // actually carry an expectation (0 in week 92). Two different numbers on

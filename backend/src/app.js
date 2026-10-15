@@ -13,6 +13,7 @@ const { requestLogger, logEvent } = require('./middleware/requestLogger');
 const { seedDisciplinaryFineTypes } = require('./utils/seedDisciplinaryFineTypes');
 const { seedLedgerTypes, seedGroupFunds } = require('./utils/ledgerTypes');
 const { ensureDocumentCategories } = require('./utils/documentCategories');
+const { backfillDeactivatedAt } = require('./utils/backfillDeactivatedAt');
 
 const {
   apiLimiter,
@@ -295,6 +296,16 @@ if (require.main === module) {
     // The document vault's headings: seeded so a vault that has never been filed
     // in still offers the group's own six.
     .then(() => ensureDocumentCategories())
+    // Members made inactive before the day was recorded get it now, from the audit trail, so their accounting
+    // stops on the day they left and does not drift with every later edit of their record. Idempotent, fills
+    // only what is missing, and never lets a failure stop the server starting.
+    .then(() =>
+      backfillDeactivatedAt()
+        .then((result) => {
+          if (result.filled.length > 0) logEvent('deactivated_at_backfilled', { count: result.filled.length });
+        })
+        .catch((err) => logEvent('deactivated_at_backfill_failed', { error: err.message }, 'error'))
+    )
     // The scheduled work: the nightly backup, the weekly audit check and the reminder sweep.
     // Started last, after the seeds, so a job can never run against a half-initialised database.
     .then(() => {

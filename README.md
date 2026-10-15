@@ -204,7 +204,14 @@ all at once. `backend/test/integration/finePayments.test.js` pins all of it agai
 - *Dates in the group's own time.* "Date cannot be in the future" compares calendar days in EAT
   (`utils/futureDate.js`); between midnight and 3am the server's UTC clock used to refuse today.
 - *Leaving the group.* A member who holds money or owes fines is not resigned until a settlement
-  note says what became of it (`Member.resignationSettlement`).
+  note says what became of it (`Member.resignationSettlement`). His accounting **ends the day he is
+  made inactive** (`Member.deactivatedAt`, `utils/membership.js`): the engine reads him as at that
+  day, so no more tea is charged and no more weeks count as missed, and the group's tea income
+  (`utils/teaCharges.js`) keeps what he paid while he was a member and stops there. An optional
+  payout at resignation is recorded as the group spending that money on that day. Members made
+  inactive before the day was recorded are filled from the audit trail at startup
+  (`npm run members:backfill-inactive` shows it first). Reactivating clears the day, so the gap is
+  charged again, which is right for a member made inactive by mistake.
 - *Idle sign-out and update prompt.* A session with no activity for 30 minutes ends (a minute's
   warning first; the offline outbox is kept), and an open tab is told when a new build is deployed.
 - *Needs attention.* The dashboard says, to the people who can act, when no copy of the books has left

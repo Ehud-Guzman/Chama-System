@@ -460,3 +460,77 @@ test('a member with no fines paid out of his money reads exactly as before', () 
     2400
   );
 });
+
+// ---------------------------------------------------------------------------------------------
+// A member who has left
+// ---------------------------------------------------------------------------------------------
+
+test('a member who has been made inactive stops being charged the day he left', () => {
+  const left = parseEatDate('2026-10-09'); // Friday of week 96: weeks 93, 94 and 95 have closed
+  const later = parseEatDate('2027-02-05'); // twenty weeks on
+
+  const stillAMember = computeMemberLedger({
+    member: { openingBalance: 5000, active: true },
+    contributions: [],
+    config,
+    now: later,
+  });
+  const gone = computeMemberLedger({
+    member: { openingBalance: 5000, active: false, deactivatedAt: left },
+    contributions: [],
+    config,
+    now: later,
+  });
+  const readThen = computeMemberLedger({
+    member: { openingBalance: 5000, active: true },
+    contributions: [],
+    config,
+    now: left,
+  });
+
+  // Read as at the day he left, however long ago that was.
+  assert.equal(gone.money, readThen.money);
+  assert.equal(gone.arrears, readThen.arrears);
+  assert.equal(gone.chai.due, readThen.chai.due);
+  assert.equal(gone.weeksScored, 3);
+  // While a member still in the group keeps being charged.
+  assert.ok(stillAMember.chai.due > gone.chai.due);
+  assert.ok(stillAMember.arrears > gone.arrears);
+  assert.equal(gone.endedAt.getTime(), left.getTime());
+  assert.equal(stillAMember.endedAt, null);
+});
+
+test('an inactive member is read as at the day he left even when asked about the present', () => {
+  const left = parseEatDate('2026-10-09');
+  const gone = computeMemberLedger({
+    member: { openingBalance: 0, active: false, deactivatedAt: left },
+    contributions: [],
+    config,
+    now: parseEatDate('2030-01-01'),
+  });
+  // Three closed weeks of tea and nothing else: it does not keep growing.
+  assert.equal(gone.money, -300);
+});
+
+test('the day he left falls back to the resignation date, then to the last change to his record', () => {
+  const resigned = parseEatDate('2026-10-02');
+  const touched = parseEatDate('2026-10-16');
+  const base = { openingBalance: 0, active: false };
+  const at = (member) =>
+    computeMemberLedger({ member, contributions: [], config, now: parseEatDate('2030-01-01') }).endedAt.getTime();
+
+  assert.equal(at({ ...base, resignedAt: resigned, updatedAt: touched }), resigned.getTime());
+  assert.equal(at({ ...base, updatedAt: touched }), touched.getTime());
+  assert.equal(at({ ...base, deactivatedAt: resigned, resignedAt: touched }), resigned.getTime(), 'the recorded day wins');
+});
+
+test('a member who left after "now" is simply read as of now', () => {
+  const future = parseEatDate('2030-01-01');
+  const ledger = computeMemberLedger({
+    member: { openingBalance: 0, active: false, deactivatedAt: future },
+    contributions: [],
+    config,
+    now: parseEatDate('2026-10-09'),
+  });
+  assert.equal(ledger.weeksScored, 3);
+});

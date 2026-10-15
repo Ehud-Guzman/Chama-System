@@ -1,6 +1,7 @@
 const { toMoney } = require('./money');
 const { computeMemberLedger } = require('./memberLedger');
 const { weekRange, weekNumberForDate, currentWeekNumber, scoredWeeks } = require('./weekCycle');
+const { accountingNow } = require('./membership');
 
 // The working behind one member's figure, step by step.
 //
@@ -116,7 +117,11 @@ function step(fields) {
 }
 
 // Everything one member's walk shows, computed in a single pass.
-function buildLedgerWalk({ member, contributions = [], fines = [], config, now = Date.now() }) {
+function buildLedgerWalk({ member, contributions = [], fines = [], config, now: requestedNow = Date.now() }) {
+  // A member who has left is read as at the day he left, exactly as the engine reads him: the tea steps
+  // below stop with his last closed week, or the working would charge him weeks the figure above it does
+  // not.
+  const now = accountingNow(member, requestedNow);
   const openingBalance = toMoney(member?.openingBalance);
   const currentWeek = currentWeekNumber(config, now);
   const scored = scoredWeeks(config, now);

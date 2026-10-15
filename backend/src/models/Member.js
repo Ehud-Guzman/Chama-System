@@ -135,6 +135,9 @@ const MemberSchema = new Schema(
     // include this field.
     fineDebits: { type: [FineDebitSchema], default: [] },
     resignedAt: { type: Date, default: null },
+    // The day he was made inactive, by resigning or by being deactivated. His accounting stops on
+    // it (utils/membership): no more tea, no more missed weeks. Cleared if he is reactivated.
+    deactivatedAt: { type: Date, default: null },
     resignationReason: { type: String, default: '' },
     // How what he held and what he owed were dealt with when he left ("paid out Ksh 12,400 by M-Pesa,
     // his Ksh 300 fine taken from it"). Asked for whenever he leaves holding money or owing fines,

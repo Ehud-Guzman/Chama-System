@@ -23,6 +23,7 @@
     "seed:super-admin": "node src/scripts/seedSuperAdmin.js",
     "balances:restore": "node src/scripts/restoreOpeningBalances.js",
     "minutes:count-pages": "node src/scripts/countMinutePages.js",
+    "members:backfill-inactive": "node src/scripts/backfillDeactivatedAt.js",
     "ledger:clear-contributions": "node src/scripts/clearContributions.js"
   },
   "dependencies": {

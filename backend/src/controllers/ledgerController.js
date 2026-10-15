@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { isAfterToday } = require('../utils/futureDate');
 const { extractMpesaCodes } = require('../utils/mpesaCode');
+const { teaMemberWeeks } = require('../utils/teaCharges');
 const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const Expense = require('../models/Expense');
@@ -15,7 +16,6 @@ const {
   weekRange,
   cycleWeekNumber,
   cycleHistory,
-  scoredWeeks,
   fridayOf,
   parseEatDate,
   toEatDateString,
@@ -170,8 +170,9 @@ async function memberLedger(req, res, next) {
     // cycle, the opening week taking none — so it is derived here rather than
     // summed from contribution rows, plus whatever tea was collected before the
     // cycle opened.
-    const teaIncome =
-      config.chaiAmount * ledger.weeksScored * activeMembers + (teaBeforeCycle[0]?.total || 0);
+    // Worked out for the whole group, not from this member's own ledger: a member who has left has his
+    // ledger read as at the day he left, and the group's tea is not his.
+    const teaIncome = config.chaiAmount * (await teaMemberWeeks(config, { activeMembers })) + (teaBeforeCycle[0]?.total || 0);
     const balances = await Promise.all(
       fundTypes.map((t) =>
         fundBalance(t._id, {
@@ -705,8 +706,7 @@ async function getSetup(req, res, next) {
     // The Tea Fund's income is derived rather than logged, so what the ledger
     // already counts for it has to be worked out the same way the member page
     // works it out: the automatic 100 a member for every *closed* scored week.
-    const scoredWeekCount = scoredWeeks(config);
-    const automaticTea = config.chaiAmount * scoredWeekCount * activeMemberCount;
+    const automaticTea = config.chaiAmount * (await teaMemberWeeks(config, { activeMembers: activeMemberCount }));
 
     res.json({
       settings: {

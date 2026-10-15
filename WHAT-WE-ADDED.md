@@ -2127,6 +2127,37 @@ STILL NEEDS A PERSON (code cannot decide these)
     the gap by hand.
 
 
+MEMBERS WHO HAVE LEFT: THEIR ACCOUNTING STOPS THE DAY THEY DO
+-------------------------------------------------------------
+
+THE PROBLEM
+
+  A member made inactive was still being accounted for. His own record went on taking the week's tea off
+  his money and counting every new week as one he had missed, for as long as the system ran. The group's
+  Tea Fund went the other way: it counted only the members who are active today, so the weeks he had
+  really paid tea in vanished from the fund the moment he was made inactive.
+
+WHAT IT DOES NOW
+
+  - The day a member is made inactive is recorded (by resigning, by deactivating, or by switching him off
+    on his form). From that day nothing is charged to him: his figures are read as at that day, on his
+    record page, the treasurer's page, his statements and the working behind his balance.
+  - The Tea Fund counts him up to that day and no further, on all three screens that work it out.
+  - When he resigns, the office can enter what was paid out to him. It is recorded as the group spending
+    that money on that day, so the group's balance drops on the day he leaves instead of carrying his money
+    for ever. The settlement note is filled in for it.
+  - Members who were made inactive before the day was recorded are given it from the audit trail the
+    first time the server starts, and from his resignation date or the last change to his record where the
+    audit trail has nothing. `npm run members:backfill-inactive` shows what that will do without writing.
+  - Reactivating a member clears the day. The weeks since are charged again: correct for somebody made
+    inactive by mistake, and for somebody who really returns after a gap, adjust his carried-in balance.
+
+NOT CHANGED, ON PURPOSE
+
+  - A resigned member's unpaid fines stay on the record and in the fines totals: they are a debt, and
+    resigning does not clear it. The resign screen shows them before he goes.
+
+
 END OF DOCUMENT
 ===============
 

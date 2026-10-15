@@ -108,10 +108,10 @@ export default function MemberDetail() {
     }
   }
 
-  async function resignMember(reason, settlement) {
+  async function resignMember(reason, settlement, payout) {
     setBusy(true);
     try {
-      await api.post(`/api/members/${id}/resign`, { reason, settlement });
+      await api.post(`/api/members/${id}/resign`, { reason, settlement, payout });
       toast('Member resigned');
       setConfirmingResign(false);
       load();
@@ -546,6 +546,15 @@ async function exportStatementExcel() {
             Resigned {shortDate(member.resignedAt)}
             {member.resignationReason ? ` — ${member.resignationReason}` : ''}
             {member.resignationSettlement ? ` · Settled: ${member.resignationSettlement}` : ''}
+          </p>
+        )}
+
+        {/* A member who has left is read as at the day he left, and the page says so: otherwise the
+            figures below look like they stopped by accident. */}
+        {ledger?.endedAt && (
+          <p className="mt-2 text-xs text-muted">
+            His figures stop on {shortDate(ledger.endedAt)}, the day he was made inactive. Nothing is charged to
+            him after it.
           </p>
         )}
 
