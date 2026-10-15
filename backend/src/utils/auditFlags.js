@@ -143,6 +143,16 @@ function readAuditEntry(entry) {
     }
   }
 
+  // A fine payment says how it was made on the entry itself (controllers/fineController), and the
+  // way it was made is what a reader of the trail is after: money that came out of a member's
+  // balance is the one kind that changes what the group holds for him.
+  if (entry.entityType === 'Fine' && after) {
+    if (after.paidFromBalance) add('fine-from-balance', 'taken from a balance', 'watch');
+    if (after.paymentUndone) add('payment-undone', 'payment taken back', 'watch');
+    if (after.paymentChecked?.source === 'balance') add('fine-from-balance', 'taken from a balance', 'watch');
+    if (Number(after.returnedToBalance) > 0) add('returned-to-balance', 'money returned to a balance', 'watch');
+  }
+
   if (entry.entityType === 'Member') {
     if (moved.some((f) => CREDENTIAL_FIELDS.includes(f))) {
       add('credential', 'phone or ID changed', 'high');
@@ -183,6 +193,25 @@ function readAuditEntry(entry) {
 // their change, never printed — the flag says a phone number moved, the screen does
 // not show the number.
 function summarise(entry, { before, after, record, moved, category }) {
+  if (entry.entityType === 'Fine' && after) {
+    if (after.paidFromBalance) {
+      const p = after.paidFromBalance;
+      return `${ksh(p.amount)} paid from his balance (${ksh(p.heldBefore)} → ${ksh(p.heldAfter)})`;
+    }
+    if (after.paidInCash) return `${ksh(after.paidInCash.amount)} paid in cash`;
+    if (after.paymentUndone) {
+      const u = after.paymentUndone;
+      return `${ksh(u.amount)} payment taken back${u.source === 'balance' ? ', returned to his balance' : ''}`;
+    }
+    if (after.paymentChecked) {
+      const c = after.paymentChecked;
+      return `${ksh(c.amount)} earlier payment marked as ${c.source === 'balance' ? 'taken from his balance' : 'paid in cash'}`;
+    }
+    if (entry.action === 'delete' && Number(after.returnedToBalance) > 0) {
+      return `${ksh(record.amount)} fine voided, ${ksh(after.returnedToBalance)} returned to his balance`;
+    }
+  }
+
   if (category === 'money' && MONEY_ENTITIES.includes(entry.entityType)) {
     if (entry.action === 'delete' || record.deleted === true) return ksh(record.amount);
     if (!before) return ksh(after?.amount);

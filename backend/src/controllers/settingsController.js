@@ -44,6 +44,7 @@ async function updateSettings(req, res, next) {
       cycleStartWeek,
       weekAnchorDate,
       autoSettleFines,
+      passbookPhoneCheck,
       twoFactorAuthEnabled,
       reminderMaxPerWeek,
       reminderMoneyLimit,
@@ -137,6 +138,19 @@ async function updateSettings(req, res, next) {
         return res.status(400).json({ message: 'autoSettleFines must be true or false' });
       }
       settings.autoSettleFines = autoSettleFines;
+    }
+    // Whether a member's passbook asks for his phone number as well as his ID. Super admin only, like
+    // the switches around it: it changes what every member has to type to see his own money.
+    if (passbookPhoneCheck !== undefined) {
+      if (req.user.role !== 'super_admin') {
+        return res
+          .status(403)
+          .json({ message: 'Only the super admin can change what members need to open their passbook.' });
+      }
+      if (typeof passbookPhoneCheck !== 'boolean') {
+        return res.status(400).json({ message: 'passbookPhoneCheck must be true or false' });
+      }
+      settings.passbookPhoneCheck = passbookPhoneCheck;
     }
     // Two-factor authentication, as a group decision rather than a personal one.
     //

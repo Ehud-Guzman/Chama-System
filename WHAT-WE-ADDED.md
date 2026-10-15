@@ -2089,6 +2089,44 @@ FILES
   frontend/src/utils/finePayment.js          the arithmetic the dialog shows (and its test)
 
 
+HARDENING AFTER THE AUDIT: WHAT WAS FIXED AND WHAT STILL NEEDS A DECISION
+-------------------------------------------------------------------------
+
+FIXED IN CODE
+
+  - Dependencies: the backend now reports no known vulnerabilities (the critical one let a request fake
+    its IP address, which weakens every limit keyed on it). The frontend's remaining five need a
+    breaking upgrade and do not apply here: they concern server rendering and link targets the app does
+    not take from users.
+  - Rate limits that mean something: the limits on sign-in, the second factor, the members' passbook,
+    password change and password reset are counted in the database, so a restart or a deploy no longer
+    resets them. If the database cannot be reached they count in memory instead of failing.
+  - Passbook second check: off by default, switched on by the super admin (Settings -> Passbook access).
+    Asks for the phone number registered on the member's record as well as his ID.
+  - Fine payments cannot be recorded twice by a retry, and a fine voided after it was paid out of a
+    logged payment gives that money back to the payment (the gap in the first version of the fines work).
+  - "Date cannot be in the future" now means the group's today (EAT), not the server's.
+  - Resigning a member who holds money or owes fines needs a note saying what became of it.
+  - The same M-Pesa code on a second payment is flagged before it is written, and the treasurer can
+    confirm it really is a second one. A pasted message also offers its own amount as a button.
+  - Forgotten passwords: a link by email, offered only where mail works, single-use, 30 minutes.
+  - Sessions end after 30 idle minutes (with a warning), and open tabs are told when a new version is out.
+  - Member pickers on the issue-a-fine screen search the server instead of loading the first 500; the
+    discipline screen says so when its list is cut.
+  - Members the system cannot email get a ready-written WhatsApp message in the payment dialog.
+  - The dashboard has a "Needs attention" strip: no copy of the books taken off the server, two-factor
+    off, fine payments waiting to be sorted. The audit trail now says how a fine was paid.
+
+STILL NEEDS A PERSON (code cannot decide these)
+
+  - Backups: the nightly copy is written to the server's own disk. Unless BACKUP_DIR points at a
+    persistent volume, a deploy removes it. The dashboard now says so, but the volume is a hosting
+    setting. Until it is set, download a copy regularly (Settings -> Backup).
+  - Switching on the passbook second check and two-factor are the committee's decisions.
+  - SMS or WhatsApp sent by the system itself needs an account with a provider; the WhatsApp link covers
+    the gap by hand.
+
+
 END OF DOCUMENT
 ===============
 

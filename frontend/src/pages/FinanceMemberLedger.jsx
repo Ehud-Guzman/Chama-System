@@ -11,6 +11,7 @@ import BackLink from '../components/shared/BackLink';
 import LedgerWalk from '../components/shared/LedgerWalk';
 import Loader from '../components/shared/Loader';
 import { fetchMember, getCachedMember, invalidateLedger } from '../services/ledgerCache';
+import { parseMpesaMessage } from '../utils/mpesaMessage';
 
 const METHODS = Object.keys(METHOD_LABELS);
 
@@ -65,6 +66,8 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
   const [date, setDate] = useState(todayISO());
   const [note, setNote] = useState('');
   const [description, setDescription] = useState('');
+  // Set when the API says this payment's M-Pesa code is already on another one.
+  const [duplicate, setDuplicate] = useState('');
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(null);
   // Open by default: the week list is the thing a treasurer checks against the
@@ -94,6 +97,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
     load();
   }, [load]);
 
+  const pasted = useMemo(() => parseMpesaMessage(note), [note]);
   const ledger = data?.ledger;
   const currentWeek = useMemo(() => ledger?.weeks?.find((w) => w.isCurrent), [ledger]);
   // Which week the entry is being logged against. Defaults to the week running
@@ -161,8 +165,8 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
     setTargetWeek(firstShort.weekNumber);
   }
 
-  async function submit(e) {
-    e.preventDefault();
+  async function submit(e, confirmDuplicate = false) {
+    e?.preventDefault?.();
     const value = Number(String(amount).replace(/[,\s]/g, ''));
     if (!Number.isFinite(value) || value <= 0) {
       toast('Enter an amount greater than zero', 'error');
@@ -180,6 +184,9 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
           note: note.trim(),
           description: description.trim(),
           clientRequestId: requestIdRef.current,
+          // Said only after the API has pointed out the earlier payment and the treasurer has
+          // confirmed this is a second one.
+          ...(confirmDuplicate ? { confirmDuplicate: true } : {}),
         },
         {
           // If the phone has no signal, this entry goes into the outbox rather than being lost
@@ -203,6 +210,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
       requestIdRef.current = crypto.randomUUID();
       setNote('');
       setDescription('');
+      setDuplicate('');
       // The list's totals are stale the moment money moves; drop the cache so
       // both this panel and the list behind it come back fresh. The list is
       // refreshed in place, not remounted, which is what keeps the screen from
@@ -220,6 +228,9 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         setNote('');
         setDescription('');
         toast('No signal — kept, and it will be sent when you are back online');
+      } else if (err.response?.status === 409 && err.response?.data?.needsConfirmation) {
+        // The same M-Pesa code is already on a payment: say which, and let the treasurer decide.
+        setDuplicate(err.response.data.message);
       } else {
         toast(apiMessage(err), 'error');
       }
@@ -625,11 +636,50 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
               id="log-note"
               rows={4}
               value={note}
-              onChange={(e) => setNote(e.target.value)}
+              onChange={(e) => {
+                setNote(e.target.value);
+                setDuplicate('');
+              }}
               placeholder="SK9X2Q1LMN Confirmed. Ksh1,400.00 sent to WAZO MOJA SELF-HELP GROUP on 17/9/26 at 8:04 AM."
               className="w-full rounded-lg border border-rule bg-canvas px-3 py-2 text-sm leading-5"
             />
           </div>
+
+          {/* The amount on a pasted M-Pesa message, offered rather than applied: a message can be
+              about something else, and the figure the treasurer typed is the one he meant. */}
+          {pasted.amount && pasted.amount !== Number(String(amount).replace(/[,\s]/g, '')) && (
+            <button
+              type="button"
+              onClick={() => setAmount(String(pasted.amount))}
+              className="min-h-11 w-full rounded-lg border border-rule px-3 text-left text-sm"
+            >
+              The message says <span className="amount font-semibold">{money(pasted.amount)}</span>
+              {pasted.code ? ` (${pasted.code})` : ''}. <span className="font-medium text-primary">Use that amount</span>
+            </button>
+          )}
+
+          {duplicate && (
+            <div role="alert" className="rounded-lg border border-alert/30 bg-alert/5 px-3 py-3 text-sm">
+              <p className="text-alert">{duplicate}</p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDuplicate('')}
+                  className="min-h-11 flex-1 rounded-lg border border-rule bg-surface text-sm font-medium"
+                >
+                  Do not log it
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => submit(null, true)}
+                  className="min-h-11 flex-1 rounded-lg bg-alert text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  It is a second payment
+                </button>
+              </div>
+            </div>
+          )}
 
           <button
             type="submit"

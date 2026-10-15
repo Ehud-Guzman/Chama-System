@@ -1,5 +1,10 @@
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
+const { DatabaseStore } = require('./rateLimitStore');
+
+// The limits that guard a credential keep their counts in the database (middleware/rateLimitStore),
+// so a restart or a deploy does not hand an attacker a fresh set of tries. The rest stay in memory.
+const durable = (prefix) => new DatabaseStore({ prefix });
 
 // Keying helpers.
 //
@@ -30,6 +35,7 @@ function emailKey(req) {
 //
 // Both skip successful requests, so a working sign-in never eats the budget.
 const loginLimiter = rateLimit({
+  store: durable('login'),
   windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || 5,
   standardHeaders: true,
@@ -40,6 +46,7 @@ const loginLimiter = rateLimit({
 });
 
 const loginSprayLimiter = rateLimit({
+  store: durable('login-spray'),
   windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: Number(process.env.LOGIN_SPRAY_LIMIT_MAX) || 30,
   standardHeaders: true,
@@ -55,6 +62,7 @@ const loginSprayLimiter = rateLimit({
 // The ID gate is a short number that is written on a card, so the rate limit is
 // the thing standing between a script and the whole register — it stays tight.
 const lookupLimiter = rateLimit({
+  store: durable('lookup'),
   windowMs: Number(process.env.LOOKUP_RATE_LIMIT_WINDOW_MS) || 60000,
   max: Number(process.env.LOOKUP_RATE_LIMIT_MAX) || 5,
   standardHeaders: true,
@@ -98,7 +106,31 @@ const constitutionDecisionLimiter = rateLimit({
 
 // A leaked/stolen JWT shouldn't get unlimited guesses at the current
 // password — same budget as login since it's the same kind of attack.
+// Asking for a password-reset email. Budgeted per address and email, and per connection, like sign-in:
+// the endpoint answers the same whether or not the account exists, so the limit is what stops it
+// being used to flood somebody's inbox or to probe for accounts.
+const passwordResetLimiter = rateLimit({
+  store: durable('password-reset'),
+  windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.PASSWORD_RESET_LIMIT_MAX) || 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${ipKey(req)}:${emailKey(req) || 'no-email'}`,
+  message: { message: 'Too many reset requests. Please wait a few minutes and try again.' },
+});
+
+const passwordResetSprayLimiter = rateLimit({
+  store: durable('password-reset-spray'),
+  windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.LOGIN_SPRAY_LIMIT_MAX) || 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKey(req),
+  message: { message: 'Too many reset requests from this connection. Please wait a few minutes.' },
+});
+
 const passwordChangeLimiter = rateLimit({
+  store: durable('password-change'),
   windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || 5,
   standardHeaders: true,
@@ -124,6 +156,7 @@ function challengeKey(value) {
 }
 
 const twoFactorLimiter = rateLimit({
+  store: durable('two-factor'),
   windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: Number(process.env.TWO_FACTOR_RATE_LIMIT_MAX) || 10,
   standardHeaders: true,
@@ -134,6 +167,7 @@ const twoFactorLimiter = rateLimit({
 });
 
 const twoFactorSprayLimiter = rateLimit({
+  store: durable('two-factor-spray'),
   windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: Number(process.env.LOGIN_SPRAY_LIMIT_MAX) || 30,
   standardHeaders: true,
@@ -173,6 +207,8 @@ module.exports = {
   overviewLimiter,
   documentLimiter,
   passwordChangeLimiter,
+  passwordResetLimiter,
+  passwordResetSprayLimiter,
   constitutionDecisionLimiter,
 };
 

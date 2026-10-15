@@ -1,12 +1,43 @@
+import { useEffect } from 'react';
 import BottomNav from './BottomNav';
-import { Link } from 'react-router-dom';
+import IdleGuard from './IdleGuard';
+import { Link, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import CreditLine from '../shared/CreditLine';
 import { useAuth } from '../../context/AuthContext';
 import { CHAMA_NAME } from '../../utils/branding';
 
+// A link to another screen's section (`/admin/settings#backup`) lands on the top of that screen:
+// the router changes the page but does not scroll to the heading the link promised. The section
+// is not on the page at the moment of the click (the screen is loaded as it opens), so it is looked
+// for a few times before giving up.
+function useScrollToHash() {
+  const { hash, pathname } = useLocation();
+  useEffect(() => {
+    if (!hash) return undefined;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      let target = null;
+      try {
+        target = document.querySelector(hash);
+      } catch {
+        // Not a selector (a stray fragment): nothing to scroll to.
+      }
+      if (target) {
+        target.scrollIntoView();
+        clearInterval(timer);
+      } else if (tries >= 20) {
+        clearInterval(timer);
+      }
+    }, 100);
+    return () => clearInterval(timer);
+  }, [hash, pathname]);
+}
+
 export default function AdminLayout({ children }) {
   const { logout } = useAuth();
+  useScrollToHash();
 
   return (
     <div className="min-h-dvh md:pl-56">
@@ -44,6 +75,8 @@ export default function AdminLayout({ children }) {
         <CreditLine className="mt-10 border-t border-rule pt-6 text-center" />
       </main>
       <BottomNav />
+      {/* Ends a session nobody is using, with a minute's warning. */}
+      <IdleGuard />
     </div>
   );
 }

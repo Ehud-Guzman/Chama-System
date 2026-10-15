@@ -83,6 +83,19 @@ export function sourceLabel(source) {
   return 'Recorded earlier — not yet checked';
 }
 
+// The same payment, written to the member himself: what the office sends him when email cannot
+// reach him. Plain, short and in the second person, because it is read on a phone as a message.
+export function paymentMessage({ memberName, totalApplied, source, held, owedAfter }) {
+  const first = String(memberName || '').split(' ')[0] || 'there';
+  const paid =
+    source === 'balance'
+      ? `We have taken ${money(totalApplied)} from your balance with the group to pay your fine.`
+      : `We have received your fine payment of ${money(totalApplied)}.`;
+  const balance = held ? ` The group now holds ${money(held.after)} for you.` : '';
+  const left = owedAfter > 0 ? ` You still owe ${money(owedAfter)} in fines.` : ' You owe no more fines.';
+  return `Hello ${first}, ${paid}${balance}${left} Thank you.`;
+}
+
 // The sentence that closes a payment: what was recorded and what it did.
 export function paymentSummary({ memberName, totalApplied, source, held, owedAfter }) {
   const name = memberName || 'The member';

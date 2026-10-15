@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { apiMessage } from '../services/api';
+import api, { apiMessage } from '../services/api';
 import { roleHome } from '../utils/roleHome';
 import { CHAMA_NAME } from '../utils/branding';
 import CreditLine from '../components/shared/CreditLine';
@@ -24,6 +24,16 @@ export default function AdminLogin() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  // Whether the server can send the reset email at all. The link is only offered when it can: a link
+  // that sends nothing leaves somebody waiting for a message that never comes.
+  const [canReset, setCanReset] = useState(false);
+
+  useEffect(() => {
+    api
+      .get('/api/auth/password-reset/available')
+      .then((res) => setCanReset(Boolean(res.data.available)))
+      .catch(() => setCanReset(false));
+  }, []);
 
   async function onPasswordSubmit(e) {
     e.preventDefault();
@@ -129,6 +139,13 @@ export default function AdminLogin() {
             >
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
+            {canReset && (
+              <p className="pt-1 text-center">
+                <Link to="/admin/forgot-password" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline">
+                  Forgot your password?
+                </Link>
+              </p>
+            )}
           </form>
         )}
 

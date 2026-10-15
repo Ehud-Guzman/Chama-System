@@ -10,8 +10,10 @@ import {
   parseAmount,
   paymentPreview,
   paymentSummary,
+  paymentMessage,
 } from '../../utils/finePayment';
 import { searchOwed } from '../../utils/finesOwed';
+import { whatsappLink } from '../../utils/whatsapp';
 
 // Recording a fine payment, start to finish, in one place.
 //
@@ -232,10 +234,39 @@ export default function PayFinesModal({
                   </li>
                 ))}
               </ul>
-              <p className="text-xs text-muted">
-                The member is emailed an acknowledgement if he has an address on file. A payment keyed in by
-                mistake can be taken back from the fine’s history.
-              </p>
+              {position.member.canEmail ? (
+                <p className="text-xs text-muted">
+                  He is being emailed an acknowledgement. A payment keyed in by mistake can be taken back from
+                  the fine’s history.
+                </p>
+              ) : (
+                <p className="text-xs text-muted">
+                  He has no email address the system can use, so he has not been told. A payment keyed in by
+                  mistake can be taken back from the fine’s history.
+                </p>
+              )}
+              {(() => {
+                const link = whatsappLink(
+                  position.member.phone,
+                  paymentMessage({
+                    memberName: position.member.name,
+                    totalApplied: result.totalApplied,
+                    source: result.source,
+                    held: result.held,
+                    owedAfter: result.owedAfter,
+                  })
+                );
+                return link ? (
+                  <a
+                    href={link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-h-12 w-full items-center justify-center rounded-xl border border-primary text-sm font-semibold text-primary"
+                  >
+                    Tell him on WhatsApp
+                  </a>
+                ) : null;
+              })()}
             </div>
           )}
 

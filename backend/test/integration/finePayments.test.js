@@ -423,6 +423,7 @@ test('the payment screen is told what he owes and what the group holds for him',
   assert.equal(position.status, 200);
   assert.equal(position.body.held, 2500);
   assert.equal(position.body.owed, 500);
+  assert.equal(position.body.member.canEmail, false, 'no address on file: the screen offers another way to tell him');
   assert.deepEqual(
     position.body.fines.map((f) => f.reason),
     ['Fine 1', 'Fine 2'],
@@ -439,4 +440,131 @@ test('searching the fines finds a member by a bit of his name', { skip }, async 
   assert.equal(none.body.fines.length, 0);
   // A search typed with regex characters is a search, not an error.
   assert.equal((await call('GET', `/api/fines?search=${encodeURIComponent('(.*[')}`)).status, 200);
+});
+
+test('a payment sent twice with the same key is recorded once', { skip }, async () => {
+  const { m, fines } = await member(5000, [500]);
+  const body = { amount: 200, source: 'balance', fineId: fines[0]._id, clientRequestId: 'retry-key-1' };
+
+  const first = await pay(m, body);
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.replay, false);
+
+  // The same submit again — a dropped connection, a double tap.
+  const second = await pay(m, body);
+  assert.equal(second.status, 200, JSON.stringify(second.body));
+  assert.equal(second.body.replay, true);
+  assert.equal(second.body.totalApplied, 200);
+  assert.deepEqual(second.body.held, { before: 5000, after: 4800 });
+
+  const stored = await Fine.findById(fines[0]._id).lean();
+  assert.equal(stored.remaining, 300, 'taken off once');
+  assert.equal(stored.settlements.length, 1);
+  assert.equal((await Member.findById(m._id).lean()).fineDebits.length, 1, 'and off his balance once');
+  assert.equal(await held(m), 4800);
+
+  // A retry of a payment that cleared the fine is still the payment, not "already settled".
+  const whole = { amount: 300, source: 'cash', fineId: fines[0]._id, clientRequestId: 'retry-key-2' };
+  assert.equal((await pay(m, whole)).status, 200);
+  const again = await pay(m, whole);
+  assert.equal(again.status, 200);
+  assert.equal(again.body.replay, true);
+
+  // A different key is a different payment.
+  const other = await pay(m, { amount: 100, source: 'cash', fineId: fines[0]._id, clientRequestId: 'retry-key-3' });
+  assert.equal(other.status, 400, 'nothing left on the fine to pay');
+});
+
+test('voiding a fine that was paid out of a logged payment puts the money back on that payment', { skip }, async () => {
+  const settings = await getOrCreateSettings();
+  settings.autoSettleFines = true;
+  await settings.save();
+  invalidateSettings();
+
+  try {
+    const { m, fines } = await member(5000, [400]);
+    const before = await held(m);
+    const logged = await call('POST', `/api/ledger/members/${m._id}/log`, { kind: 'weekly', amount: 1400, method: 'cash' });
+    assert.equal(logged.status, 201, JSON.stringify(logged.body));
+    assert.equal(await held(m), before + 1000, 'the 400 went to the fine');
+
+    const voided = await call('DELETE', `/api/fines/${fines[0]._id}`);
+    assert.equal(voided.status, 200, JSON.stringify(voided.body));
+    assert.equal(voided.body.returnedToPayments, 400);
+
+    assert.equal(await held(m), before + 1400, 'the whole payment is his again');
+    const Contribution = require('../../src/models/Contribution');
+    const row = await Contribution.findOne({ memberId: m._id, deleted: false }).lean();
+    assert.equal(row.fineDeducted, 0);
+    assert.equal(row.amount, 1400);
+    assert.equal(row.grossAmount, null);
+
+    // Deleting that payment afterwards must not try to give the (voided) fine anything back.
+    const removed = await call('DELETE', `/api/contributions/${row._id}`);
+    assert.equal(removed.status, 200, JSON.stringify(removed.body));
+    assert.equal(await held(m), before);
+  } finally {
+    settings.autoSettleFines = false;
+    await settings.save();
+    invalidateSettings();
+  }
+});
+
+test('a member who leaves holding money or owing fines is not resigned until it is written down', { skip }, async () => {
+  const { m } = await member(3000, [200]);
+
+  const refused = await call('POST', `/api/members/${m._id}/resign`, { reason: 'Moved away' });
+  assert.equal(refused.status, 409);
+  assert.equal(refused.body.held, 3000);
+  assert.equal(refused.body.owed, 200);
+  assert.match(refused.body.message, /Write down how that was settled/);
+  assert.equal((await Member.findById(m._id).lean()).active, true, 'nothing happened');
+
+  const done = await call('POST', `/api/members/${m._id}/resign`, {
+    reason: 'Moved away',
+    settlement: 'Paid out Ksh 2,800 by M-Pesa, fine taken from it',
+  });
+  assert.equal(done.status, 200, JSON.stringify(done.body));
+  const stored = await Member.findById(m._id).lean();
+  assert.equal(stored.active, false);
+  assert.equal(stored.resignationSettlement, 'Paid out Ksh 2,800 by M-Pesa, fine taken from it');
+});
+
+test('a member with nothing held and nothing owed resigns without a note', { skip }, async () => {
+  const { m } = await member(0, []);
+  const done = await call('POST', `/api/members/${m._id}/resign`, { reason: 'Left' });
+  assert.equal(done.status, 200, JSON.stringify(done.body));
+});
+
+test('the same M-Pesa code on a second payment is flagged, and can be confirmed', { skip }, async () => {
+  const { m: first } = await member(0, []);
+  const { m: second } = await member(0, []);
+  const note = 'SK9X2Q1LMN Confirmed. Ksh1,400.00 sent to WAZO MOJA on 17/9/26.';
+  const log = (m, extra = {}) =>
+    call('POST', `/api/ledger/members/${m._id}/log`, { kind: 'weekly', amount: 1400, method: 'mobile', note, ...extra });
+
+  const one = await log(first, { clientRequestId: 'mpesa-first' });
+  assert.equal(one.status, 201, JSON.stringify(one.body));
+
+  // The same code against anybody is the same money keyed twice.
+  const dup = await log(second);
+  assert.equal(dup.status, 409);
+  assert.equal(dup.body.needsConfirmation, true);
+  assert.match(dup.body.message, /SK9X2Q1LMN is already on a payment: Ksh 1,400 for Payer/);
+  assert.equal(await held(second), 0, 'nothing was written');
+
+  // A retry of the first payment from the offline outbox is that payment, not a duplicate of it.
+  const replay = await log(first, { clientRequestId: 'mpesa-first' });
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.replay, true);
+
+  // The treasurer can confirm it really is a second payment.
+  const confirmed = await log(second, { confirmDuplicate: true });
+  assert.equal(confirmed.status, 201, JSON.stringify(confirmed.body));
+
+  // A deleted payment frees its code.
+  const Contribution = require('../../src/models/Contribution');
+  await Contribution.updateMany({ memberId: { $in: [first._id, second._id] } }, { $set: { deleted: true } });
+  const { m: third } = await member(0, []);
+  assert.equal((await log(third)).status, 201);
 });

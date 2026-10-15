@@ -1,5 +1,6 @@
 const Fine = require('../models/Fine');
 const Member = require('../models/Member');
+const Contribution = require('../models/Contribution');
 const { withOptionalTransaction } = require('./fineAllocation');
 const { memberLedgerNow } = require('./memberMoney');
 const { toMoney } = require('./money');
@@ -58,7 +59,7 @@ function readSource(value) {
 // Returns what happened, for the response, the audit entry and the email.
 //
 // `paidAt` is the day the money changed hands, already validated by the caller.
-async function recordFinePayment({ memberId, fineId, amount, source, paidAt, userId }) {
+async function recordFinePayment({ memberId, fineId, amount, source, paidAt, userId, requestId = null }) {
   if (!MANUAL_SOURCES.includes(source)) throw new FinePaymentError(400, SOURCE_PROMPT);
   if (!fineId) throw new FinePaymentError(400, 'Choose which fine is being paid');
 
@@ -68,6 +69,30 @@ async function recordFinePayment({ memberId, fineId, amount, source, paidAt, use
 
     const fine = await Fine.findOne({ _id: fineId, memberId, deleted: false }).session(session || null);
     if (!fine) throw new FinePaymentError(404, 'Fine not found');
+
+    // A payment already recorded under this key is the answer, not a second payment. Checked before
+    // anything else, because a retry of a payment that cleared the fine would otherwise be told
+    // "already settled" for money that was in fact recorded.
+    if (requestId) {
+      const prior = fine.settlements.find((s) => s.requestId && s.requestId === requestId);
+      if (prior) {
+        let heldNow = null;
+        if (prior.source === 'balance') {
+          const ledger = await memberLedgerNow(memberId, { session });
+          heldNow = toMoney(ledger ? ledger.money : 0);
+        }
+        return {
+          member,
+          applied: [{ fine, before: null, applied: toMoney(prior.amount) }],
+          totalApplied: toMoney(prior.amount),
+          source: prior.source,
+          heldBefore: heldNow === null ? null : toMoney(heldNow + prior.amount),
+          heldAfter: heldNow,
+          replay: true,
+        };
+      }
+    }
+
     if (fine.remaining <= 0) throw new FinePaymentError(400, 'Fine is already settled');
 
     // The day it was paid cannot come before the day the fine was issued. Compared by day, not by
@@ -107,6 +132,7 @@ async function recordFinePayment({ memberId, fineId, amount, source, paidAt, use
       date: paidAt,
       source,
       recordedBy: userId,
+      ...(requestId ? { requestId } : {}),
     });
     await fine.save({ session });
 
@@ -277,8 +303,32 @@ async function reviewFinePayment({ fineId, index, source, expected }) {
 // record of what was received — the office decides what to do with it — and is reported so the
 // screen can say so.
 async function releaseFineDebits(fine, { session } = {}) {
+  // Money that went to this fine out of a payment he handed over (Settings.autoSettleFines) was
+  // taken off his held figure when it was spent on the fine. The fine never should have existed, so
+  // it goes back onto that payment: his held money is whole again and the payment reads as the
+  // contribution it was. Without this a voided fine would go on costing him the money it was paid
+  // with.
+  const restored = [];
+  for (const settlement of fine.settlements || []) {
+    if (!settlement.contributionId) continue;
+    const payment = await Contribution.findById(settlement.contributionId).session(session || null);
+    if (!payment || payment.deleted) continue;
+    const back = toMoney(Math.min(Number(settlement.amount) || 0, Number(payment.fineDeducted) || 0));
+    if (back <= 0) continue;
+
+    const before = JSON.parse(JSON.stringify(payment.toObject()));
+    payment.fineDeducted = toMoney(payment.fineDeducted - back);
+    payment.amount = toMoney(payment.amount + back);
+    // With nothing left going to a fine the row is a plain payment again: what he handed over is
+    // simply its amount.
+    if (payment.fineDeducted <= 0) payment.grossAmount = null;
+    await payment.save({ session });
+    restored.push({ payment, before, amount: back });
+  }
+  const restoredTotal = toMoney(restored.reduce((sum, r) => sum + r.amount, 0));
+
   const member = await Member.findById(fine.memberId).session(session || null);
-  if (!member) return { returned: 0, cash: 0 };
+  if (!member) return { returned: 0, cash: 0, restored, restoredTotal };
 
   const mine = member.fineDebits.filter((d) => String(d.fineId) === String(fine._id));
   const returned = toMoney(mine.reduce((sum, d) => sum + (Number(d.amount) || 0), 0));
@@ -292,7 +342,7 @@ async function releaseFineDebits(fine, { session } = {}) {
       .filter((s) => s.source === 'cash')
       .reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
   );
-  return { returned, cash };
+  return { returned, cash, restored, restoredTotal };
 }
 
 module.exports = {

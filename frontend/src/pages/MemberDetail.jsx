@@ -108,10 +108,10 @@ export default function MemberDetail() {
     }
   }
 
-  async function resignMember(reason) {
+  async function resignMember(reason, settlement) {
     setBusy(true);
     try {
-      await api.post(`/api/members/${id}/resign`, { reason });
+      await api.post(`/api/members/${id}/resign`, { reason, settlement });
       toast('Member resigned');
       setConfirmingResign(false);
       load();
@@ -545,6 +545,7 @@ async function exportStatementExcel() {
           <p className="mt-3 border-t border-rule pt-3 text-xs text-alert">
             Resigned {shortDate(member.resignedAt)}
             {member.resignationReason ? ` — ${member.resignationReason}` : ''}
+            {member.resignationSettlement ? ` · Settled: ${member.resignationSettlement}` : ''}
           </p>
         )}
 
@@ -890,6 +891,8 @@ async function exportStatementExcel() {
       <ResignDialog
         open={confirmingResign}
         memberName={member.name}
+        held={ledger ? Math.max(0, Number(ledger.money) || 0) : 0}
+        owed={Number(fines?.totalOwed) || 0}
         busy={busy}
         onConfirm={resignMember}
         onCancel={() => setConfirmingResign(false)}

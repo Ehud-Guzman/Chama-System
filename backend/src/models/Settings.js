@@ -58,6 +58,12 @@ const SettingsSchema = new Schema(
     // call, not a developer's, and because a deploy must never be able to change
     // figures on its own.
     autoSettleFines: { type: Boolean, default: false },
+    // Whether a member's own passbook asks for the phone number registered on his record as well as
+    // his ID. The ID is a number that is on a card and in other people's phones, so on its own it is
+    // a weak door to a member's balance. Off by default and switched on by the super admin once the
+    // register's phone numbers are right: turned on by a deploy, it would lock out every member
+    // whose number on file is out of date.
+    passbookPhoneCheck: { type: Boolean, default: false },
     // How many reminder emails one member may be sent per contribution week.
     //
     // One is the default, and it is a policy rather than a technical limit: a member who is

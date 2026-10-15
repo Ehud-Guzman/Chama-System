@@ -103,3 +103,21 @@ test('every way a payment can have been made has a name', () => {
   assert.equal(sourceLabel('contribution'), 'Out of a contribution');
   assert.match(sourceLabel(null), /not yet checked/);
 });
+
+test('the message for a member email cannot reach reads as a message to him', async () => {
+  const { paymentMessage } = await import('../src/utils/finePayment.js');
+  assert.equal(
+    paymentMessage({
+      memberName: 'Jane Wanjiru',
+      totalApplied: 400,
+      source: 'balance',
+      held: { before: 2000, after: 1600 },
+      owedAfter: 500,
+    }),
+    'Hello Jane, We have taken Ksh 400 from your balance with the group to pay your fine. The group now holds Ksh 1,600 for you. You still owe Ksh 500 in fines. Thank you.'
+  );
+  assert.equal(
+    paymentMessage({ memberName: 'Jane Wanjiru', totalApplied: 900, source: 'cash', held: null, owedAfter: 0 }),
+    'Hello Jane, We have received your fine payment of Ksh 900. You owe no more fines. Thank you.'
+  );
+});

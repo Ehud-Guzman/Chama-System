@@ -136,6 +136,10 @@ const MemberSchema = new Schema(
     fineDebits: { type: [FineDebitSchema], default: [] },
     resignedAt: { type: Date, default: null },
     resignationReason: { type: String, default: '' },
+    // How what he held and what he owed were dealt with when he left ("paid out Ksh 12,400 by M-Pesa,
+    // his Ksh 300 fine taken from it"). Asked for whenever he leaves holding money or owing fines,
+    // because resigning changes nothing about either and nothing else records what became of them.
+    resignationSettlement: { type: String, default: '', maxlength: 500 },
   },
   { timestamps: true }
 );

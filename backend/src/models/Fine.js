@@ -28,6 +28,10 @@ const SettlementSchema = new Schema(
     // Who keyed a manual payment in. Not set on payments taken out of a contribution: the
     // contribution row already names who logged it.
     recordedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    // The key the screen attached to this payment. A submit that is sent twice (a dropped
+    // connection followed by a retry, two taps) carries the same key, and finds the payment already
+    // on the fine instead of recording it again.
+    requestId: { type: String, maxlength: 100 },
   },
   { _id: false }
 );

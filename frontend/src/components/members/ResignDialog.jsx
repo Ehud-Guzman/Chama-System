@@ -1,19 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 import { useModal } from '../../hooks/useModal';
+import { money } from '../../utils/format';
 import Modal from '../shared/Modal';
 
 // Same visual shell as ConfirmDialog, but collects a resignation reason —
 // resignation is an explicit, reasoned admin action, not a plain deactivate.
-export default function ResignDialog({ open, memberName, busy, onConfirm, onCancel }) {
+//
+// It also says what he is leaving with. Resigning changes nothing about what the group holds for a
+// member or what he still owes in fines: the money stays in the books and the fines stay on his
+// record, and nothing else would ever record what became of either. So when there is a figure on
+// either side, the office has to write down how it was settled before the button works.
+export default function ResignDialog({ open, memberName, held = 0, owed = 0, busy, onConfirm, onCancel }) {
   const [reason, setReason] = useState('');
+  const [settlement, setSettlement] = useState('');
   const inputRef = useRef(null);
   const containerRef = useModal(open, onCancel, inputRef);
 
   useEffect(() => {
-    if (open) setReason('');
+    if (open) {
+      setReason('');
+      setSettlement('');
+    }
   }, [open]);
 
   if (!open) return null;
+
+  const needsSettlement = held > 0 || owed > 0;
+  const ready = !needsSettlement || settlement.trim().length >= 3;
 
   return (
     <Modal
@@ -23,12 +36,45 @@ export default function ResignDialog({ open, memberName, busy, onConfirm, onCanc
       aria-label="Resign member"
       onBackdropClick={onCancel}
     >
-      <div ref={containerRef} className="w-full max-w-sm rounded-xl bg-surface p-5 shadow-xl">
+      <div
+        ref={containerRef}
+        className="max-h-[90dvh] w-full max-w-sm overflow-y-auto rounded-xl bg-surface p-5 shadow-xl"
+      >
         <h2 className="text-base font-semibold">Resign {memberName}?</h2>
         <p className="mt-2 text-sm text-muted">
           They're marked inactive and kept out of every member-facing list, so they no longer
           appear to anyone browsing. Their contribution history is kept.
         </p>
+
+        {needsSettlement && (
+          <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-sm">
+            <p className="font-semibold">Before he goes</p>
+            <ul className="mt-1 space-y-0.5">
+              <li>
+                The group holds <span className="amount font-semibold">{money(held)}</span> for him.
+              </li>
+              <li>
+                He owes <span className="amount font-semibold">{money(owed)}</span> in fines.
+              </li>
+            </ul>
+            <p className="mt-2 text-xs text-muted">
+              Resigning does not pay him out or clear his fines. Write down what was done, so the
+              figure is not left with nobody able to say what became of it.
+            </p>
+            <label htmlFor="resign-settlement" className="mt-3 block text-sm font-medium">
+              How was it settled?
+            </label>
+            <textarea
+              id="resign-settlement"
+              rows={2}
+              value={settlement}
+              onChange={(e) => setSettlement(e.target.value)}
+              placeholder="e.g. Paid out Ksh 12,400 by M-Pesa on 3 Oct; fine taken from it"
+              className="mt-1 w-full rounded-xl border border-rule bg-surface px-3 py-2 text-sm"
+            />
+          </div>
+        )}
+
         <label htmlFor="resign-reason" className="mt-4 block text-sm font-medium">
           Reason <span className="font-normal text-muted">(optional)</span>
         </label>
@@ -50,8 +96,8 @@ export default function ResignDialog({ open, memberName, busy, onConfirm, onCanc
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(reason)}
-            disabled={busy}
+            onClick={() => onConfirm(reason, settlement.trim())}
+            disabled={busy || !ready}
             className="min-h-11 flex-1 rounded-lg bg-alert px-4 text-sm font-semibold text-white disabled:opacity-60"
           >
             {busy ? 'Working…' : 'Resign'}

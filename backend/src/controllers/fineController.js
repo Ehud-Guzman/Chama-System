@@ -1,4 +1,5 @@
 const Fine = require('../models/Fine');
+const { isAfterToday } = require('../utils/futureDate');
 const Member = require('../models/Member');
 const FineType = require('../models/FineType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
@@ -265,10 +266,15 @@ function readPaidAt(value) {
   if (!value) return { paidAt: new Date() };
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return { error: 'Invalid date' };
-  const endOfToday = new Date();
-  endOfToday.setHours(23, 59, 59, 999);
-  if (parsed > endOfToday) return { error: 'Date cannot be in the future' };
+  if (isAfterToday(parsed)) return { error: 'Date cannot be in the future' };
   return { paidAt: parsed };
+}
+
+// The key the screen attached to a payment, or null. Anything that is not a short plain string is
+// ignored rather than trusted.
+function readRequestId(value) {
+  const key = typeof value === 'string' ? value.trim() : '';
+  return key && key.length <= 100 && /^[\w.:-]+$/.test(key) ? key : null;
 }
 
 function respondPaymentError(err, res, next) {
@@ -279,6 +285,9 @@ function respondPaymentError(err, res, next) {
 // Everything that follows a payment that has already been written: one audit entry per fine, and
 // one email naming what was received. Neither can fail the request — the payment is recorded.
 async function afterPayment({ result, req, paidAt }) {
+  // A retry of a payment that is already recorded has nothing more to audit or email: both were
+  // done the first time.
+  if (result.replay) return;
   const { applied, source, heldBefore, heldAfter, totalApplied, member } = result;
 
   for (const { fine, before, applied: part } of applied) {
@@ -345,6 +354,8 @@ async function paymentResponse(result) {
     fine: toFineJson(result.applied[0].fine),
     totalApplied: result.totalApplied,
     source: result.source,
+    // True when this answer is a payment that was already recorded, not a new one.
+    replay: Boolean(result.replay),
     // What it did to his balance: null for a cash payment, which does not touch it.
     held: result.source === 'balance' ? { before: result.heldBefore, after: result.heldAfter } : null,
   };
@@ -375,6 +386,7 @@ async function settleFine(req, res, next) {
       source,
       paidAt: when.paidAt,
       userId: req.user._id,
+      requestId: readRequestId(req.body?.clientRequestId),
     });
     await afterPayment({ result, req, paidAt: when.paidAt });
     res.json(await paymentResponse(result));
@@ -410,6 +422,7 @@ async function payMemberFines(req, res, next) {
       source,
       paidAt: when.paidAt,
       userId: req.user._id,
+      requestId: readRequestId(req.body?.clientRequestId),
     });
     await afterPayment({ result, req, paidAt: when.paidAt });
     res.json(await paymentResponse(result));
@@ -426,7 +439,9 @@ async function memberFinePosition(req, res, next) {
     if (!mongoose.Types.ObjectId.isValid(req.params.memberId)) {
       return res.status(404).json({ message: 'Member not found' });
     }
-    const member = await Member.findById(req.params.memberId).select('name phone regNumber active').lean();
+    const member = await Member.findById(req.params.memberId)
+      .select('name phone email emailNotifications regNumber active')
+      .lean();
     if (!member) return res.status(404).json({ message: 'Member not found' });
 
     const [ledger, fines] = await Promise.all([
@@ -446,6 +461,9 @@ async function memberFinePosition(req, res, next) {
         phone: member.phone,
         regNumber: member.regNumber || null,
         active: member.active !== false,
+        // Whether an email can reach him at all: an address on file and notifications left on. A member
+        // who cannot be emailed is told some other way, and the screen offers one.
+        canEmail: Boolean(String(member.email || '').trim()) && member.emailNotifications !== false,
       },
       // What the group holds for him — never negative as an offer: a member who holds nothing
       // simply cannot have a fine taken from his balance.
@@ -595,12 +613,26 @@ async function voidFine(req, res, next) {
       after: {
         ...snapshot(outcome.fine),
         returnedToBalance: outcome.released.returned,
+        returnedToPayments: outcome.released.restoredTotal,
         cashReceived: outcome.released.cash,
       },
     });
+    // The payments the fine had been paid out of are changed too, so each one has its own entry.
+    for (const { payment, before, amount } of outcome.released.restored) {
+      await logAudit({
+        action: 'update',
+        entityType: 'Contribution',
+        entityId: payment._id,
+        performedBy: req.user._id,
+        before,
+        after: { ...snapshot(payment), fineVoided: { fineId: outcome.fine._id, restored: amount } },
+      });
+    }
     res.json({
       ok: true,
       returnedToBalance: outcome.released.returned,
+      // Money that had gone to this fine out of a logged payment, now back on that payment.
+      returnedToPayments: outcome.released.restoredTotal,
       cashReceived: outcome.released.cash,
     });
   } catch (err) {

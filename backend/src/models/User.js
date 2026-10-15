@@ -43,6 +43,12 @@ const UserSchema = new Schema(
     // actually end the other sessions — including a thief's.
     passwordChangedAt: { type: Date, default: null },
     twoFactor: { type: TwoFactorSchema, default: () => ({}) },
+    // A password-reset link that has been asked for and not yet used. Only a hash of the token is
+    // kept (the token itself exists in the email and nowhere else), `select: false` like the
+    // password so nothing that merely reads a user can see it, and one at a time: asking again
+    // replaces the last, and using it clears it.
+    resetTokenHash: { type: String, default: '', select: false },
+    resetTokenExpires: { type: Date, default: null, select: false },
   },
   { timestamps: true }
 );

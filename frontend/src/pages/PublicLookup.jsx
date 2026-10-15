@@ -19,6 +19,12 @@ export default function PublicLookup() {
   // The ID that was accepted, normalised: it keys the passbook, the statement
   // downloads and the members' area below.
   const [lookedUpId, setLookedUpId] = useState('');
+  // The phone number registered on his record. Only asked for once the API says the group has
+  // switched the second check on (it answers 401 with `phoneRequired`), so a group that has not
+  // switched it on sees the form it always had.
+  const [phone, setPhone] = useState('');
+  const [needsPhone, setNeedsPhone] = useState(false);
+  const [lookedUpPhone, setLookedUpPhone] = useState('');
   const [error, setError] = useState('');
   // The ID field itself, so "check another ID" can put the cursor back in the box that just stood
   // down rather than leaving somebody to hunt for it.
@@ -78,15 +84,23 @@ export default function PublicLookup() {
       const res = await api.get('/api/public/lookup', {
         params: {
           nationalId: normalized,
+          phone: needsPhone && phone.trim() ? phone.trim() : undefined,
         },
       });
 
       setResult(res.data);
       setLookedUpId(normalized);
+      setLookedUpPhone(needsPhone ? phone.trim() : '');
       setStatus('found');
     } catch (err) {
       if (err.response?.status === 404) {
         setStatus('notFound');
+      } else if (err.response?.data?.phoneRequired) {
+        // The ID is right and the group asks for the phone number as well. Say so, in the group's
+        // own words, and leave the ID where it is.
+        setNeedsPhone(true);
+        setStatus('error');
+        setError(apiMessage(err, 'Enter the phone number registered with the group.'));
       } else {
         setStatus('error');
         setError(
@@ -106,6 +120,8 @@ export default function PublicLookup() {
     setStatus('idle');
     setResult(null);
     setLookedUpId('');
+    setLookedUpPhone('');
+    setPhone('');
     setError('');
     setId('');
     setFocusTick((n) => n + 1);
@@ -304,6 +320,33 @@ export default function PublicLookup() {
                 "
               />
 
+              {needsPhone && (
+                <div className="mt-4 lg:col-span-2">
+                  <label htmlFor="member-phone" className="mb-2 block text-sm font-semibold">
+                    Phone number registered with the chama
+                  </label>
+                  <input
+                    id="member-phone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="0712 345 678"
+                    value={phone}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      if (status === 'error') {
+                        setStatus('idle');
+                        setError('');
+                      }
+                    }}
+                    className="amount h-14 w-full rounded-xl border border-rule bg-page px-4 text-base outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 sm:text-lg"
+                  />
+                  <p className="mt-1.5 text-xs text-muted">
+                    The number the office has for you. Written any way: 0712…, +254712… or 712….
+                  </p>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={status === 'loading'}
@@ -396,8 +439,8 @@ export default function PublicLookup() {
               <PassbookCard
                 key={result.regNumber || result.name}
                 result={result}
-                statementUrl={`/api/public/lookup/statement?nationalId=${lookedUpId}`}
-                statementExcelUrl={`/api/public/lookup/statement/excel?nationalId=${lookedUpId}`}
+                statementUrl={`/api/public/lookup/statement?nationalId=${lookedUpId}${lookedUpPhone ? `&phone=${encodeURIComponent(lookedUpPhone)}` : ''}`}
+                statementExcelUrl={`/api/public/lookup/statement/excel?nationalId=${lookedUpId}${lookedUpPhone ? `&phone=${encodeURIComponent(lookedUpPhone)}` : ''}`}
               />
             </section>
           )}

@@ -13,6 +13,8 @@ import WhoOwesWhat from '../components/fines/WhoOwesWhat';
 export default function DisciplinaryFines() {
   const toast = useToast();
   const [members, setMembers] = useState([]);
+  // How many active members there are, so a list cut at the first five hundred says so.
+  const [memberTotal, setMemberTotal] = useState(0);
   const [types, setTypes] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -30,6 +32,7 @@ export default function DisciplinaryFines() {
     ])
       .then(([membersRes, typesRes]) => {
         setMembers(membersRes.data.members);
+        setMemberTotal(membersRes.data.total ?? membersRes.data.members.length);
         if (membersRes.data.members.length > 0) setSelectedId(membersRes.data.members[0]._id);
         setTypes(typesRes.data.types);
         if (typesRes.data.types.length > 0) {
@@ -222,6 +225,12 @@ export default function DisciplinaryFines() {
               <h2 className="text-sm font-semibold">Members</h2>
               <span className="text-xs text-muted">{filtered.length} shown</span>
             </div>
+            {memberTotal > members.length && (
+              <p className="border-b border-rule bg-canvas px-4 py-2 text-xs text-muted">
+                Only the first {members.length} of {memberTotal} members are listed here. Ask the office if
+                the one you need is missing.
+              </p>
+            )}
             {filtered.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-muted">No members match that search.</p>
             ) : (

@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const Member = require('../models/Member');
 const { normalizeNationalId } = require('./nationalId');
 const { logEvent } = require('../middleware/requestLogger');
+const { getOrCreateSettings } = require('./settings');
 
 const ID_ERROR = 'Enter a valid ID number, e.g. 12345678 (or a passport number)';
 
@@ -57,4 +58,53 @@ async function findActiveMemberByNationalId(rawId) {
   return { member: matches[0] };
 }
 
-module.exports = { findActiveMemberByNationalId, ID_ERROR };
+// The last nine digits of a phone number, whichever way it was written: 0712 345 678,
+// +254712345678 and 254712345678 are the same phone. Nine is the Kenyan national number. Empty when
+// there are not nine digits to compare.
+function phoneTail(value) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  return digits.length >= 9 ? digits.slice(-9) : '';
+}
+
+// The members' passbook: his ID, and — when the group has switched it on — the phone number
+// registered on his record as well (Settings.passbookPhoneCheck).
+//
+// An ID is on a card and in other people's phones, so on its own it is a weak door to somebody's
+// balance, fines and payments. A phone number is something he knows without looking it up and a
+// stranger holding his ID card usually does not. Only the passbook asks: the group's documents,
+// minutes and constitution are the group's papers, not one member's money, and stay on the ID alone.
+//
+// Same return shape as the ID gate, with `extra` for what the screen needs to react: `phoneRequired`
+// says to ask for the number, and a wrong one is refused in words (the ID's existence is already
+// known by then, so nothing more is given away).
+async function openPassbook(req) {
+  const gate = await findActiveMemberByNationalId(req.query.nationalId);
+  if (gate.error) return gate;
+
+  const settings = await getOrCreateSettings();
+  if (!settings.passbookPhoneCheck) return gate;
+
+  const given = phoneTail(req.query.phone);
+  if (!given) {
+    return {
+      error: {
+        status: 401,
+        message: 'Enter the phone number registered with the group to open your passbook.',
+        extra: { phoneRequired: true },
+      },
+    };
+  }
+  if (given !== phoneTail(gate.member.phone)) {
+    denied('wrong_phone', req.query.nationalId);
+    return {
+      error: {
+        status: 403,
+        message: 'That phone number does not match the one registered for this ID.',
+        extra: { phoneRequired: true },
+      },
+    };
+  }
+  return gate;
+}
+
+module.exports = { findActiveMemberByNationalId, openPassbook, phoneTail, ID_ERROR };

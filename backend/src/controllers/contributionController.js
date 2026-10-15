@@ -1,4 +1,5 @@
 const Contribution = require('../models/Contribution');
+const { isAfterToday } = require('../utils/futureDate');
 const Member = require('../models/Member');
 const ContributionType = require('../models/ContributionType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
@@ -32,9 +33,7 @@ function validateFields({ amount, date, method }, { partial = false } = {}) {
   if (date !== undefined && date !== null && date !== '') {
     const d = new Date(date);
     if (Number.isNaN(d.getTime())) return 'Invalid date';
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
-    if (d > endOfToday) return 'Date cannot be in the future';
+    if (isAfterToday(d)) return 'Date cannot be in the future';
   }
   return null;
 }
@@ -225,9 +224,7 @@ async function bulkCreateContributions(req, res, next) {
     if (Number.isNaN(parsedDate.getTime())) {
       return res.status(400).json({ message: 'Invalid date' });
     }
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
-    if (parsedDate > endOfToday) {
+    if (isAfterToday(parsedDate)) {
       return res.status(400).json({ message: 'Date cannot be in the future' });
     }
 

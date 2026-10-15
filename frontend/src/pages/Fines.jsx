@@ -59,6 +59,7 @@ export default function Fines() {
   const [summary, setSummary] = useState(null);
   const [list, setList] = useState(null);
   const [members, setMembers] = useState([]);
+  const [memberTotal, setMemberTotal] = useState(0);
   const [toCheck, setToCheck] = useState(0);
   const [status, setStatus] = useState('pending');
   const [page, setPage] = useState(1);
@@ -120,16 +121,32 @@ export default function Fines() {
     loadAll();
   }, [loadAll]);
 
+  // The issue tab's member picker asks the server for the few that match what is typed, rather
+  // than loading the whole register and filtering it here: a list capped at the first five
+  // hundred would quietly leave out everybody after them. Only while that tab is open.
   useEffect(() => {
-    // The member register, so the issue tab can offer a name to fine. Capped at 500 like every
-    // other picker in the app.
-    api
-      .get('/api/members', { params: { status: 'active', limit: 500 } })
-      .then((res) => setMembers(res.data.members))
-      .catch(() => {
-        // Non-fatal: the figures, the list and the report all still work.
-      });
-  }, []);
+    if (tab !== 'issue') return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .get('/api/members', {
+          params: { status: 'active', limit: 40, search: memberSearch.trim() || undefined },
+        })
+        .then((res) => {
+          if (!cancelled) {
+            setMembers(res.data.members);
+            setMemberTotal(res.data.total ?? res.data.members.length);
+          }
+        })
+        .catch(() => {
+          // Non-fatal: the figures, the list and the report all still work.
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [tab, memberSearch]);
 
   // Typing in the search box asks the server a moment after the last key, so a member is found
   // among every fine on the record and not only the page that happens to be loaded.
@@ -145,19 +162,6 @@ export default function Fines() {
     // `status` and `toast` are deliberately left out: choosing a filter loads it directly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
-
-  const filteredMembers = useMemo(() => {
-    const term = memberSearch.trim().toLowerCase();
-    if (!term) return members.slice(0, 40);
-    return members
-      .filter(
-        (m) =>
-          m.name.toLowerCase().includes(term) ||
-          String(m.phone || '').includes(term) ||
-          String(m.regNumber || '').toLowerCase().includes(term)
-      )
-      .slice(0, 40);
-  }, [members, memberSearch]);
 
   const owingMembers = useMemo(
     () => (summary?.byMember || []).filter((m) => Number(m.outstanding) > 0),
@@ -550,7 +554,7 @@ export default function Fines() {
                   aria-label="Search members"
                   className="h-12 w-full rounded-xl border border-rule bg-canvas px-4 text-sm"
                 />
-                {members.length === 0 ? (
+                {members.length === 0 && !memberSearch.trim() ? (
                   <p className="mt-3 text-sm text-muted">
                     No active members to fine. Add them on{' '}
                     <Link to="/admin/members" className="text-primary underline">
@@ -560,7 +564,7 @@ export default function Fines() {
                   </p>
                 ) : (
                   <ul className="mt-3 max-h-96 overflow-y-auto overscroll-contain rounded-lg border border-rule">
-                    {filteredMembers.map((m) => (
+                    {members.map((m) => (
                       <li key={m._id} className="border-b border-rule last:border-b-0">
                         <button
                           type="button"
@@ -578,10 +582,15 @@ export default function Fines() {
                         </button>
                       </li>
                     ))}
-                    {filteredMembers.length === 0 && (
+                    {members.length === 0 && (
                       <li className="px-3 py-6 text-center text-sm text-muted">No member matches that search.</li>
                     )}
                   </ul>
+                )}
+                {memberTotal > members.length && (
+                  <p className="mt-2 text-xs text-muted">
+                    Showing {members.length} of {memberTotal} members. Type a name, phone or reg number to narrow it.
+                  </p>
                 )}
               </>
             )}

@@ -184,6 +184,32 @@ taken back from the fine's history. Payments recorded before the system asked ha
 they are listed under **Fines → To check** and move nothing until the office says, one by one or
 all at once. `backend/test/integration/finePayments.test.js` pins all of it against a real database.
 
+**Hardening that came with it** (each has its own test):
+
+- *Limits that survive a restart.* The credential limits (sign-in, second factor, passbook lookup,
+  password change and reset) count in MongoDB (`middleware/rateLimitStore.js`, collection
+  `ratelimits`, removed by a TTL index) rather than in the process, so a deploy no longer hands
+  back a fresh set of tries. It fails open: with the database unreachable it counts in memory.
+- *Passbook second check.* `Settings.passbookPhoneCheck` (super admin, **off by default**) makes
+  the member's passbook and its two statement downloads ask for the phone number on his record as
+  well as his ID. Turn it on from Settings → Passbook access once the register's numbers are right.
+  The group's documents, minutes and constitution stay on the ID alone.
+- *Forgotten passwords by email.* `POST /api/auth/forgot-password` answers the same whether or not
+  the address has an account, mails a 30-minute single-use link (only its hash is stored), and the
+  link resets the password and ends every older session. The link is only offered when mail is
+  configured. A second factor, if on, is still asked at sign-in.
+- *Duplicate protection.* A fine payment carries a `clientRequestId`, so a retried submit returns the
+  payment already recorded; a payment whose pasted M-Pesa code is already on another payment is
+  refused with a 409 until the treasurer confirms it is a second payment.
+- *Dates in the group's own time.* "Date cannot be in the future" compares calendar days in EAT
+  (`utils/futureDate.js`); between midnight and 3am the server's UTC clock used to refuse today.
+- *Leaving the group.* A member who holds money or owes fines is not resigned until a settlement
+  note says what became of it (`Member.resignationSettlement`).
+- *Idle sign-out and update prompt.* A session with no activity for 30 minutes ends (a minute's
+  warning first; the offline outbox is kept), and an open tab is told when a new build is deployed.
+- *Needs attention.* The dashboard says, to the people who can act, when no copy of the books has left
+  the server recently, two-factor is off, or fine payments are waiting to be sorted.
+
 **"Who owes what" is a list you work, not one you read** (`components/fines/WhoOwesWhat.jsx`,
 used by Reports → Fines and by the discipline screen, so the two cannot describe the same debts
 differently). It leads with the three figures a meeting asks for — how many members owe, how much

@@ -4,6 +4,7 @@ import PublicLookup from './pages/PublicLookup.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './components/shared/Toast.jsx';
 import OfflineBanner from './components/shared/OfflineBanner.jsx';
+import UpdateBanner from './components/shared/UpdateBanner';
 import Loader from './components/shared/Loader.jsx';
 import RoleGuard from './components/layout/RoleGuard.jsx';
 
@@ -13,6 +14,7 @@ import RoleGuard from './components/layout/RoleGuard.jsx';
 // balance should pay for either.
 const PublicConstitution = lazy(() => import('./pages/PublicConstitution.jsx'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin.jsx'));
+const PasswordReset = lazy(() => import('./pages/PasswordReset.jsx'));
 const ProtectedRoute = lazy(() => import('./components/layout/ProtectedRoute.jsx'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
 const AdminSettings = lazy(() => import('./pages/AdminSettings.jsx'));
@@ -51,6 +53,7 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <OfflineBanner />
+        <UpdateBanner />
         <Suspense fallback={<Loader />}>
           <Routes>
             <Route path="/" element={<PublicLookup />} />
@@ -58,6 +61,10 @@ export default function App() {
                 a member, and there is no public link to it anywhere. */}
             <Route path="/constitution" element={<PublicConstitution />} />
             <Route path="/admin/login" element={<AdminLogin />} />
+            {/* Both steps of a forgotten password: asking for the link, and choosing a new
+                password from it. Public, because the person cannot sign in. */}
+            <Route path="/admin/forgot-password" element={<PasswordReset />} />
+            <Route path="/admin/reset-password" element={<PasswordReset />} />
             <Route element={<ProtectedRoute />}>
               <Route
                 path="/admin/dashboard"

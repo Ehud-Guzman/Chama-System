@@ -824,6 +824,35 @@ function buildFineSettledEmail({ chamaName, member, payments = [], totalPaid = 0
   };
 }
 
+// The message that carries a password-reset link. Short on purpose: it says who asked, gives the
+// link and how long it lasts, and tells somebody who did not ask that nothing has changed.
+function buildPasswordResetEmail({ chamaName, name, link, minutes = 30 }) {
+  const group = chamaName || CHAMA_NAME;
+  const firstName = String(name || '').split(' ')[0] || 'there';
+  const text = [
+    `Hi ${firstName},`,
+    '',
+    `Somebody asked to reset the password for your ${group} account. To choose a new one, open this link within ${minutes} minutes:`,
+    '',
+    link,
+    '',
+    'If it was not you, ignore this message. Your password has not changed and the link stops working by itself.',
+    '',
+    group,
+  ].join('\n');
+  const html = `
+  <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.6;color:#1b2b24">
+    <p>Hi ${escapeHtml(firstName)},</p>
+    <p>Somebody asked to reset the password for your <strong>${escapeHtml(group)}</strong> account.
+    To choose a new one, use the button within ${minutes} minutes.</p>
+    <p style="margin:20px 0"><a href="${escapeHtml(link)}" style="background:#166534;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600">Choose a new password</a></p>
+    <p style="font-size:12px;color:#5c6b62">Or paste this into your browser:<br>${escapeHtml(link)}</p>
+    <p>If it was not you, ignore this message. Your password has not changed and the link stops working by itself.</p>
+    <p>${escapeHtml(group)}</p>
+  </div>`;
+  return { subject: `${group}: reset your password`, text, html };
+}
+
 module.exports = {
   cleanEmail,
   isValidEmail,
@@ -853,4 +882,5 @@ module.exports = {
   // mail server involved.
   buildFineIssuedEmail,
   buildFineSettledEmail,
+  buildPasswordResetEmail,
 };

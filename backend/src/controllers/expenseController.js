@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { isAfterToday } = require('../utils/futureDate');
 const Expense = require('../models/Expense');
 const ContributionType = require('../models/ContributionType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
@@ -113,9 +114,7 @@ async function createExpense(req, res, next) {
     // silently skews every report.
     const when = date ? new Date(date) : new Date();
     if (Number.isNaN(when.getTime())) return res.status(400).json({ message: 'Invalid date' });
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
-    if (when > endOfToday) {
+    if (isAfterToday(when)) {
       return res.status(400).json({ message: 'Date cannot be in the future' });
     }
 
@@ -186,9 +185,7 @@ async function updateExpense(req, res, next) {
     if (date !== undefined && date !== null && date !== '') {
       const d = new Date(date);
       if (Number.isNaN(d.getTime())) return res.status(400).json({ message: 'Invalid date' });
-      const endOfToday = new Date();
-      endOfToday.setHours(23, 59, 59, 999);
-      if (d > endOfToday) return res.status(400).json({ message: 'Date cannot be in the future' });
+      if (isAfterToday(d)) return res.status(400).json({ message: 'Date cannot be in the future' });
       expense.date = d;
     }
     if (description !== undefined) expense.description = String(description).trim();

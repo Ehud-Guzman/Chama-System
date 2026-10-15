@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const { isAfterToday } = require('../utils/futureDate');
+const { extractMpesaCodes } = require('../utils/mpesaCode');
 const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const Expense = require('../models/Expense');
@@ -229,9 +231,7 @@ function validateLog({ amount, date, method }) {
   if (date !== undefined && date !== null && date !== '') {
     const d = new Date(date);
     if (Number.isNaN(d.getTime())) return 'Invalid date';
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
-    if (d > endOfToday) return 'Date cannot be in the future';
+    if (isAfterToday(d)) return 'Date cannot be in the future';
   }
   return null;
 }
@@ -294,7 +294,8 @@ async function createLog(req, res, next) {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ message: 'Member not found' });
     }
-    const { kind, amount, date, method, note, description, fundTypeId, clientRequestId } = req.body || {};
+    const { kind, amount, date, method, note, description, fundTypeId, clientRequestId, confirmDuplicate } =
+      req.body || {};
 
     if (!LOG_KINDS.includes(kind)) {
       return res.status(400).json({ message: `Kind must be one of: ${LOG_KINDS.join(', ')}` });
@@ -313,6 +314,34 @@ async function createLog(req, res, next) {
     if (clientRequestId) {
       const existing = await Contribution.findOne({ clientRequestId }).lean();
       if (existing) return res.status(200).json({ entry: existing, replay: true });
+    }
+
+    // The same M-Pesa code on a payment already in the books is, nearly always, the same money keyed
+    // twice. Said before anything is written, with the payment it matches, and overridable: a code
+    // pasted into a note is only text, and the treasurer can confirm it really is a second payment.
+    // After the replay check above, so a payment sent again from the offline outbox is not mistaken
+    // for a duplicate of itself.
+    if (kind !== 'expense' && confirmDuplicate !== true) {
+      for (const code of extractMpesaCodes(text)) {
+        const earlier = await Contribution.findOne({
+          deleted: false,
+          // The code is letters and digits only, so it is safe inside a pattern.
+          note: { $regex: String.raw`\b${code}\b` },
+        })
+          .populate('memberId', 'name')
+          .lean();
+        if (earlier) {
+          const ksh = (n) => `Ksh ${Number(n || 0).toLocaleString('en-KE')}`;
+          return res.status(409).json({
+            message:
+              `The M-Pesa code ${code} is already on a payment: ${ksh(earlier.grossAmount ?? earlier.amount)} ` +
+              `for ${earlier.memberId?.name || 'a member'} on ${toEatDateString(earlier.date)}. ` +
+              'If this really is a second payment, confirm it.',
+            needsConfirmation: true,
+            duplicateOf: { id: earlier._id, code },
+          });
+        }
+      }
     }
 
     const types = await getLedgerTypes();

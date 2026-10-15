@@ -1,11 +1,12 @@
 const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const Fine = require('../models/Fine');
+const { memberLedgerNow } = require('../utils/memberMoney');
 const ContributionType = require('../models/ContributionType');
 const Counter = require('../models/Counter');
 const { normalizePhone } = require('../utils/phone');
 const { normalizeNationalId, storedNationalId } = require('../utils/nationalId');
-const { findActiveMemberByNationalId } = require('../utils/publicAccess');
+const { openPassbook } = require('../utils/publicAccess');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { parseMembersCSV } = require('../utils/csvImport');
 const { typeBreakdown } = require('../utils/typeBreakdown');
@@ -615,6 +616,7 @@ async function updateMember(req, res, next) {
       if (member.active) {
         member.resignedAt = null;
         member.resignationReason = '';
+        member.resignationSettlement = '';
       }
     }
     if (emailNotifications !== undefined) {
@@ -709,11 +711,38 @@ async function resignMember(req, res, next) {
     const member = await Member.findById(req.params.id);
     if (!member) return res.status(404).json({ message: 'Member not found' });
     if (!member.active) return res.status(400).json({ message: 'Member is already inactive' });
+
+    // Resigning changes nothing about what he holds or what he owes: the money stays in the group's
+    // books and the fines stay on his record. So a member leaving with either is not resigned until
+    // somebody has written down what became of them — otherwise the figure sits there for ever with
+    // nobody able to say whether it was paid out, kept, or forgotten.
+    const [ledger, owedRows] = await Promise.all([
+      memberLedgerNow(member._id),
+      Fine.aggregate([
+        { $match: { memberId: member._id, deleted: false, remaining: { $gt: 0 } } },
+        { $group: { _id: null, owed: { $sum: '$remaining' }, count: { $sum: 1 } } },
+      ]),
+    ]);
+    const held = Math.max(0, Math.round((Number(ledger?.money) || 0) * 100) / 100);
+    const owed = Math.round((owedRows[0]?.owed || 0) * 100) / 100;
+    const settlement = String(req.body?.settlement || '').trim();
+    if ((held > 0 || owed > 0) && settlement.length < 3) {
+      const fmt = (n) => `Ksh ${Number(n).toLocaleString('en-KE')}`;
+      return res.status(409).json({
+        message:
+          `He still holds ${fmt(held)} and owes ${fmt(owed)} in fines. ` +
+          'Write down how that was settled (paid out, kept, taken against his fines) before resigning him.',
+        held,
+        owed,
+        needsSettlement: true,
+      });
+    }
     const before = snapshot(member);
 
     member.active = false;
     member.resignedAt = new Date();
     member.resignationReason = String(req.body?.reason || '').trim();
+    member.resignationSettlement = settlement.slice(0, 500);
     await member.save();
 
     await logAudit({
@@ -1223,8 +1252,10 @@ function readStatementPeriod(req, res) {
 // publicLookup. `?year=`, `?quarter=`, `?from=&to=` and `?range=` narrow it to a period.
 async function publicLookupStatement(req, res, next) {
   try {
-    const gate = await findActiveMemberByNationalId(req.query.nationalId);
-    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
+    const gate = await openPassbook(req);
+    if (gate.error) {
+      return res.status(gate.error.status).json({ message: gate.error.message, ...(gate.error.extra || {}) });
+    }
     const read = readStatementPeriod(req, res);
     if (read.failed) return undefined;
     await sendStatement(res, await buildPublicProfile(gate.member, { self: true, period: read.period }));
@@ -1235,8 +1266,10 @@ async function publicLookupStatement(req, res, next) {
 // GET /api/public/lookup/statement/excel?nationalId= — PUBLIC
 async function publicLookupStatementExcel(req, res, next) {
   try {
-    const gate = await findActiveMemberByNationalId(req.query.nationalId);
-    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
+    const gate = await openPassbook(req);
+    if (gate.error) {
+      return res.status(gate.error.status).json({ message: gate.error.message, ...(gate.error.extra || {}) });
+    }
     const read = readStatementPeriod(req, res);
     if (read.failed) return undefined;
     await sendStatementExcel(
@@ -1270,8 +1303,10 @@ async function publicLookup(req, res, next) {
   try {
     // Exact match is enforced inside the gate — no regex, no partial search, one
     // member or none.
-    const gate = await findActiveMemberByNationalId(req.query.nationalId);
-    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
+    const gate = await openPassbook(req);
+    if (gate.error) {
+      return res.status(gate.error.status).json({ message: gate.error.message, ...(gate.error.extra || {}) });
+    }
 
     // The ID that just matched IS the credential, so this caller is the member:
     // he sees his own email and next of kin. Nobody reaches this without his own

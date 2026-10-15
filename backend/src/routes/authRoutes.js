@@ -13,6 +13,9 @@ const {
   createAdmin,
   updateAdmin,
   resetAdminPassword,
+  passwordResetAvailable,
+  forgotPassword,
+  resetPasswordWithToken,
 } = require('../controllers/authController');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const {
@@ -21,6 +24,8 @@ const {
   twoFactorLimiter,
   twoFactorSprayLimiter,
   passwordChangeLimiter,
+  passwordResetLimiter,
+  passwordResetSprayLimiter,
 } = require('../middleware/rateLimiter');
 
 // The spray limiter runs first: it caps total attempts from one connection, so a
@@ -32,6 +37,12 @@ router.post('/login', loginSprayLimiter, loginLimiter, login);
 // five-minute challenge — which is not a session and is refused everywhere else.
 // Budgeted per challenge and per connection (see middleware/rateLimiter).
 router.post('/2fa/verify', twoFactorSprayLimiter, twoFactorLimiter, verifyTwoFactor);
+
+// Forgotten passwords, by email. Public, because the person asking cannot sign in. Whether the link
+// is offered at all depends on the server being able to send mail.
+router.get('/password-reset/available', passwordResetAvailable);
+router.post('/forgot-password', passwordResetSprayLimiter, passwordResetLimiter, forgotPassword);
+router.post('/reset-password', passwordResetSprayLimiter, passwordChangeLimiter, resetPasswordWithToken);
 
 router.get('/me', requireAuth, me);
 router.patch('/me/password', requireAuth, passwordChangeLimiter, changeOwnPassword);

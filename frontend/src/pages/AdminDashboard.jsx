@@ -5,6 +5,7 @@ import ChangePasswordForm from '../components/shared/ChangePasswordForm';
 import MemberLedgerList from '../components/ledger/MemberLedgerList';
 import WorkspaceNav from '../components/layout/WorkspaceNav';
 import FinesSummaryCard from '../components/fines/FinesSummaryCard';
+import AttentionStrip from '../components/layout/AttentionStrip';
 
 // How many names the dashboard opens with. The full list is /admin/finance — the
 // same component without a cap — so a dashboard that shows everybody is not adding
@@ -27,6 +28,9 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-w-0 space-y-4">
+      {/* What is quietly wrong: no copy of the books off the server, two-factor off, fine payments
+          waiting to be sorted. Draws nothing when all is well. */}
+      <AttentionStrip />
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_19rem] xl:items-start xl:gap-6">
         <div className="min-w-0">
           <MemberLedgerList

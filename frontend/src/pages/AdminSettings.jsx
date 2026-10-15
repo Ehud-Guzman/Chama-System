@@ -4,6 +4,7 @@ import ChangePasswordForm from '../components/shared/ChangePasswordForm';
 import TwoFactorPanel from '../components/shared/TwoFactorPanel';
 import AddAdminForm from '../components/shared/AddAdminForm';
 import BackupPanel from '../components/shared/BackupPanel';
+import PassbookAccessPanel from '../components/shared/PassbookAccessPanel';
 import ReminderSettingsPanel from '../components/shared/ReminderSettingsPanel';
 import BackLink from '../components/shared/BackLink';
 import NavTile from '../components/shared/NavTile';
@@ -58,6 +59,12 @@ const SECTIONS = [
     // super admin only. Listed to match the guard rather than to promise something the route
     // would refuse.
     roles: ['super_admin', 'admin'],
+  },
+  {
+    id: 'passbook',
+    label: 'Passbook access',
+    hint: 'Ask members for their phone number as well as their ID',
+    roles: ['super_admin'],
   },
   {
     id: 'backup',
@@ -139,6 +146,11 @@ export default function AdminSettings() {
           {has('security') && (
             <div id="security" className="scroll-mt-24">
               <TwoFactorPanel />
+            </div>
+          )}
+          {has('passbook') && (
+            <div id="passbook" className="scroll-mt-24">
+              <PassbookAccessPanel />
             </div>
           )}
           {has('backup') && (

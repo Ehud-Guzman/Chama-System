@@ -23,6 +23,8 @@ thing — his verdict on a chapter of the constitution.
 - ✅ Switch the group's two-factor authentication on or off (Settings → Security)
 - ✅ Decide whether a logged payment pays down fines before it counts as contribution
   (`autoSettleFines`, off by default, super admin only)
+- ✅ Switch on the second check for members' passbooks (`passbookPhoneCheck`, off by default, super
+  admin only): Settings → Passbook access
 - ✅ Access all data (contributions, expenses, fines, members, reports)
 - ✅ Modify system settings (chama name, logo, vision and mission, weekly tracking start)
 - ✅ Create & manage contribution types and fine types
