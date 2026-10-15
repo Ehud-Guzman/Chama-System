@@ -15,9 +15,10 @@
 //   Settings.reminderMoneyLimitWeek  the week that figure belongs to; null means the cycle's own
 //                                    opening week, so a fresh install needs only one number
 //
-// and the line **moves with the cycle**: `limit(week) = base + weeklyAmount × (week − anchor)`.
-// Week 92 therefore reads 114,600, week 93 reads 116,000, week 94 reads 117,400 — the same 1,400
-// a week the collection itself moves by, because the figure it is being compared against is what
+// and the line **moves with the cycle**: `limit(week) = base + (weeklyAmount − tea) × (week − anchor)`.
+// On a 1,500 contribution with 100 of tea, week 92 reads 114,600, week 93 reads 116,000, week 94
+// reads 117,400 — the same net 1,400 a week a member who pays in full gains (the tea is cut from
+// every member's contribution), because the figure it is being compared against is what
 // the group expects a member to have put in by then. Without that growth the rule would silently
 // expire: a fixed 114,600 stops excluding anybody a fortnight later.
 //
@@ -72,6 +73,16 @@ function normaliseMoneyLimitWeek(value) {
   return week;
 }
 
+// How much the line rises each week: the contribution less the tea, which is cut from every
+// member's contribution. A member who pays in full gains exactly this much in what the group holds
+// for him, so a line that rose by the whole contribution would leave him a little further below it
+// every week with nothing owed (1,500 paid, 100 of tea: he gains 1,400, and the line must too).
+function lineStep(config) {
+  const weekly = Number(config?.weeklyAmount) || 0;
+  const tea = Number(config?.chaiAmount) || 0;
+  return Math.max(0, weekly - tea);
+}
+
 // The line as it stands in `currentWeek`, or 0 when the rule is switched off. Pure, so the
 // reminders screen, the weekly sweep and the sweep's own report all read it the same way.
 function moneyLimitForWeek(settings, config, currentWeek) {
@@ -82,7 +93,7 @@ function moneyLimitForWeek(settings, config, currentWeek) {
   // Nothing is added for a week the group has not reached, so a limit anchored in a future week
   // reads as the figure itself rather than as the figure minus a few weeks' worth.
   const weeksSince = Math.max(0, (Number(currentWeek) || 0) - anchor);
-  return toMoney(base + (Number(config.weeklyAmount) || 0) * weeksSince);
+  return toMoney(base + lineStep(config) * weeksSince);
 }
 
 // The decision, as a pure function of (what he holds, where the line is). At or above the line he
@@ -110,6 +121,7 @@ module.exports = {
   MONEY_LIMIT_CEILING,
   normaliseMoneyLimit,
   normaliseMoneyLimitWeek,
+  lineStep,
   moneyLimitForWeek,
   coveredByBalance,
   aboveLimitReason,

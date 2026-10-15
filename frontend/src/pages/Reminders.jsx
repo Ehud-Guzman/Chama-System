@@ -178,7 +178,7 @@ export default function Reminders() {
           </span>{' '}
           A member with that much in the group&rsquo;s hands has paid more into the cycle than it has
           asked of him, so a closed week he missed is not a reason to write to him — his unpaid fines
-          still are. The line rises {money(data.weeklyAmount)} a week with the collection itself
+          still are. The line rises {money(data.moneyLimitStep ?? data.weeklyAmount)} a week (the contribution less the tea)
           ({money(data.moneyLimit)} in week {data.currentWeek}).{' '}
           {data.coveredCount > 0
             ? `${data.coveredCount} ${

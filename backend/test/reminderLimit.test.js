@@ -13,6 +13,7 @@ const {
   MONEY_LIMIT_CEILING,
   normaliseMoneyLimit,
   normaliseMoneyLimitWeek,
+  lineStep,
   moneyLimitForWeek,
   coveredByBalance,
 } = require('../src/utils/reminderLimit');
@@ -88,4 +89,48 @@ test('the week the figure was measured in falls back to the cycle\'s opening wee
     moneyLimitForWeek({ reminderMoneyLimit: 114600 }, config, 93),
     moneyLimitForWeek({ reminderMoneyLimit: 114600, reminderMoneyLimitWeek: 92 }, config, 93)
   );
+});
+
+// The line rises by what a member who pays in full actually gains: the contribution less the tea.
+test('the line rises by the contribution less the tea', () => {
+  const settings = { reminderMoneyLimit: 114600 };
+  const net = { cycleStartWeek: 92, weeklyAmount: 1500, chaiAmount: 100 };
+
+  assert.equal(lineStep(net), 1400);
+  assert.equal(moneyLimitForWeek(settings, net, 92), 114600);
+  assert.equal(moneyLimitForWeek(settings, net, 93), 116000);
+  assert.equal(moneyLimitForWeek(settings, net, 94), 117400);
+  // No tea set, or tea larger than the contribution: never a line that falls.
+  assert.equal(lineStep({ weeklyAmount: 1400 }), 1400);
+  assert.equal(lineStep({ weeklyAmount: 50, chaiAmount: 100 }), 0);
+});
+
+test('a member who pays every week stays on the line, week after week', () => {
+  const { computeMemberLedger } = require('../src/utils/memberLedger');
+  const { resolveConfig, weekRange } = require('../src/utils/weekCycle');
+  const settings = {
+    weekAnchorDate: new Date('2026-07-03T00:00:00+03:00'),
+    cycleStartWeek: 92,
+    weeklyAmount: 1500,
+    chaiAmount: 100,
+    reminderMoneyLimit: 114600,
+  };
+  const cfg = resolveConfig(settings);
+
+  for (const week of [93, 94, 102, 112]) {
+    const contributions = [];
+    for (let w = 93; w <= week; w++) {
+      contributions.push({
+        _id: `c${w}`,
+        bucket: 'weekly',
+        isGroupFund: false,
+        amount: 1500,
+        date: new Date(weekRange(w, cfg).startDate.getTime() + 86400000),
+      });
+    }
+    const now = weekRange(week, cfg).startDate.getTime() + 3 * 86400000;
+    const ledger = computeMemberLedger({ member: { openingBalance: 114600 }, contributions, config: cfg, now });
+    assert.equal(ledger.weeksBehind, 0, `week ${week}: nothing unpaid`);
+    assert.ok(ledger.money >= ledger.moneyLimit, `week ${week}: holds ${ledger.money}, line ${ledger.moneyLimit}`);
+  }
 });

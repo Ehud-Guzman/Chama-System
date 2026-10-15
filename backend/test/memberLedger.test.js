@@ -327,7 +327,7 @@ const configNoLine = resolveConfig({
   reminderMoneyLimit: 0,
 });
 
-const HOLDING_THE_LINE = parseEatDate('2026-09-25'); // week 94: line = 114,600 + 2 × 1,400
+const HOLDING_THE_LINE = parseEatDate('2026-09-25'); // week 94: line = 114,600 + 2 × (1,400 − 100 tea)
 
 test('above the line the weeks are still the record and nothing is chased', () => {
   const ledger = computeMemberLedger({
@@ -337,7 +337,7 @@ test('above the line the weeks are still the record and nothing is chased', () =
     now: HOLDING_THE_LINE,
   });
 
-  assert.equal(ledger.moneyLimit, 117400, 'the line moves 1,400 a week from week 92');
+  assert.equal(ledger.moneyLimit, 117200, 'the line moves 1,300 a week (the 1,400 less 100 of tea) from week 92');
   assert.equal(ledger.coveredByBalance, true);
   assert.equal(ledger.arrears, 1400, 'the record is untouched');
   assert.equal(ledger.weeksBehind, 1);
@@ -348,7 +348,7 @@ test('above the line the weeks are still the record and nothing is chased', () =
   const summary = summariseMember({ _id: 'm1', name: 'A', active: true }, ledger);
   assert.equal(summary.chasedArrears, 0);
   assert.equal(summary.chasedWeeksBehind, 0);
-  assert.equal(summary.moneyLimit, 117400);
+  assert.equal(summary.moneyLimit, 117200);
 });
 
 test('below the line what is chased is simply what is owed', () => {

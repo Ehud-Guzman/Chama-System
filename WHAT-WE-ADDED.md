@@ -2158,6 +2158,83 @@ NOT CHANGED, ON PURPOSE
     resigning does not clear it. The resign screen shows them before he goes.
 
 
+A REPORT YOU CAN PRINT: THE MEETING REPORT
+------------------------------------------
+
+THE PROBLEM
+
+  Every figure a meeting asks for already existed — the week's collection, who owes a fine, the
+  spending, what the funds hold — but each lived behind its own tab, and the only way to put them in
+  front of a room was to read them off a phone one tab at a time. Nothing could be printed with its
+  total beside it, and nothing said who held less than the group's money line and who held more.
+
+WHAT IT DOES NOW
+
+  Reports -> "Print a report": tick what the meeting needs and download one PDF. Each part is closed
+  by its total, and the first block, "At a glance", repeats the closing figure of every part chosen.
+
+    Where the money stands          money in, spent and held; each fund's in, out and what it holds
+    This week's collection          what the week asks for, what has come in, who is still to pay
+    Members below the line (debts)  who holds LESS than this week's money line, and by how much
+    Members above the line (extra)  who holds MORE than the line, and by how much
+    Fines                           issued / paid off / still owed, by type, and who owes what for
+    Expenses                        what was spent, by fund, with vouchers and notes (this week,
+                                    this month, or everything on record)
+
+  - THE LINE is the group's own money line (Settings -> Reminders, utils/reminderLimit): 114,600 in
+    the week the books opened, rising by the weekly amount each week. "Holds" is what the group is
+    keeping for the member - carried in, plus paid in, less the tea and any fines that came off it -
+    which is exactly the figure the reminders screen measures against the line. A member exactly on
+    the line counts as above it, with nothing extra. A line of 0 is the group switching the rule off:
+    both parts say so rather than printing empty lists.
+  - The debts part also shows how many CLOSED WEEKS each member has unpaid. A member can be below the
+    line with none: the line already counts the week now running, so he sits under it until he brings
+    that week's contribution, and fines paid out of what he holds lower it too. The page says so.
+  - A loan or advance is listed under Expenses but is not counted as spent - the same rule the
+    spending report and the group's total follow.
+  - Only the parts ticked are read and printed: a page for the fines alone does not wait on every
+    member's ledger and does not carry the spending.
+  - Every page is numbered, and a table that runs over a page has its heading put back at the top.
+  - Spending is itemised by voucher, which only the admin, super admin and treasurer see elsewhere, so
+    the secretary is not offered it and the server refuses it by name. A secretary who asks for
+    nothing in particular gets everything else.
+
+THE LINE NOW RISES BY THE CONTRIBUTION LESS THE TEA
+
+  The tea (100) is cut from every member's contribution, so a member who pays in full gains the
+  contribution less 100 in what the group holds for him (1,500 paid: 1,400 held). The line used to rise
+  by the whole contribution, so he slipped 100 a week further below it with nothing owed (measured:
+  100 below in week 94, 1,900 in week 112, no unpaid week). It now rises by weeklyAmount - chaiAmount
+  (utils/reminderLimit lineStep), so he stays on it. This is the same line the Reminders screen, the
+  weekly sweep, the member list and the passbook use, so it changes who is chased: members who were
+  below the line only because of the drift are no longer told they are behind. The base figure
+  (Settings -> Reminders) is untouched, and both screens that state the weekly rise now say "the
+  contribution less the tea". `moneyLimitStep` is on the reminders payload.
+
+  backend/src/utils/reminderLimit.js, notificationController.js, test/reminderLimit.test.js (a member
+  who pays every week stays on the line in weeks 93, 94, 102 and 112), test/memberLedger.test.js
+  (its 1,400 / 100 config now reads 117,200 in week 94), frontend Reminders.jsx and
+  ReminderSettingsPanel.jsx.
+
+FILES
+
+  backend/src/utils/meetingReport.js           NEW - the sections, the split about the line, the
+                                               totals and the PDF
+  backend/src/controllers/reportController.js `GET /api/reports/print?sections=&expenses=`; the
+                                               week's figures are now one function
+                                               (computeThisWeek) shared by the summary card and
+                                               this page
+  backend/src/routes/reportRoutes.js           the route (same four roles as the other reports)
+  backend/test/meetingReport.test.js           NEW - 20 checks: the split about the line, every
+                                               total, the periods, and the printed text read back
+  backend/test/integration/meetingReport.test.js  NEW - 6 checks on a real database: the line, the
+                                               role gate, the periods, and the summary card
+  frontend/src/utils/printReport.js            NEW - the menu, who is offered what, the request
+  frontend/src/components/reports/PrintReportPanel.jsx  NEW - the tick-list and the download
+  frontend/src/pages/Reports.jsx               the "Print a report" tab
+  frontend/test/printReport.test.js            NEW - the menu and the request
+
+
 END OF DOCUMENT
 ===============
 

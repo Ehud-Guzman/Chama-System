@@ -11,6 +11,7 @@ const {
   trend,
   finesReport,
   exportFinesReport,
+  printReport,
   memberReport,
 } = require('../controllers/reportController');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -30,6 +31,8 @@ router.get('/trend', trend);
 // The group's fines: totals, by type, by member and by month.
 router.get('/fines', finesReport);
 router.get('/fines/export', exportFinesReport);
+// The meeting report: the sections ticked, as one PDF with their totals.
+router.get('/print', printReport);
 // One member's own figures — the chart a row in the performance list opens.
 // Served from here rather than /api/members/:id so a secretary, who may read the
 // reports but not the member records, can open the same chart.

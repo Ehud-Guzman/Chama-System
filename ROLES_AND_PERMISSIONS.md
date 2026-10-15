@@ -232,6 +232,7 @@ phone numbers are no longer accepted anywhere on the public side.
 | **A member's ID / phone / next of kin** | R/W | R/W | C (blank → value only) | ❌ | ❌ |
 | **Types** (contribution/fine) | R/W | R/W | C contribution types | ❌ | ❌ |
 | **Reports** | R + export | R + export | R + export | R + export | ❌ |
+| **Print a report** (Reports → Print a report) | all parts | all parts | all parts | all but the spending | ❌ |
 | **Meeting Minutes** | R/W | R/W | R (API only) | R/W | ❌ |
 | **Documents** | R/W | R/W | R | R/W | ❌ |
 | **Reminders (email)** | R/W | R/W | R/W | ❌ | ❌ |

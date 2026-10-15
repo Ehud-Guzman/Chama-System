@@ -15,6 +15,7 @@ import MemberChartModal from "../components/reports/MemberChartModal";
 import WeekProgressCard from "../components/reports/WeekProgressCard";
 import ContributionChart from "../components/reports/ContributionChart";
 import WhoOwesWhat from "../components/fines/WhoOwesWhat";
+import PrintReportPanel from "../components/reports/PrintReportPanel";
 
 // Month keys arrive as 'YYYY-MM' (the group's own calendar month). A fixed list
 // rather than a locale call: the same label on every device, in any language.
@@ -64,7 +65,7 @@ export default function Reports() {
   // Whether this role may work a fine (issue, settle, void) rather than only read the
   // report — the same two roles the route guard and the API allow.
   const mayWorkFines = ['super_admin', 'admin'].includes(user?.role);
-  const [tab, setTab] = useState("summary"); // summary | weekly | performance | monthly | fines
+  const [tab, setTab] = useState("summary"); // summary | weekly | performance | monthly | fines | print
   const [summary, setSummary] = useState(null);
   const [performance, setPerformance] = useState(null);
   const [performanceTotals, setPerformanceTotals] = useState(null);
@@ -169,7 +170,9 @@ export default function Reports() {
                   ? "Monthly totals"
                   : tab === "fines"
                     ? "Fines"
-                    : "Weekly reconciliation"}
+                    : tab === "print"
+                      ? "Print a report"
+                      : "Weekly reconciliation"}
           </h1>
         </div>
         <div className="flex gap-2">
@@ -252,6 +255,7 @@ export default function Reports() {
           ["performance", "Member performance"],
           ["monthly", "Monthly totals"],
           ["fines", "Fines"],
+          ["print", "Print a report"],
         ].map(([value, label]) => (
           <button
             key={value}
@@ -517,6 +521,10 @@ export default function Reports() {
           </section>
         )}
         </>
+      )}
+
+      {tab === "print" && (
+        <PrintReportPanel role={user?.role} weekNumber={summary?.thisWeek?.weekNumber} />
       )}
 
       {tab === "fines" && (

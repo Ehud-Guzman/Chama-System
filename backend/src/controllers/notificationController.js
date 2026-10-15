@@ -48,6 +48,7 @@ const {
 // it decides who is written to and never what the books say.
 const {
   moneyLimitForWeek,
+  lineStep,
   coveredByBalance,
   aboveLimitReason,
 } = require('../utils/reminderLimit');
@@ -302,6 +303,8 @@ async function listReminders(req, res, next) {
       // alone, where that line stands this week, and how many names it explains (utils/reminderLimit).
       moneyLimit,
       weeklyAmount: config.weeklyAmount,
+      // What the money line rises by each week: the contribution less the tea.
+      moneyLimitStep: lineStep(config),
       currentWeek: currentWeekNumber(config),
       coveredCount: covered.length,
       coveredNames: covered.slice(0, 5).map((r) => r.name),

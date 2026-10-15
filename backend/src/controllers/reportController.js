@@ -17,6 +17,19 @@ const { aboutSheet } = require('../utils/aboutSheet');
 // same function the expenses screen and its report use, so the figure under this
 // headline and the figure on the spending report are one calculation, not two.
 const { computeMoneyPosition } = require('../utils/moneyPosition');
+const Expense = require('../models/Expense');
+// Who holds what against the group's money line: the reminders screen's own figures, so the printed
+// meeting report and the screen that decides who is chased cannot disagree (utils/reminderLimit).
+const { computeMemberDues } = require('./notificationController');
+const { moneyLimitForWeek } = require('../utils/reminderLimit');
+const {
+  EXPENSE_ROLES,
+  EXPENSE_PERIODS,
+  parseSections,
+  expensePeriod,
+  buildMeetingReport,
+  renderMeetingReportPdf,
+} = require('../utils/meetingReport');
 
 // Shared by /performance and /performance/export: per active member, personal
 // total, weekly-schedule consistency (personal weekly types only — group
@@ -146,6 +159,61 @@ async function performance(req, res, next) {
   }
 }
 
+// The week the group is in, and the money that has come in inside it: the card the summary opens
+// with, and the "this week" section of the printed meeting report. One function, so the screen and
+// the page somebody hands round at the meeting cannot quote two different weeks.
+//
+// The week's asking is the weekly amount times the active roster; what has come in is the weekly
+// contributions dated inside the week; the rest is arithmetic over the two (utils/weekProgress,
+// where the rule and its checks live).
+async function computeThisWeek(config) {
+  const weekNumber = currentWeekNumber(config);
+  const week = weekRange(weekNumber, config);
+  // The personal weekly types: his own 1,400, as against the tea and other group funds collected
+  // in the same week. A member who has brought his 1,400 has brought it whatever else came with it,
+  // and one who has only bought tea has not brought it at all.
+  const weeklyTypeIds = await ContributionType.find({ isWeekly: true, isGroupFund: false })
+    .select('_id')
+    .lean()
+    .then((rows) => rows.map((row) => row._id));
+
+  const [weekPayments, activeIds] = await Promise.all([
+    // One line per member who has put anything in this week: what the week's card reads. The
+    // weekly contribution only (see weeklyTypeIds above).
+    Contribution.aggregate([
+      {
+        $match: {
+          deleted: false,
+          typeId: { $in: weeklyTypeIds },
+          date: { $gte: week.startDate, $lte: week.endDate },
+        },
+      },
+      {
+        $group: {
+          _id: '$memberId',
+          // Gross cash, so a payment that was partly redirected to a fine still counts as the
+          // money he handed over — the same rule the ledger follows.
+          paid: { $sum: { $ifNull: ['$grossAmount', '$amount'] } },
+        },
+      },
+    ]),
+    Member.find({ active: true }).select('_id').lean(),
+  ]);
+
+  return {
+    weekNumber,
+    startDate: week.startDate,
+    endDate: week.endDate,
+    weeklyAmount: config.weeklyAmount,
+    ...summariseWeekProgress({
+      rows: weekPayments,
+      activeMemberIds: activeIds.map((m) => m._id),
+      expected: config.weeklyAmount * activeIds.length,
+      weeklyAmount: config.weeklyAmount,
+    }),
+  };
+}
+
 // GET /api/reports/summary — total, per-method breakdown, zero-contribution
 // member count, and net cash balance after tracked fund expenses.
 async function summary(req, res, next) {
@@ -153,19 +221,7 @@ async function summary(req, res, next) {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const settings = await getOrCreateSettings();
     const config = resolveConfig(settings);
-    // The week the group is in, and the money that has come in inside it. The summary opens with
-    // this because it is the one question a collection day asks (utils/weekProgress says why the
-    // twelve-week chart it replaced could not answer anything).
-    const weekNumber = currentWeekNumber(config);
-    const week = weekRange(weekNumber, config);
-    // The personal weekly types: his own 1,400, as against the tea and other group funds collected
-    // in the same week. A member who has brought his 1,400 has brought it whatever else came with it,
-    // and one who has only bought tea has not brought it at all.
-    const weeklyTypeIds = await ContributionType.find({ isWeekly: true, isGroupFund: false })
-      .select('_id')
-      .lean()
-      .then((rows) => rows.map((row) => row._id));
-    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected, position, weekPayments, activeIds] =
+    const [byMethod, byTypeRaw, activeMembers, contributingIds, thisWeekAgg, finesCollected, position, thisWeek] =
       await Promise.all([
         Contribution.aggregate([
           { $match: { deleted: false } },
@@ -190,26 +246,8 @@ async function summary(req, res, next) {
         // money spent out of the funds, and what is left. Shared with the expenses
         // screen and its report (utils/moneyPosition).
         computeMoneyPosition(),
-        // One line per member who has put anything in this week: what the week's card reads. The
-        // weekly contribution only (see weeklyTypeIds above).
-        Contribution.aggregate([
-          {
-            $match: {
-              deleted: false,
-              typeId: { $in: weeklyTypeIds },
-              date: { $gte: week.startDate, $lte: week.endDate },
-            },
-          },
-          {
-            $group: {
-              _id: '$memberId',
-              // Gross cash, so a payment that was partly redirected to a fine still counts as the
-              // money he handed over — the same rule the ledger follows.
-              paid: { $sum: { $ifNull: ['$grossAmount', '$amount'] } },
-            },
-          },
-        ]),
-        Member.find({ active: true }).select('_id').lean(),
+        // Where this week stands — the card the summary opens with.
+        computeThisWeek(config),
       ]);
 
     const totalCount = byMethod.reduce((sum, m) => sum + m.count, 0);
@@ -273,22 +311,7 @@ async function summary(req, res, next) {
     };
 
     res.json({
-      // Where this week stands — the card the summary opens with. The week's asking is the weekly
-      // amount times the active roster; what has come in is the weekly contributions dated inside
-      // the week; the rest is arithmetic over the two (utils/weekProgress, where the rule and its
-      // checks live).
-      thisWeek: {
-        weekNumber,
-        startDate: week.startDate,
-        endDate: week.endDate,
-        weeklyAmount: config.weeklyAmount,
-        ...summariseWeekProgress({
-          rows: weekPayments,
-          activeMemberIds: activeIds.map((m) => m._id),
-          expected: config.weeklyAmount * activeMembers,
-          weeklyAmount: config.weeklyAmount,
-        }),
-      },
+      thisWeek,
       totalContributed: allTime,
       // Named parts, so a screen can show what the total is made of rather than
       // leaving the difference to be guessed at.
@@ -1115,6 +1138,106 @@ async function exportFinesReport(req, res, next) {
   }
 }
 
+// GET /api/reports/print?sections=debts,fines&expenses=week|month|all — the meeting report, as a
+// PDF: the sections asked for, each closed by its totals (utils/meetingReport).
+//
+// Only what was asked for is read. A page printed for the fines alone should not wait on the
+// ledger of every member, and should not carry the spending.
+async function printReport(req, res, next) {
+  try {
+    const parsed = parseSections(req.query.sections);
+    if (parsed.error) return res.status(400).json({ message: parsed.error });
+    // Spending is itemised by voucher, which the expenses screen shows only to the people who keep
+    // the books. The reports roles are wider than that, so the gate is repeated here rather than
+    // inherited: a secretary can print the rest of the page, not this part of it.
+    const mayPrintSpending = EXPENSE_ROLES.includes(req.user?.role);
+    if (!mayPrintSpending && parsed.sections.includes('expenses')) {
+      // Asking for it by name is refused. Not naming any section means "everything I may have",
+      // which for this role is the page without the spending rather than no page at all.
+      if (req.query.sections !== undefined) {
+        return res.status(403).json({ message: 'Your role cannot print the spending section' });
+      }
+      parsed.sections = parsed.sections.filter((key) => key !== 'expenses');
+    }
+    const { sections } = parsed;
+    const wants = (key) => sections.includes(key);
+    const periodKey = String(req.query.expenses || 'week').toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(EXPENSE_PERIODS, periodKey)) {
+      return res
+        .status(400)
+        .json({ message: `Unknown expenses period. Choose from ${Object.keys(EXPENSE_PERIODS).join(', ')}` });
+    }
+
+    const settings = await getOrCreateSettings();
+    const config = resolveConfig(settings);
+    const needsMembers = wants('debts') || wants('extra');
+
+    // The week the group is in is always read: it is the page's own heading, and the line is its
+    // week's line. It is cheap, and the section that prints it is the same one the summary shows.
+    const week = await computeThisWeek(config);
+    const line = moneyLimitForWeek(settings, config, week.weekNumber);
+    const period = wants('expenses')
+      ? expensePeriod(periodKey, { weekStart: week.startDate, weekEnd: week.endDate })
+      : null;
+
+    const [memberRows, position, finesCollected, fines, expenses] = await Promise.all([
+      needsMembers ? loadMembersAgainstLine(settings) : [],
+      wants('position') ? computeMoneyPosition() : null,
+      wants('position') ? totalFinesCollected() : 0,
+      wants('fines') ? computeFinesReport() : null,
+      wants('expenses')
+        ? Expense.find({
+            deleted: false,
+            ...(period.from ? { date: { $gte: period.from, $lte: period.to } } : {}),
+          })
+            .sort({ date: -1, createdAt: -1 })
+            .populate('typeId', 'name isRecoverable')
+            .populate('loggedBy', 'name')
+            .lean()
+        : [],
+    ]);
+
+    const report = buildMeetingReport({
+      chamaName: settings.chamaName,
+      preparedBy: req.user?.name || '',
+      sections,
+      week,
+      line,
+      members: memberRows,
+      position,
+      finesCollected,
+      fines,
+      expenses,
+      period,
+    });
+    renderMeetingReportPdf(res, report);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Every active member with what the group is holding for him and how many closed weeks stand
+// unpaid — read through the same function the reminders screen reads, so "below the line" here is
+// the reminders' own decision rather than a second reading of the ledger.
+async function loadMembersAgainstLine(settings) {
+  const members = await Member.find({ active: true })
+    .select('name regNumber phone openingBalance fineDebits')
+    .sort({ name: 1 })
+    .lean();
+  const dues = await computeMemberDues(members, { settings });
+  return members.map((member) => {
+    const due = dues.get(String(member._id));
+    return {
+      memberId: member._id,
+      name: member.name,
+      regNumber: member.regNumber || '',
+      held: due ? due.moneyHeld : Number(member.openingBalance) || 0,
+      // Whole for a member below the line; a member at or above it is not listed with weeks.
+      weeksUnpaid: due ? due.lateWeeks.length : 0,
+    };
+  });
+}
+
 // GET /api/reports/member/:id — one member's own report, for the chart the
 // performance list opens when a member is tapped.
 async function memberReport(req, res, next) {
@@ -1139,5 +1262,6 @@ module.exports = {
   trend,
   finesReport,
   exportFinesReport,
+  printReport,
   memberReport,
 };
