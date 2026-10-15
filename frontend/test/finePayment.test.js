@@ -9,7 +9,6 @@ import assert from 'node:assert/strict';
 import {
   parseAmount,
   owedFor,
-  spreadPayment,
   balanceChoice,
   paymentPreview,
   paymentSummary,
@@ -31,25 +30,11 @@ test('an amount typed with commas or spaces reads the same, and nothing at all i
   assert.equal(parseAmount('0'), 0);
 });
 
-test('what can be paid is what is owed on the chosen fine, or on all of them', () => {
-  assert.equal(owedFor(fines), 900);
+test('what can be paid is what is owed on the chosen fine, and nothing without one', () => {
   assert.equal(owedFor(fines, 'b'), 500);
+  assert.equal(owedFor(fines, 'a'), 300);
   assert.equal(owedFor(fines, 'missing'), 0);
-});
-
-test('a lump sum clears the oldest fine first and says what is left on the next', () => {
-  const parts = spreadPayment(fines, 650);
-  assert.deepEqual(
-    parts.map((p) => [p.id, p.applied, p.remainingAfter]),
-    [
-      ['b', 500, 0], // January, the oldest
-      ['c', 100, 0], // then February
-      ['a', 50, 250], // and what is left goes on March
-    ]
-  );
-  assert.equal(parts[0].label, 'Missed the AGM');
-  assert.equal(parts[1].label, 'Phone');
-  assert.deepEqual(spreadPayment(fines, 0), []);
+  assert.equal(owedFor(fines, null), 0, 'a payment is never spread over every fine');
 });
 
 test('the balance can pay only what the group holds for him', () => {

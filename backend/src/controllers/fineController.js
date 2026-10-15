@@ -383,10 +383,9 @@ async function settleFine(req, res, next) {
   }
 }
 
-// POST /api/fines/member/:memberId/pay — a payment from one member, against one named fine or,
-// with none named, spread over his pending fines oldest first. The usual shape of a meeting:
-// "he is paying 500 towards what he owes".
-// Body: { amount, source: 'balance' | 'cash', date?, fineId? }
+// POST /api/fines/member/:memberId/pay — a payment from one member against one named fine. Each
+// payment is for a single fine; nothing is spread over several.
+// Body: { amount, source: 'balance' | 'cash', fineId, date? }
 async function payMemberFines(req, res, next) {
   try {
     const source = readSource(req.body?.source);
@@ -395,7 +394,8 @@ async function payMemberFines(req, res, next) {
       return res.status(404).json({ message: 'Member not found' });
     }
     const fineId = req.body?.fineId || null;
-    if (fineId && !mongoose.Types.ObjectId.isValid(fineId)) {
+    if (!fineId) return res.status(400).json({ message: 'Choose which fine is being paid' });
+    if (!mongoose.Types.ObjectId.isValid(fineId)) {
       return res.status(404).json({ message: 'Fine not found' });
     }
     const read = readMoney(req.body?.amount, { min: 0.01, label: 'Amount' });
@@ -420,7 +420,7 @@ async function payMemberFines(req, res, next) {
 
 // GET /api/fines/member/:memberId/position — what the payment screen needs about one member: what
 // the group holds for him (the most that can be taken from his balance), and the fines he still
-// owes, oldest first (the order a lump sum is spread over).
+// owes, oldest first, so he can choose the one being paid.
 async function memberFinePosition(req, res, next) {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.memberId)) {

@@ -152,7 +152,7 @@ test('a payment that does not say how it was made is refused, and nothing moves'
   assert.equal(bare.status, 400);
   assert.match(bare.body.message, /Say how this was paid/);
 
-  const unknown = await pay(m, { amount: 100, source: 'mpesa-magic' });
+  const unknown = await pay(m, { amount: 100, source: 'mpesa-magic', fineId: fines[0]._id });
   assert.equal(unknown.status, 400);
 
   assert.equal((await Fine.findById(fines[0]._id).lean()).remaining, 500);
@@ -208,50 +208,48 @@ test('a fine paid in cash on the side leaves his balance alone, and is new cash 
 test('nothing more than he holds can be taken from his balance', { skip }, async () => {
   const { m, fines } = await member(200, [500]);
 
-  const refused = await pay(m, { amount: 300, source: 'balance' });
+  const refused = await pay(m, { amount: 300, source: 'balance', fineId: fines[0]._id });
   assert.equal(refused.status, 400);
   assert.match(refused.body.message, /He holds only Ksh 200/);
   assert.equal(await held(m), 200);
   assert.equal((await Fine.findById(fines[0]._id).lean()).remaining, 500);
 
   // What he does hold can be taken, and the rest paid in cash.
-  assert.equal((await pay(m, { amount: 200, source: 'balance' })).status, 200);
-  assert.equal((await pay(m, { amount: 300, source: 'cash' })).status, 200);
+  assert.equal((await pay(m, { amount: 200, source: 'balance', fineId: fines[0]._id })).status, 200);
+  assert.equal((await pay(m, { amount: 300, source: 'cash', fineId: fines[0]._id })).status, 200);
   assert.equal(await held(m), 0);
   assert.equal((await Fine.findById(fines[0]._id).lean()).remaining, 0);
 
   // And a member who holds nothing cannot have anything taken at all.
   const broke = await member(0, [100]);
-  const none = await pay(broke.m, { amount: 100, source: 'balance' });
+  const none = await pay(broke.m, { amount: 100, source: 'balance', fineId: broke.fines[0]._id });
   assert.equal(none.status, 400);
   assert.match(none.body.message, /holds nothing/);
 });
 
-test('a lump sum clears the oldest fine first, and cannot be more than he owes', { skip }, async () => {
+test('each payment is for one named fine, and cannot be more than that fine', { skip }, async () => {
   const { m, fines } = await member(5000, [300, 500, 100]);
 
-  const over = await pay(m, { amount: 1000, source: 'cash' });
-  assert.equal(over.status, 400);
-  assert.match(over.body.message, /more than the Ksh 900 he owes/);
+  // Nothing is spread over several fines: a payment that names none is refused.
+  const unnamed = await pay(m, { amount: 450, source: 'cash' });
+  assert.equal(unnamed.status, 400);
+  assert.match(unnamed.body.message, /Choose which fine/);
+  assert.equal(await held(m), 5000);
 
-  const spread = await pay(m, { amount: 450, source: 'balance' });
-  assert.equal(spread.status, 200, JSON.stringify(spread.body));
-  assert.equal(spread.body.totalApplied, 450);
-  assert.deepEqual(
-    spread.body.fines.map((f) => [f.reason, f.remaining]),
-    [
-      ['Fine 1', 0], // the oldest, 300, cleared
-      ['Fine 2', 350], // and the remaining 150 goes on the next
-    ]
-  );
-  assert.equal((await Fine.findById(fines[2]._id).lean()).remaining, 100, 'the newest is untouched');
-  assert.equal(await held(m), 4550);
-  assert.equal((await Member.findById(m._id).lean()).fineDebits.length, 2, 'one dated entry per fine it paid');
-
-  // Named fine, too big for that fine alone.
-  const tooBig = await pay(m, { amount: 200, source: 'cash', fineId: fines[2]._id });
+  // More than that one fine is refused even though he owes more in total.
+  const tooBig = await pay(m, { amount: 400, source: 'cash', fineId: fines[0]._id });
   assert.equal(tooBig.status, 400);
-  assert.match(tooBig.body.message, /more than the Ksh 100 still owed on this fine/);
+  assert.match(tooBig.body.message, /more than the Ksh 300 still owed on this fine/);
+
+  // A part payment on the second fine touches that fine only.
+  const part = await pay(m, { amount: 150, source: 'balance', fineId: fines[1]._id });
+  assert.equal(part.status, 200, JSON.stringify(part.body));
+  assert.equal(part.body.fines.length, 1);
+  assert.equal(part.body.fines[0].remaining, 350);
+  assert.equal((await Fine.findById(fines[0]._id).lean()).remaining, 300, 'the oldest is untouched');
+  assert.equal((await Fine.findById(fines[2]._id).lean()).remaining, 100, 'so is the newest');
+  assert.equal(await held(m), 4850);
+  assert.equal((await Member.findById(m._id).lean()).fineDebits.length, 1);
 });
 
 test('a payment keyed in by mistake can be taken back, and the money goes back to him', { skip }, async () => {
@@ -428,7 +426,7 @@ test('the payment screen is told what he owes and what the group holds for him',
   assert.deepEqual(
     position.body.fines.map((f) => f.reason),
     ['Fine 1', 'Fine 2'],
-    'oldest first, the order a lump sum is spread over'
+    'oldest first, so he can choose the one being paid'
   );
 });
 

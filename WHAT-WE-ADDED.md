@@ -2055,8 +2055,8 @@ WHAT IT DOES NOW
   - Voiding a fine gives back anything taken from the member's balance for it. A payment keyed in by
     mistake can be taken back from the fine's history.
   - The fines screen is a desk with tabs - Who owes, All fines, Issue a fine, To check - and a
-    Record a payment button that opens one dialog over any of them: who, which fine (or all,
-    oldest first), how much, how it was paid, a date, and a plain line saying what he will owe and
+    Record a payment button that opens one dialog over any of them: who, which fine (one at a time, never spread over several),
+    how much, how it was paid, a date, and a plain line saying what he will owe and
     what the group will hold for him afterwards. After it is recorded the dialog says what happened
     in a sentence that can be read out. The member's own page opens the same dialog.
   - The fines list can be searched by a bit of a member's name, phone or reg number.

@@ -53,53 +53,33 @@ function readSource(value) {
   return MANUAL_SOURCES.includes(source) ? source : null;
 }
 
-// Records `amount` against one fine (`fineId`) or, with no fine named, against the member's
-// pending fines oldest first. Returns what happened, for the response, the audit entry and the
-// email.
+// Records `amount` against one fine. A payment is always against a single named fine: a member pays
+// the fine in front of him, and a lump sum quietly spread over several is a payment nobody chose.
+// Returns what happened, for the response, the audit entry and the email.
 //
 // `paidAt` is the day the money changed hands, already validated by the caller.
-async function recordFinePayment({ memberId, fineId = null, amount, source, paidAt, userId }) {
+async function recordFinePayment({ memberId, fineId, amount, source, paidAt, userId }) {
   if (!MANUAL_SOURCES.includes(source)) throw new FinePaymentError(400, SOURCE_PROMPT);
+  if (!fineId) throw new FinePaymentError(400, 'Choose which fine is being paid');
 
   return withOptionalTransaction(async (session) => {
     const member = await Member.findById(memberId).session(session || null).lean();
     if (!member) throw new FinePaymentError(404, 'Member not found');
 
-    let fines;
-    if (fineId) {
-      const one = await Fine.findOne({ _id: fineId, memberId, deleted: false }).session(session || null);
-      if (!one) throw new FinePaymentError(404, 'Fine not found');
-      if (one.remaining <= 0) throw new FinePaymentError(400, 'Fine is already settled');
-      fines = [one];
-    } else {
-      fines = await Fine.find({ memberId, deleted: false, remaining: { $gt: 0 } })
-        .sort({ date: 1, createdAt: 1 })
-        .session(session || null);
-      if (fines.length === 0) throw new FinePaymentError(400, 'He has no fine left to pay');
-    }
+    const fine = await Fine.findOne({ _id: fineId, memberId, deleted: false }).session(session || null);
+    if (!fine) throw new FinePaymentError(404, 'Fine not found');
+    if (fine.remaining <= 0) throw new FinePaymentError(400, 'Fine is already settled');
 
     // The day it was paid cannot come before the day the fine was issued. Compared by day, not by
     // the minute the fine was keyed in: a fine written at 10:00 and paid at the same meeting is
     // paid on the day it was issued, and the date the office picks has no time on it.
-    if (fineId) {
-      if (issuedAfter(fines[0], paidAt)) {
-        throw new FinePaymentError(400, 'A fine cannot be paid before it was issued');
-      }
-    } else {
-      fines = fines.filter((fine) => !issuedAfter(fine, paidAt));
-      if (fines.length === 0) {
-        throw new FinePaymentError(400, 'None of his fines had been issued by that date');
-      }
+    if (issuedAfter(fine, paidAt)) {
+      throw new FinePaymentError(400, 'A fine cannot be paid before it was issued');
     }
 
-    const owed = toMoney(fines.reduce((sum, f) => sum + f.remaining, 0));
+    const owed = toMoney(fine.remaining);
     if (amount > owed + 0.001) {
-      throw new FinePaymentError(
-        400,
-        fineId
-          ? `That is more than the ${ksh(owed)} still owed on this fine`
-          : `That is more than the ${ksh(owed)} he owes in fines`
-      );
+      throw new FinePaymentError(400, `That is more than the ${ksh(owed)} still owed on this fine`);
     }
 
     // Taken from his balance: never more than the group holds for him, read inside the
@@ -119,43 +99,32 @@ async function recordFinePayment({ memberId, fineId = null, amount, source, paid
       }
     }
 
-    let left = amount;
-    const applied = [];
-    for (const fine of fines) {
-      if (left <= 0) break;
-      const part = toMoney(Math.min(left, fine.remaining));
-      if (part <= 0) continue;
+    const before = JSON.parse(JSON.stringify(fine.toObject()));
+    fine.remaining = toMoney(fine.remaining - amount);
+    fine.settlements.push({
+      contributionId: null,
+      amount,
+      date: paidAt,
+      source,
+      recordedBy: userId,
+    });
+    await fine.save({ session });
 
-      const before = JSON.parse(JSON.stringify(fine.toObject()));
-      fine.remaining = toMoney(fine.remaining - part);
-      fine.settlements.push({
-        contributionId: null,
-        amount: part,
-        date: paidAt,
-        source,
-        recordedBy: userId,
-      });
-      await fine.save({ session });
-
-      if (source === 'balance') {
-        await Member.updateOne(
-          { _id: memberId },
-          { $push: { fineDebits: { fineId: fine._id, amount: part, date: paidAt } } },
-          { session }
-        );
-      }
-
-      applied.push({ fine, before, applied: part });
-      left = toMoney(left - part);
+    if (source === 'balance') {
+      await Member.updateOne(
+        { _id: memberId },
+        { $push: { fineDebits: { fineId: fine._id, amount, date: paidAt } } },
+        { session }
+      );
     }
 
     return {
       member,
-      applied,
-      totalApplied: toMoney(amount - left),
+      applied: [{ fine, before, applied: amount }],
+      totalApplied: amount,
       source,
       heldBefore,
-      heldAfter: heldBefore === null ? null : toMoney(heldBefore - (amount - left)),
+      heldAfter: heldBefore === null ? null : toMoney(heldBefore - amount),
     };
   });
 }

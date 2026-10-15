@@ -21,33 +21,11 @@ export function parseAmount(text) {
   return Number(cleaned);
 }
 
-// What a payment scoped to one fine, or to all of a member's fines, can at most be. `fineId` null
-// means "all his fines, oldest first".
+// What is owed on one fine: the most a payment against it can be. Nothing is spread over several
+// fines — each payment is for the single fine chosen.
 export function owedFor(fines = [], fineId = null) {
-  const scope = fineId ? fines.filter((f) => String(f.id) === String(fineId)) : fines;
-  return cents(scope.reduce((sum, f) => sum + (Number(f.remaining) || 0), 0));
-}
-
-// How a lump sum is spread over a member's fines: oldest first, each cleared before the next is
-// touched — the same order the server applies. Lets the screen say "clears 2 fines, 150 left on the
-// third" before the payment is made.
-export function spreadPayment(fines = [], amount = 0) {
-  const ordered = [...fines].sort((a, b) => new Date(a.date) - new Date(b.date));
-  let left = cents(amount);
-  const parts = [];
-  for (const fine of ordered) {
-    if (left <= 0) break;
-    const applied = cents(Math.min(left, Number(fine.remaining) || 0));
-    if (applied <= 0) continue;
-    parts.push({
-      id: fine.id,
-      label: fine.reason || fine.type || 'Fine',
-      applied,
-      remainingAfter: cents((Number(fine.remaining) || 0) - applied),
-    });
-    left = cents(left - applied);
-  }
-  return parts;
+  const one = fines.find((f) => String(f.id) === String(fineId));
+  return one ? cents(Number(one.remaining) || 0) : 0;
 }
 
 // Whether the balance can pay for it, and the sentence to show when it cannot.
