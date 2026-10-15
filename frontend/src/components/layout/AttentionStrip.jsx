@@ -6,10 +6,10 @@ import { useAuth } from '../../context/AuthContext';
 // The things that need somebody's attention and would otherwise stay silent.
 //
 // Each of these is already known to the system and printed somewhere: the backup age on the Backup
-// panel, the two-factor switch under Security, the fine payments waiting to be sorted on the fines
-// desk. Not one of them is an error, so none of them ever interrupts anybody, and the failure they
-// guard against is a silence that lasts for months — no copy of the books outside the server, nobody
-// asked for a second step at sign-in, a fine payment that never reached anybody's balance.
+// panel, the fine payments waiting to be sorted on the fines desk. Not one of them is an error, so
+// none of them ever interrupts anybody, and the failure they guard against is a silence that lasts
+// for months — no copy of the books outside the server, a fine payment that never reached
+// anybody's balance.
 //
 // So they are said here, on the page everybody lands on, to the people who can act on them, and the
 // strip draws nothing at all when there is nothing to say. Every check is quiet about its own
@@ -47,21 +47,6 @@ export default function AttentionStrip() {
               to: '/admin/settings#backup',
               action: 'Download a copy',
             });
-          })
-          .catch(() => {})
-      );
-      checks.push(
-        api
-          .get('/api/auth/me')
-          .then((res) => {
-            if (res.data?.twoFactorAuthEnabled === false) {
-              add({
-                id: 'two-factor',
-                text: 'Two-factor sign-in is off. A stolen password is enough to reach the books.',
-                to: '/admin/settings#security',
-                action: 'Turn it on',
-              });
-            }
           })
           .catch(() => {})
       );

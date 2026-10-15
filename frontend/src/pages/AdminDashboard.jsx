@@ -28,7 +28,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-w-0 space-y-4">
-      {/* What is quietly wrong: no copy of the books off the server, two-factor off, fine payments
+      {/* What is quietly wrong: no copy of the books off the server, fine payments
           waiting to be sorted. Draws nothing when all is well. */}
       <AttentionStrip />
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_19rem] xl:items-start xl:gap-6">
