@@ -314,11 +314,44 @@ const numberFmt = new Intl.NumberFormat('en-KE');
 function money(amount) {
   return `Ksh ${numberFmt.format(Number(amount) || 0)}`;
 }
+// In the group's own timezone, not the server's: a week starts at midnight Nairobi time, which is the
+// evening before on a host that runs on UTC, and the page would print the Thursday as the Wednesday.
 function shortDate(value) {
   if (!value) return '-';
-  return new Date(value).toLocaleDateString('en-KE', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(value).toLocaleDateString('en-KE', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Africa/Nairobi',
+  });
 }
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// The page is set in the PDF's built-in Helvetica, which can draw Western-European text (the Latin-1
+// letters and the usual punctuation) and nothing else. A character outside that is not skipped: it is
+// drawn as some other, wrong glyph ("Ngũgĩ" came out as "¦qig"), which on a page of names and money is
+// worse than an honest substitute. So the plain letter stands in (ũ -> u), and what cannot be
+// drawn at all (another script, an emoji) becomes "?".
+const CP1252_EXTRAS = new Set(
+  '‘’‚“”„†‡•…‰‹›€™' +
+    '–—ŒœŠšŸŽžƒˆ˜'
+);
+const LETTER_FALLBACKS = { Ŋ: 'N', ŋ: 'n' };
+function printable(value) {
+  if (typeof value !== 'string') return value;
+  let out = '';
+  // for..of walks code points, so an emoji is one character to replace, not two broken halves.
+  for (const char of value) {
+    const code = char.codePointAt(0);
+    if (((code >= 0x20 && code <= 0x7e) || (code >= 0xa0 && code <= 0xff)) || CP1252_EXTRAS.has(char) || code === 10) {
+      out += char;
+      continue;
+    }
+    const plain = LETTER_FALLBACKS[char] || char.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    out += plain.length > 0 && [...plain].every((c) => c.codePointAt(0) <= 0xff) ? plain : '?';
+  }
+  return out;
+}
 
 const MARGIN = 50;
 const CONTENT_WIDTH = 495;
@@ -364,8 +397,10 @@ function ensureRoom(doc, y, needed, cols) {
   return cols ? tableHeader(doc, MARGIN, cols) : MARGIN;
 }
 
+// A heading needs room for something under it as well: left alone at the foot of a page it heads
+// nothing, and the table it belongs to starts on the next one.
 function sectionTitle(doc, y, title) {
-  y = ensureRoom(doc, y, 44);
+  y = ensureRoom(doc, y, 110);
   doc.font('Helvetica-Bold').fontSize(11).fillColor(RED).text(title, MARGIN, y, { width: CONTENT_WIDTH });
   doc.fillColor('#000').font('Helvetica');
   return y + 18;
@@ -757,19 +792,48 @@ function renderExpenses(doc, y, e) {
   );
 }
 
-// Streams the report as a PDF. `compress: false` is for the tests, which read the page's own text.
-function renderMeetingReportPdf(res, report, { compress = true } = {}) {
+// The report as a PDF, built whole. `compress: false` is for the tests, which read the page's own text.
+//
+// Built into memory rather than streamed to the response: a failure part-way through a stream arrives
+// after the 200 and the headers have gone, and the office would be handed a truncated file that opens
+// as a damaged page. Built first, a failure is an ordinary error response and nothing was sent.
+function buildPdfBuffer(report, { compress = true } = {}) {
   const weekNumber = report.week ? report.week.number : '';
+  return new Promise((resolve, reject) => {
+    // Buffered, so every page can be numbered once the last one is known.
+    const doc = new PDFDocument({ margin: MARGIN, size: 'A4', bufferPages: true, compress });
+    // Every string the page draws or measures goes through `printable`, so no member's name, fine
+    // reason or voucher note can reach the PDF as a glyph the font does not have.
+    const drawText = doc.text.bind(doc);
+    const measureText = doc.heightOfString.bind(doc);
+    doc.text = (text, ...args) => drawText(printable(text), ...args);
+    doc.heightOfString = (text, ...args) => measureText(printable(text), ...args);
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    try {
+      drawReport(doc, report, weekNumber);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// Sends the report. Resolves once it has been handed to `res`; rejects, with nothing sent, if the
+// document could not be built.
+async function renderMeetingReportPdf(res, report, options) {
+  const weekNumber = report.week ? report.week.number : '';
+  const pdf = await buildPdfBuffer(report, options);
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="meeting-report${weekNumber ? `-week-${weekNumber}` : ''}.pdf"`
   );
+  res.end(pdf);
+}
 
-  // Buffered, so every page can be numbered once the last one is known.
-  const doc = new PDFDocument({ margin: MARGIN, size: 'A4', bufferPages: true, compress });
-  doc.pipe(res);
-
+function drawReport(doc, report, weekNumber) {
   doc.font('Helvetica-Bold').fontSize(17).fillColor('#000').text(report.chamaName);
   doc.font('Helvetica').fontSize(10).fillColor(GREY).text(
     `Meeting report${weekNumber ? ` - week ${weekNumber}` : ''}`
@@ -822,5 +886,7 @@ module.exports = {
   expensePeriod,
   splitByLine,
   buildMeetingReport,
+  printable,
+  buildPdfBuffer,
   renderMeetingReportPdf,
 };

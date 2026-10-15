@@ -1210,7 +1210,7 @@ async function printReport(req, res, next) {
       expenses,
       period,
     });
-    renderMeetingReportPdf(res, report);
+    await renderMeetingReportPdf(res, report);
   } catch (err) {
     next(err);
   }

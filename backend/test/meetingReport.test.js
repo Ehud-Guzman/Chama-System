@@ -17,6 +17,7 @@ const {
   splitByLine,
   buildMeetingReport,
   renderMeetingReportPdf,
+  printable,
 } = require('../src/utils/meetingReport');
 
 const LINE = 117_400;
@@ -346,6 +347,15 @@ function pdfText(buffer) {
   return out.join('\n');
 }
 
+// The same, one string per page: each page is a content stream of its own.
+function pdfPages(buffer) {
+  return buffer
+    .toString('latin1')
+    .split('endstream')
+    .map((chunk) => pdfText(Buffer.from(chunk + ' ]', 'latin1')))
+    .filter(Boolean);
+}
+
 async function render(report) {
   const headers = {};
   const sink = new PassThrough();
@@ -354,10 +364,11 @@ async function render(report) {
   };
   const chunks = [];
   sink.on('data', (chunk) => chunks.push(chunk));
-  renderMeetingReportPdf(sink, report, { compress: false });
-  await new Promise((resolve) => sink.on('end', resolve));
+  const done = new Promise((resolve) => sink.on('end', resolve));
+  await renderMeetingReportPdf(sink, report, { compress: false });
+  await done;
   const buffer = Buffer.concat(chunks);
-  return { headers, buffer, text: pdfText(buffer), pages: (buffer.toString('latin1').match(/\/Type \/Page\b/g) || []).length };
+  return { headers, buffer, text: pdfText(buffer), pagesText: pdfPages(buffer), pages: (buffer.toString('latin1').match(/\/Type \/Page\b/g) || []).length };
 }
 
 test('the PDF is written, named for the week, and carries every section with its total', async () => {
@@ -450,4 +461,71 @@ test('a group with nothing to report still gets a page, not an error', async () 
   assert.ok(text.includes('Nobody is above the line.'));
   assert.ok(text.includes('Nobody owes a fine'));
   assert.ok(text.includes('Nothing was spent in this period.'));
+});
+
+// ---------------------------------------------------------------------------- the audit's findings
+
+test('the dates are the group’s own, even when the server runs on UTC', async () => {
+  // The week opens at midnight Nairobi time, which is 21:00 the evening before in UTC: printed in
+  // the server's zone the page would read "08 Oct" for a week that opens on the 9th.
+  const before = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    const { text } = await render(build({ sections: ['week'] }));
+    assert.ok(text.includes('09 Oct 2026 to 15 Oct 2026'), 'the week as the group dates it');
+    assert.ok(!text.includes('08 Oct 2026'));
+  } finally {
+    if (before === undefined) delete process.env.TZ;
+    else process.env.TZ = before;
+  }
+});
+
+test('a document that cannot be built sends nothing at all', async () => {
+  const report = build({ sections: ['debts'] });
+  // A row the table cannot read: the failure arrives while the page is being drawn.
+  report.debts.rows = [null];
+
+  const sent = { headers: {}, chunks: 0 };
+  const sink = new PassThrough();
+  sink.setHeader = (name, value) => {
+    sent.headers[name] = value;
+  };
+  sink.on('data', () => {
+    sent.chunks += 1;
+  });
+
+  await assert.rejects(renderMeetingReportPdf(sink, report));
+  assert.deepEqual(sent.headers, {}, 'no 200 and no headers went out before the failure');
+  assert.equal(sent.chunks, 0, 'and no half-written file');
+});
+
+test('a heading is never left alone at the foot of a page', async () => {
+  // Filler sized so the next section's heading lands at every height down the page in turn.
+  for (let rows = 5; rows <= 60; rows += 1) {
+    const members = Array.from({ length: rows }, (_, i) => member(`Member ${i}`, LINE - 1000 - i, 1, `WM-${i}`));
+    const { pagesText } = await render(build({ sections: ['debts', 'extra'], members }));
+    const page = pagesText.find((text) => text.includes('Members above the line (extra)'));
+    assert.ok(page, `${rows} members: the extra heading is on no page`);
+    assert.ok(
+      page.includes('Above by'),
+      `${rows} members: the extra heading is on a page without its table`
+    );
+  }
+});
+
+test('characters the PDF font cannot draw become their plain letter or a question mark, never a wrong glyph', async () => {
+  // Latin-1 letters and the usual punctuation pass through untouched.
+  assert.equal(printable('Wanjiru Ñandú, Émile — it’s fine'), 'Wanjiru Ñandú, Émile — it’s fine');
+  // Gikuyu letters outside Latin-1 fall back to the base letter.
+  assert.equal(printable('Ngũgĩ wa Thiong’o'), 'Ngugi wa Thiong’o');
+  assert.equal(printable('Ŋgũgĩ'), 'Ngugi');
+  // Another script, or an emoji (one character, not two broken halves), is marked rather than mangled.
+  assert.equal(printable('日本'), '??');
+  assert.equal(printable('Hi 😀!'), 'Hi ?!');
+  assert.equal(printable(undefined), undefined);
+
+  const { text } = await render(
+    build({ sections: ['debts'], members: [member('Ngũgĩ wa Thiong’o', LINE - 500, 1, 'WM-9')] })
+  );
+  assert.ok(text.includes('Ngugi wa Thiong'), 'the name is printed, not corrupted');
 });
