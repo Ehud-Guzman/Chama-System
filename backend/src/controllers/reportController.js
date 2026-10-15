@@ -33,7 +33,7 @@ async function computePerformance() {
   const memberIds = members.map((m) => m._id);
   const [contributions, pendingFines] = await Promise.all([
     Contribution.find({ memberId: { $in: memberIds }, deleted: false })
-      .select('memberId typeId amount grossAmount date')
+      .select('memberId typeId amount grossAmount fineDeducted date')
       .lean(),
     Fine.aggregate([
       { $match: { memberId: { $in: memberIds }, deleted: false, remaining: { $gt: 0 } } },

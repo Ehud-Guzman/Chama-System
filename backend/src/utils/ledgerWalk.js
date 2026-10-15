@@ -25,10 +25,13 @@ const { weekRange, weekNumberForDate, currentWeekNumber, scoredWeeks } = require
 //     subtracting it would read as though it had been collected and spent. So it is not a step in
 //     this walk at all — it is reported under `closing.arrears`, the same figure the passbook and
 //     the treasurer's page quote as owed.
-//   * **Fines run on their own line.** A fine is not member money: paying one does not move what the
-//     group holds for him (his passbook already says "owed to the group, kept out of the figures
-//     above"). A fine therefore steps the `owed` column and never the `held` one, and the two are
-//     labelled separately on the screen.
+//   * **Fines run on their own line.** What he still owes in fines is not member money (his
+//     passbook says "owed to the group, kept out of the figures above"), so a fine being issued
+//     steps the `owed` column and never the `held` one, and the two are labelled separately on the
+//     screen. *Paying* one is different when it was paid out of his money: the part of a payment
+//     redirected to a fine, and a fine taken from the balance the group holds for him, both come
+//     off the `held` column as well as the `owed` one. A fine he paid in cash on the side moves
+//     only the `owed` column — that money was never in what the group holds for him.
 //
 // Money the engine keeps out of the held figure — a group fund, tea paid at the desk inside the
 // cycle, a personal fund outside the weekly cycle — is still listed, with no effect on either column
@@ -163,11 +166,13 @@ function buildLedgerWalk({ member, contributions = [], fines = [], config, now =
     // weight of a member's page on a phone to say the same thing twice.
     //
     // What IS here is the one thing the row alone does not say: a payment that was partly redirected
-    // to a fine. The ledger follows cash in, so the whole amount is credited — and a member who
-    // handed over 1,400 and then sees 400 against his fines has to find that 400 named in the same
-    // row.
+    // to a fine. The week is credited the whole cash he handed over (that is what makes it a paid
+    // week), but the part that went to a fine is not money the group holds for him any more, so the
+    // row takes it straight back off — a member who handed over 1,400 and sees 400 against his fines
+    // reads 1,400 in and 400 out on the same row, and 1,000 added to what he holds.
     const toFine = toNumber(c.fineDeducted);
-    const detail = toFine > 0 ? `${money(toFine)} of this cleared his fines.` : null;
+    const detail =
+      toFine > 0 ? `${money(toFine)} of this went to his fines, so it is not part of the money he holds.` : null;
 
     if (bucket === 'weekly') {
       steps.push(
@@ -180,6 +185,7 @@ function buildLedgerWalk({ member, contributions = [], fines = [], config, now =
             : 'Weekly contribution — collected before these books opened',
           detail,
           in: cash,
+          out: toFine,
           effect: true,
         })
       );
@@ -194,6 +200,7 @@ function buildLedgerWalk({ member, contributions = [], fines = [], config, now =
           label: 'Extra contribution',
           detail,
           in: cash,
+          out: toFine,
           effect: true,
         })
       );
@@ -321,18 +328,33 @@ function buildLedgerWalk({ member, contributions = [], fines = [], config, now =
       })
     );
     fineSettlements(fine).forEach((settlement, index) => {
+      // How it was paid decides whether it touched the money he holds. Out of his balance: it
+      // comes off both columns. Out of a payment he handed over: the payment's own row above has
+      // already taken it off, so this step only clears the fine. In cash on the side: his balance
+      // never held that money, so nothing moves on his side.
+      const source = settlement.source || (settlement.contributionId ? 'contribution' : null);
+      const fromBalance = source === 'balance';
+      const detail =
+        source === 'balance'
+          ? 'Taken out of the money the group holds for him.'
+          : source === 'contribution'
+            ? 'Paid out of a contribution of his — see that payment above.'
+            : source === 'cash'
+              ? 'He paid this separately (cash or M-Pesa), so the money he holds is untouched.'
+              : 'Recorded by the office before payments said how they were made — the money he holds is untouched.';
       steps.push(
         step({
           id: `fine:${id}:${index}`,
           kind: 'fineSettled',
           rank: RANK.fineSettled,
           date: settlement.date,
-          label: `Fine cleared — ${fineName(fine)}`,
-          detail: settlement.contributionId
-            ? 'Paid out of a contribution of his.'
-            : 'Recorded by the office.',
+          label: fromBalance
+            ? `Fine paid from his balance — ${fineName(fine)}`
+            : `Fine cleared — ${fineName(fine)}`,
+          detail,
+          out: fromBalance ? toNumber(settlement.amount) : 0,
           owedOut: toNumber(settlement.amount),
-          effect: false,
+          effect: fromBalance,
         })
       );
     });
@@ -356,12 +378,18 @@ function buildLedgerWalk({ member, contributions = [], fines = [], config, now =
   let moneyIn = 0;
   let moneyOut = 0;
   let teaOff = 0;
+  let finesOff = 0;
   for (const s of steps) {
     held = toMoney(held + s.in - s.out);
     owed = toMoney(owed + s.owedIn - s.owedOut);
     moneyIn = toMoney(moneyIn + s.in);
     moneyOut = toMoney(moneyOut + s.out);
     if (s.kind === 'teaWeek' || s.kind === 'chaiBefore') teaOff = toMoney(teaOff + s.out);
+    // Fines that came off his money: the part of a payment that went to one, and a fine taken from
+    // his balance. The tea total above must not pick these up, so they are counted on their own.
+    if (s.kind === 'fineSettled' || s.kind === 'weekly' || s.kind === 'extra') {
+      finesOff = toMoney(finesOff + s.out);
+    }
     s.held = held;
     s.owed = owed;
   }
@@ -389,6 +417,9 @@ function buildLedgerWalk({ member, contributions = [], fines = [], config, now =
       // Not on the held column, so it is named on its own: every week's automatic tea and any
       // tea collected before the cycle, added up.
       teaOff,
+      // Fines that came off his money, named on their own for the same reason: "carried in + paid in
+      // − tea − fines = held" is a sentence a member can check against the page.
+      finesOff,
     },
     closing: {
       // What this walk arrives at, beside the engine's own figure for the same two questions.

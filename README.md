@@ -167,8 +167,22 @@ holds every one of these scripts if the rules are ever wanted for reference.
 
 A fine can be cleared in two ways: automatically (a logged payment pays down pending
 fines oldest-first, on both the ledger's own log endpoint and `/api/contributions`),
-or by hand from the member's page — **Fines → Pay**. Voiding a fine is for a fine
-that should never have been issued, not for one that has been paid.
+or by hand — **Fines → Record a payment**, or **Pay** on a member's page. Voiding a fine is
+for a fine that should never have been issued, not for one that has been paid.
+
+**A fine paid out of a member's money comes off his money.** A hand payment always says how it
+was made (`source`), because the two ways move different money: **`balance`** takes it out of
+what the group already holds for him (his held figure drops by that amount, never below nothing,
+and the group's cash does not move), **`cash`** is money he handed over separately (his held
+figure is untouched). A payment redirected out of a logged contribution comes off his held figure
+too, while the week still counts the whole cash he handed in. The engine
+(`utils/memberLedger.js`) subtracts both — the redirected part from the contribution rows
+(`fineDeducted`), the balance part from dated entries on the member (`Member.fineDebits`, written in
+the same transaction as the fine's own settlement) — so every screen, statement and passbook says
+the same thing. Voiding a fine gives balance deductions back; a payment keyed in by mistake can be
+taken back from the fine's history. Payments recorded before the system asked have no `source`:
+they are listed under **Fines → To check** and move nothing until the office says, one by one or
+all at once. `backend/test/integration/finePayments.test.js` pins all of it against a real database.
 
 **"Who owes what" is a list you work, not one you read** (`components/fines/WhoOwesWhat.jsx`,
 used by Reports → Fines and by the discipline screen, so the two cannot describe the same debts
@@ -208,10 +222,13 @@ set it to the deployed API URL.
   `/admin/reminders` · `/admin/documents` · `/admin/disciplinary` · `/admin/fines` ·
   `/admin/audit` — protected
 - `/admin/fines` — **Fines**, the office's desk for them (admin and super admin; the API refuses a
-  financial fine to anybody else): the totals, the list filtered owed/cleared/all/voided, issuing a
-  fine to a member found by search, recording a payment or voiding a wrong one on the row it belongs
-  to, "who owes what" with each member's own breakdown, and the group's fines record as a PDF or a
-  workbook. Issuing a fine and clearing one both email the member (see Key behaviors). The
+  financial fine to anybody else): the totals above four tabs — **Who owes** (every member in debt,
+  Pay on each row), **All fines** (filtered owed/cleared/all/voided, searched by member, each with
+  its payment history and *Take back*), **Issue a fine** (find the member, then the form) and **To
+  check** (earlier payments waiting to be marked cash or taken-from-balance) — a **Record a
+  payment** button that opens one dialog over any of them (who, which fine, how much, how it was
+  paid, with what each answer does to his figures shown before it is recorded), and the group's
+  fines record as a PDF or a workbook. Issuing a fine and clearing one both email the member (see Key behaviors). The
   disciplinary officer's `/admin/disciplinary` screen stays separate and narrowed to his category.
 - `/admin/account` — **My account**, reachable by every signed-in role: change your own password and
   enrol your own second factor. It exists because those two panels otherwise live on the dashboard
@@ -378,7 +395,9 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   its own answer, so a panel that ever disagreed with the office's page would say so out loud instead
   of quietly printing a second total. Two rules ride with it, because a member reading his own page
   asks about both: a closed week nobody paid is never taken *off* the money (it is what he owes, named
-  at the foot of the walk), and a fine never moves the money held — only the fines column. Money the
+  at the foot of the walk), and what a member merely *owes* in fines never moves the money held — only the fines column — until
+  a fine is paid out of his money, when it comes off both (a fine he paid in cash on the side comes
+  off only the fines column). Money the
   weekly figure does not follow (a group fund, tea paid at the desk, a personal fund outside the
   cycle) is still listed, with no effect and a line saying why, so nothing a member paid is missing
   from the page. It sits on the member's own passbook, his record page and the treasurer's member

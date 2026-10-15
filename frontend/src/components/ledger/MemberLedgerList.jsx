@@ -281,7 +281,7 @@ export default function MemberLedgerList({
               <Stat
                 label="Money held by members"
                 value={money(totals.money)}
-                hint={`(carried in + paid in − tea). Weeks nobody paid are owed, not taken off this — together they read ${money(totals.moneyNetOfDues ?? totals.money)}.`}
+                hint={`(carried in + paid in − tea − fines paid out of members’ money). Weeks nobody paid are owed, not taken off this — together they read ${money(totals.moneyNetOfDues ?? totals.money)}.`}
                 accent
               />
               <Stat

@@ -22,6 +22,12 @@ const {
 //   tea             = totalled on its own (§7.2) but still comes *out* of his
 //                     money, exactly as the paper ledger's
 //                     "Previous + Weekly + Extra − Chai = Member Total" did
+//   fines paid      = also come out of it, when they were paid out of it: the part of a
+//                     payment redirected to a fine, and a fine the office took from the
+//                     balance the group holds for him (`member.fineDebits`). A fine he
+//                     paid in cash on the side never touched it, so it never comes off.
+//                     (Fines still *owed* are a different question and stay on their own
+//                     line — see utils/ledgerWalk.)
 //
 // A week is scored once it has closed, not while it is running: the group collects
 // a week's money on its Thursday, so the 1,400 and the tea are counted from the day
@@ -100,6 +106,8 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   }
 
   let paid = 0;
+  // Fines paid out of the money he handed over (the part of a payment redirected to a fine).
+  let finesFromPayments = 0;
   let extraPaid = 0;
   let chaiPaid = 0;
   let otherPaid = 0;
@@ -127,12 +135,21 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
     // the week is credited the full amount the member actually paid.
     const cash = Number(c.grossAmount ?? c.amount) || 0;
 
+    // What part of this payment went to his fines. The week still counts the whole cash he handed
+    // over (a week is paid when he brought its 1,400), but that part is not his money any more —
+    // it was spent on the fine — so it comes off what the group holds for him, below. Only the
+    // buckets whose cash is part of the held figure can take anything off it: a fine paid out of
+    // money that was never counted in what he holds leaves that figure where it was.
+    const toFine = Number(c.fineDeducted) || 0;
+
     if (c.bucket === 'weekly') {
       paid += cash;
+      finesFromPayments += toFine;
       if (row) row.paid += cash;
     } else if (c.bucket === 'extra') {
       extraPaid += cash;
       paid += cash;
+      finesFromPayments += toFine;
       if (row) row.extraPaid += cash;
     } else if (c.bucket === 'chai') {
       chaiPaid += cash;
@@ -223,11 +240,24 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   // automatic figure covers the scored weeks; tea collected for the weeks before the cycle opened
   // was logged, so it is added to it here.
   const teaOffMoney = chaiDue + chaiBeforeCycle;
+  // Fines come off the same money, for the same reason tea does: it is money that was his and has
+  // been spent on his behalf. Two ways it happens — part of a payment he handed over went to a
+  // fine (read off the rows above), or the office took a fine out of what the group already holds
+  // for him (`member.fineDebits`, dated entries written when the fine was settled). A fine he
+  // paid in cash on the side is in neither: that money never reached his balance.
+  //
+  // The callers that decide *when* the figure is read (a statement's opening and closing) pass the
+  // debits that existed then, exactly as they pass the contributions that existed then.
+  const finesFromBalance = (Array.isArray(member.fineDebits) ? member.fineDebits : []).reduce(
+    (sum, debit) => sum + (Number(debit && debit.amount) || 0),
+    0
+  );
+  const finesPaid = finesFromPayments + finesFromBalance;
   // The money the group is holding for him: what he carried in, plus what he has
-  // actually paid in, less the tea that came off it. A closed week nobody paid
+  // actually paid in, less the tea and the fines that came off it. A closed week nobody paid
   // does NOT come off it — see the rule at the top of this file; that week shows
   // as `arrears` and is collected against the next week's payment.
-  const money = openingBalance + paid - teaOffMoney;
+  const money = openingBalance + paid - teaOffMoney - finesPaid;
 
   // The same two figures asked the group's way. `weeksBehind` and `arrears` (below) are the plain
   // truth about the weeks: he missed one, and 1,400 of it is unpaid. Whether the group *tells him he
@@ -243,7 +273,7 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
   // on the payload because "it has already happened" is answerable with it — a
   // member's statement from before this rule, or a screenshot of it, reconciles
   // as `money − required`, figure for figure, with nothing else moving.
-  const moneyNetOfDues = openingBalance + movement - teaOffMoney;
+  const moneyNetOfDues = openingBalance + movement - teaOffMoney - finesPaid;
 
   return {
     currentWeek,
@@ -263,6 +293,12 @@ function computeMemberLedger({ member, contributions, config, now = Date.now() }
     required,
     movement,
     money,
+    // The fines that have come off `money`, and how: out of payments he handed over, or out of
+    // the balance the group held for him. Zero for a member who has paid none of his fines that
+    // way, which is why this is a plain addition to the payload and not a change to any figure.
+    finesPaid,
+    finesFromPayments,
+    finesFromBalance,
     // Held less every week that has closed (`money − required`): what this member's
     // figure read while the dues were still being netted out of it. Printed by the
     // screens that have to reconcile against an older statement, and the reason

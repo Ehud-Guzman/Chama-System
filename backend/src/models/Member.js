@@ -56,6 +56,19 @@ const ApprovalSchema = new Schema(
   { _id: false }
 );
 
+// A fine paid out of the money the group holds for this member. Dated, because every statement
+// asks "what did he hold on that day?" and a running total could not answer it; tied to its fine
+// so voiding the fine can give the money back. The fine's own settlement (source: 'balance') is
+// the other half of the same entry, written in the same transaction.
+const FineDebitSchema = new Schema(
+  {
+    fineId: { type: Schema.Types.ObjectId, ref: 'Fine', required: true },
+    amount: { type: Number, required: true, set: moneySetter, min: MONEY_MIN, max: MONEY_MAX },
+    date: { type: Date, required: true },
+  },
+  { _id: false }
+);
+
 const MemberSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -117,6 +130,10 @@ const MemberSchema = new Schema(
     },
     // Free text for where that figure came from (e.g. "audit 19-Aug-2026").
     openingBalanceNote: { type: String, default: '' },
+    // Fines paid out of his balance (see FineDebitSchema). The ledger engine subtracts these from
+    // what the group holds for him; every place that projects a member for a balance has to
+    // include this field.
+    fineDebits: { type: [FineDebitSchema], default: [] },
     resignedAt: { type: Date, default: null },
     resignationReason: { type: String, default: '' },
   },

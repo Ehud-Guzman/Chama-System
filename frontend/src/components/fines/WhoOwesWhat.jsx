@@ -23,6 +23,10 @@ export default function WhoOwesWhat({
   limit,
   emptyMessage = 'Nobody owes a fine — every one issued has been cleared.',
   note,
+  // When given, every row gets a Pay button that hands the row to this function — the office's
+  // fines desk uses it to open the payment dialog for that member. Left out, the list is read-only,
+  // which is what the report and the discipline screen want.
+  onPay,
 }) {
   const [term, setTerm] = useState('');
   const [sort, setSort] = useState('outstanding');
@@ -87,11 +91,12 @@ export default function WhoOwesWhat({
             const open = openId === row.memberId;
             return (
               <li key={row.memberId}>
+                <div className="flex items-stretch">
                 <button
                   type="button"
                   onClick={() => setOpenId(open ? null : row.memberId)}
                   aria-expanded={open}
-                  className="flex w-full items-baseline justify-between gap-3 px-4 py-3 text-left hover:bg-canvas"
+                  className="flex min-w-0 flex-1 items-baseline justify-between gap-3 px-4 py-3 text-left hover:bg-canvas"
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm">
@@ -115,6 +120,17 @@ export default function WhoOwesWhat({
                     {money(row.outstanding)}
                   </span>
                 </button>
+                {onPay && (
+                  <button
+                    type="button"
+                    onClick={() => onPay(row)}
+                    aria-label={`Record a payment from ${row.name}`}
+                    className="m-2 min-h-11 shrink-0 rounded-lg border border-primary px-4 text-sm font-semibold text-primary hover:bg-primary/5"
+                  >
+                    Pay
+                  </button>
+                )}
+                </div>
 
                 {open && row.types?.length > 0 && (
                   <ul className="space-y-1 border-t border-rule bg-canvas px-4 py-2">

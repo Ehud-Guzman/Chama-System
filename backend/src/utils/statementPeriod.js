@@ -25,7 +25,7 @@
 //
 // which makes the reconciliation an identity rather than an assertion:
 //
-//     closing − opening  =  (paid − tea)  over the same window
+//     closing − opening  =  (paid − tea − fines paid out of his money)  over the same window
 //
 // `balanced` checks exactly that and the renderers print it, so a statement that does not add up is
 // visible on its own page instead of being discovered in an argument.
@@ -228,17 +228,23 @@ function resolvePeriod(query = {}, { now = Date.now() } = {}) {
 function computePeriodBlock({ member, config, all = [], visible = [], period, now = Date.now() }) {
   const at = (contribution) => new Date(contribution.date).getTime();
 
+  // The fines taken out of his balance, as they stood at each end — filtered by date exactly as
+  // the contributions are, so a fine paid on 1 March is in March's statement and not in the
+  // balance carried into it.
+  const debits = Array.isArray(member && member.fineDebits) ? member.fineDebits : [];
+  const memberAt = (cutoff) => ({ ...member, fineDebits: debits.filter((d) => at(d) <= cutoff) });
+
   // The two positions. `period.from - 1` for the opening call because the period includes its first
   // day: money paid on 1 January belongs to the January statement, not to the balance carried into
   // it.
   const opening = computeMemberLedger({
-    member,
+    member: memberAt(period.from - 1),
     contributions: all.filter((c) => at(c) <= period.from - 1),
     config,
     now: period.from,
   });
   const closing = computeMemberLedger({
-    member,
+    member: memberAt(period.to),
     contributions: all.filter((c) => at(c) <= period.to),
     config,
     now: period.to,
@@ -249,6 +255,10 @@ function computePeriodBlock({ member, config, all = [], visible = [], period, no
   const paidIn = toMoney(closing.paid - opening.paid);
   const required = toMoney(closing.required - opening.required);
   const tea = toMoney(closing.chai.due - opening.chai.due);
+  // Fines that came off his money in the period, whichever way: out of a payment, or out of the
+  // balance. Zero for nearly every statement, which is why the renderers print the line only when
+  // there is something to print.
+  const finesPaid = toMoney(closing.finesPaid - opening.finesPaid);
   // Arrears carried through the period, on the same footing as `required`: reported beside the
   // balance rather than taken out of it, so a statement whose member missed a week shows the week
   // and the money held at both ends rather than silently reading as though it had been paid.
@@ -258,7 +268,7 @@ function computePeriodBlock({ member, config, all = [], visible = [], period, no
   // The identity, checked rather than assumed. Both sides go through the same rounding helper, so
   // this is a real check and not a tolerance that would hide a bug. `required` is deliberately not
   // in it: a closed week nobody paid is arrears, not a movement of the money he holds.
-  const accountedFor = toMoney(paidIn - tea);
+  const accountedFor = toMoney(paidIn - tea - finesPaid);
 
   const rows = visible.filter((contribution) => at(contribution) >= period.from && at(contribution) <= period.to);
 
@@ -315,6 +325,7 @@ function computePeriodBlock({ member, config, all = [], visible = [], period, no
     required,
     arrears,
     tea,
+    finesPaid,
     movement,
     accountedFor,
     // Printed on the statement. When this is false the statement says so rather than being handed

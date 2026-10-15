@@ -2028,6 +2028,67 @@ FILES
   WHAT-WE-ADDED.md                 this
 
 
+FINES: A PAID FINE NOW COMES OFF THE PERSON, AND PAYING ONE IS A DIALOG
+-----------------------------------------------------------------------
+
+THE PROBLEM
+
+  Marking a fine as paid lowered what the member owed in fines and did nothing else. A fine paid
+  out of a member's money left every figure of his untouched: his held balance, his passbook, his
+  statement and the group's totals all still counted money that had been spent on the fine. The
+  same was true of the part of a payment redirected to a fine as it was logged. And the screen made
+  it hard to use: Pay opened its form at the top of a long page whichever row it was pressed on,
+  so on a phone it looked as though nothing had happened.
+
+WHAT IT DOES NOW
+
+  - A payment says how it was made. Taken from his balance: his held money drops by that amount,
+    never more than he holds. Paid in cash or M-Pesa on the side: his balance is untouched, because
+    that money was never in it. A payment with no answer is refused, in words.
+  - The part of a logged payment that went to a fine now comes off his held money too, while the
+    week still counts the whole cash he handed over (a week is paid when he brought its 1,400).
+  - Everything that prints his balance agrees: the cycle engine, the member's page, the passbook, the
+    treasurer's ledger, "Show the working", period statements (opening + paid in - tea - fines paid
+    out of his money = closing), reminders and the weekly reconciliation.
+  - A fine taken from a balance is not new cash for the group, so it is left out of "collected from
+    fines". A fine paid in cash is.
+  - Voiding a fine gives back anything taken from the member's balance for it. A payment keyed in by
+    mistake can be taken back from the fine's history.
+  - The fines screen is a desk with tabs - Who owes, All fines, Issue a fine, To check - and a
+    Record a payment button that opens one dialog over any of them: who, which fine (or all,
+    oldest first), how much, how it was paid, a date, and a plain line saying what he will owe and
+    what the group will hold for him afterwards. After it is recorded the dialog says what happened
+    in a sentence that can be read out. The member's own page opens the same dialog.
+  - The fines list can be searched by a bit of a member's name, phone or reg number.
+
+PAYMENTS ALREADY RECORDED
+
+  Every payment recorded before this change has no way of saying whether the money came out of the
+  member's balance or was handed over separately, and nothing can tell the two apart afterwards. So
+  none of them moves any balance on its own. They are listed under Fines -> To check, and the office
+  says for each one - or for all at once - whether it was cash or taken from the balance. Taking one
+  from a balance dates the deduction to the day that payment was recorded for, and is refused for a
+  member who does not hold that much (mark it cash instead). Each answer is written to the audit trail.
+
+  The one exception, deliberately: a payment that was redirected out of a logged contribution
+  (only possible with "autoSettleFines" switched on) did say where it came from, so the part that
+  went to a fine comes off that member's held money as soon as this is deployed.
+
+FILES
+
+  backend/src/utils/memberLedger.js          the engine subtracts fines paid out of his money
+  backend/src/utils/fineSettlement.js        record / take back / sort out earlier payments
+  backend/src/utils/memberMoney.js           one member's held money, for the balance check
+  backend/src/utils/ledgerWalk.js            the working shows each fine coming off
+  backend/src/utils/statementPeriod.js       statements reconcile with fines in the sum
+  backend/src/models/Fine.js, Member.js      how a payment was made; dated balance deductions
+  backend/src/controllers/fineController.js  pay, position, take back, to-check, void
+  backend/test/integration/finePayments.test.js
+  frontend/src/pages/Fines.jsx               the desk, with tabs
+  frontend/src/components/fines/PayFinesModal.jsx, PaymentsToCheck.jsx
+  frontend/src/utils/finePayment.js          the arithmetic the dialog shows (and its test)
+
+
 END OF DOCUMENT
 ===============
 

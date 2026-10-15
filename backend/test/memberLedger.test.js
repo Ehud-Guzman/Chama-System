@@ -397,3 +397,66 @@ test('the header keeps both halves of what is owed', () => {
   assert.equal(totals.chasedArrears, 1400, 'only one of them is being asked for it');
   assert.equal(totals.notChasedArrears, 1400, 'and the other half is named, not lost');
 });
+
+// ---------------------------------------------------------------------------------------------
+// Fines paid out of his money
+// ---------------------------------------------------------------------------------------------
+
+test('a fine taken from his balance comes off the money he holds, and moves no week', () => {
+  const rows = [weekly(1400)];
+  const before = computeMemberLedger({
+    member: { openingBalance: 5000 },
+    contributions: rows,
+    config,
+    now: WEEK_93_FRIDAY,
+  });
+  const after = computeMemberLedger({
+    member: { openingBalance: 5000, fineDebits: [{ fineId: 'f1', amount: 300, date: WEEK_93_FRIDAY }] },
+    contributions: rows,
+    config,
+    now: WEEK_93_FRIDAY,
+  });
+
+  assert.equal(after.money, before.money - 300);
+  assert.equal(after.finesFromBalance, 300);
+  assert.equal(after.finesPaid, 300);
+  // The weeks are about what he handed over, not about what he holds.
+  assert.equal(after.paid, before.paid);
+  assert.equal(after.arrears, before.arrears);
+  assert.equal(weekOf(after, 93).status, weekOf(before, 93).status);
+  // The figure the books showed before the weeks were reported rather than taken off still
+  // reconciles: it moves by the same 300.
+  assert.equal(after.moneyNetOfDues, before.moneyNetOfDues - 300);
+});
+
+test('the part of a payment that went to a fine is not money he holds, but the week is still paid', () => {
+  // He handed over 1,400; 400 of it was redirected to a fine, so the row's net is 1,000.
+  const row = { ...weekly(1000), grossAmount: 1400, fineDeducted: 400 };
+  const ledger = ledgerFor([row], 0);
+
+  assert.equal(ledger.paid, 1400, 'the week is credited what he physically handed over');
+  assert.equal(weekOf(ledger, 93).status, 'paid');
+  assert.equal(ledger.finesFromPayments, 400);
+  assert.equal(ledger.money, 1000, 'but only 1,000 of it stays his');
+});
+
+test('a fine paid out of money that was never in his balance changes nothing', () => {
+  // Welfare money redirected to a fine: the engine does not count that fund in what he holds,
+  // so there is nothing to take the fine off.
+  const welfare = { ...weekly(1000), grossAmount: 1400, fineDeducted: 400, bucket: 'other' };
+  const ledger = ledgerFor([welfare], 2000);
+  assert.equal(ledger.money, 2000);
+  assert.equal(ledger.finesPaid, 0);
+});
+
+test('a member with no fines paid out of his money reads exactly as before', () => {
+  const ledger = ledgerFor([weekly(1400)], 1000);
+  assert.equal(ledger.finesPaid, 0);
+  assert.equal(ledger.finesFromBalance, 0);
+  assert.equal(ledger.money, 2400);
+  // Records that predate the field read the same: no `fineDebits` at all.
+  assert.equal(
+    computeMemberLedger({ member: { openingBalance: 1000 }, contributions: [weekly(1400)], config, now: WEEK_93_FRIDAY }).money,
+    2400
+  );
+});

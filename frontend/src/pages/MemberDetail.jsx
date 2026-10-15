@@ -11,7 +11,7 @@ import BackLink from '../components/shared/BackLink';
 import ErrorState from '../components/shared/ErrorState';
 import ResignDialog from '../components/members/ResignDialog';
 import IssueFineForm from '../components/members/IssueFineForm';
-import SettleFineForm from '../components/members/SettleFineForm';
+import PayFinesModal from '../components/fines/PayFinesModal';
 import MessageMemberPanel from '../components/members/MessageMemberPanel';
 import FinesPanel from '../components/shared/FinesPanel';
 import LedgerWalk from '../components/shared/LedgerWalk';
@@ -141,8 +141,9 @@ export default function MemberDetail() {
   async function voidFine() {
     setBusy(true);
     try {
-      await api.delete(`/api/fines/${voidingFine._id}`);
-      toast('Fine voided');
+      const res = await api.delete(`/api/fines/${voidingFine._id}`);
+      const back = Number(res.data?.returnedToBalance) || 0;
+      toast(back > 0 ? `Fine voided — ${money(back)} went back to his balance` : 'Fine voided');
       setVoidingFine(null);
       load();
     } catch (err) {
@@ -384,7 +385,9 @@ async function exportStatementExcel() {
               {money(ledger ? ledger.money : totalContributed)}
             </p>
             <p className="mt-0.5 text-[11px] leading-4 text-muted">
-              (carried in + paid in − tea)
+              {ledger?.finesPaid > 0
+                ? '(carried in + paid in − tea − fines paid out of his money)'
+                : '(carried in + paid in − tea)'}
             </p>
             {ledger && (
               <p className="amount mt-1 text-xs text-muted">
@@ -747,18 +750,6 @@ async function exportStatementExcel() {
                 }}
                 onCancel={() => setIssuingFine(false)}
               />
-            ) : settlingFine ? (
-              // Settling inline, the same way a fine is issued: the money was paid
-              // here and now, and the balance he still owes is the one thing the
-              // treasurer needs in front of him while typing.
-              <SettleFineForm
-                fine={settlingFine}
-                onSettled={() => {
-                  setSettlingFine(null);
-                  load();
-                }}
-                onCancel={() => setSettlingFine(null)}
-              />
             ) : (
               <FinesPanel fines={fines} onVoid={setVoidingFine} onSettle={setSettlingFine} />
             )}
@@ -903,10 +894,26 @@ async function exportStatementExcel() {
         onConfirm={resignMember}
         onCancel={() => setConfirmingResign(false)}
       />
+      {/* Paying one of his fines opens the same dialog as the fines desk, over this page: it asks
+          how the money was paid (out of his balance, or handed over separately), which is what
+          decides whether his balance moves, and says what each answer will do before it is
+          recorded. */}
+      {settlingFine && (
+        <PayFinesModal
+          memberId={member._id}
+          fineId={settlingFine._id}
+          onClose={() => setSettlingFine(null)}
+          onPaid={load}
+        />
+      )}
       <ConfirmDialog
         open={!!voidingFine}
         title="Void this fine?"
-        body={voidingFine ? `${money(voidingFine.remaining)} outstanding will no longer be owed.` : ''}
+        body={
+          voidingFine
+            ? `${money(voidingFine.remaining)} outstanding will no longer be owed. If any of it was taken from his balance, it goes back to him.`
+            : ''
+        }
         confirmLabel="Void"
         danger
         busy={busy}

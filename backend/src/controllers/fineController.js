@@ -12,6 +12,18 @@ const { announceFineIssued, announceFinesPaid } = require('../utils/fineEmails')
 const { buildFineReport, renderFineReportPdf, fineReportSheets,
   buildFineGroupReport, renderFineGroupReportPdf, fineGroupReportSheets,
 } = require('../utils/fineReport');
+const mongoose = require('mongoose');
+const { withOptionalTransaction } = require('../utils/fineAllocation');
+const { memberLedgerNow } = require('../utils/memberMoney');
+const {
+  FinePaymentError,
+  readSource,
+  recordFinePayment,
+  reverseFinePayment,
+  releaseFineDebits,
+  listUnreviewedPayments,
+  reviewFinePayment,
+} = require('../utils/fineSettlement');
 
 // The disciplinary officer works in his own world: he issues conduct fines and has
 // no business reading the treasurer's. So every read he makes is narrowed to
@@ -57,6 +69,17 @@ function toFineJson(fine) {
     memberRegNumber: fine.memberId?.regNumber || null,
     issuedBy: fine.issuedBy?.name || null,
     voided: fine.deleted === true,
+    // What has been paid against it, oldest first, so the screen can show the history under the
+    // fine and offer to undo a payment keyed in by mistake. `index` is the payment's place on the
+    // fine, which is how an undo names it. `source` says how it was paid: taken from his balance,
+    // cash he handed over, out of a contribution, or null for a payment recorded before the
+    // office was asked (those are listed under "Past payments to check").
+    payments: (fine.settlements || []).map((s, index) => ({
+      index,
+      amount: s.amount,
+      date: s.date,
+      source: s.source || (s.contributionId ? 'contribution' : null),
+    })),
   };
 }
 
@@ -70,6 +93,19 @@ async function listFines(req, res, next) {
     const scope = await scopeForUser(req.user);
     const filter = { ...scope.filter, deleted: req.query.status === 'voided' };
     if (req.query.memberId) filter.memberId = req.query.memberId;
+    // Find a member's fines by typing a bit of his name, phone or registration number — the way
+    // the office looks somebody up at a meeting.
+    const search = String(req.query.search || '').trim().slice(0, 60);
+    if (search) {
+      const pattern = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      const ids = await Member.find({ $or: [{ name: pattern }, { phone: pattern }, { regNumber: pattern }] })
+        .select('_id')
+        .limit(200)
+        .lean();
+      filter.memberId = filter.memberId
+        ? { $in: ids.map((m) => m._id).filter((id) => String(id) === String(filter.memberId)) }
+        : { $in: ids.map((m) => m._id) };
+    }
     if (req.query.status === 'pending') filter.remaining = { $gt: 0 };
     if (req.query.status === 'settled') filter.remaining = { $lte: 0 };
 
@@ -206,85 +242,324 @@ async function createFine(req, res, next) {
   }
 }
 
-// POST /api/fines/:id/settle — manual settlement (e.g. member paid cash directly,
-// not through a logged contribution).
-async function settleFine(req, res, next) {
-  try {
-    const fine = await Fine.findById(req.params.id);
-    if (!fine || fine.deleted) return res.status(404).json({ message: 'Fine not found' });
-    if (fine.remaining <= 0) return res.status(400).json({ message: 'Fine is already settled' });
+// ---------------------------------------------------------------------------------------------
+// Paying fines
+// ---------------------------------------------------------------------------------------------
+//
+// Every payment says how it was made, because the two ways move different money
+// (utils/fineSettlement): taken out of the member's balance, which comes off what the group holds
+// for him, or paid in cash on the side, which does not. A payment that does not say is refused
+// with a sentence the office can act on rather than guessed at — a guess here is a member's
+// balance wrong by the fine, or a fine marked paid by money that never arrived.
 
-    const read = readMoney(req.body?.amount, { min: 0.01, label: 'Amount' });
-    if (read.error) return res.status(400).json({ message: read.error });
+const money = (n) => `Ksh ${Number(n || 0).toLocaleString('en-KE')}`;
 
-    // The day the money actually changed hands, which is not always the day it is
-    // keyed in — cash handed over at a meeting is often recorded days later, and
-    // the fine's own record is what the disciplinary report prints.
-    let paidAt = new Date();
-    if (req.body?.date) {
-      const parsed = new Date(req.body.date);
-      if (Number.isNaN(parsed.getTime())) {
-        return res.status(400).json({ message: 'Invalid date' });
-      }
-      const endOfToday = new Date();
-      endOfToday.setHours(23, 59, 59, 999);
-      if (parsed > endOfToday) {
-        return res.status(400).json({ message: 'Date cannot be in the future' });
-      }
-      if (parsed < new Date(fine.date)) {
-        return res.status(400).json({ message: 'A fine cannot be paid before it was issued' });
-      }
-      paidAt = parsed;
-    }
+const SAY_HOW =
+  'Say how this was paid: taken out of his balance, or paid in cash / M-Pesa. ' +
+  'If this screen was already open, refresh the page and try again.';
 
-    const before = snapshot(fine);
-    const applied = Math.min(read.value, fine.remaining);
-    fine.remaining = Math.round((fine.remaining - applied) * 100) / 100;
-    fine.settlements.push({ contributionId: null, amount: applied, date: paidAt });
+// The day the money actually changed hands, which is not always the day it is keyed in — cash
+// handed over at a meeting is often recorded days later, and the fine's own record is what the
+// disciplinary report prints. Nothing from the future.
+function readPaidAt(value) {
+  if (!value) return { paidAt: new Date() };
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return { error: 'Invalid date' };
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+  if (parsed > endOfToday) return { error: 'Date cannot be in the future' };
+  return { paidAt: parsed };
+}
 
-    await fine.save();
+function respondPaymentError(err, res, next) {
+  if (err instanceof FinePaymentError) return res.status(err.status).json({ message: err.message });
+  return next(err);
+}
+
+// Everything that follows a payment that has already been written: one audit entry per fine, and
+// one email naming what was received. Neither can fail the request — the payment is recorded.
+async function afterPayment({ result, req, paidAt }) {
+  const { applied, source, heldBefore, heldAfter, totalApplied, member } = result;
+
+  for (const { fine, before, applied: part } of applied) {
+    const after = snapshot(fine);
     await logAudit({
       action: 'update',
       entityType: 'Fine',
       entityId: fine._id,
       performedBy: req.user._id,
       before,
-      after: snapshot(fine),
+      // The audit entry names what the payment did to his balance, so the trail answers "why did
+      // his money drop on that day?" without anybody re-deriving it.
+      after:
+        source === 'balance'
+          ? { ...after, paidFromBalance: { amount: part, heldBefore, heldAfter } }
+          : { ...after, paidInCash: { amount: part } },
+    });
+  }
+
+  if (totalApplied > 0) {
+    // Not awaited: the settlement is already written and audited, and a slow mail server must not
+    // hold up the office's screen.
+    Member.findById(member._id)
+      .select('name email emailNotifications')
+      .lean()
+      .then((fresh) =>
+        announceFinesPaid({
+          payments: applied.map(({ fine, applied: part }) => ({
+            label: fine.reason || fine.typeId?.name || 'Fine',
+            amount: part,
+            remaining: fine.remaining,
+          })),
+          member: fresh,
+          totalPaid: totalApplied,
+          paidAt,
+          note:
+            source === 'balance'
+              ? `${money(totalApplied)} was taken from the balance the group holds for you. You now hold ${money(heldAfter)}.`
+              : '',
+          performedBy: req.user._id,
+          rid: req.id,
+        })
+      )
+      .catch(() => {
+        // Nothing to do about a failure to read the member here: the payment is recorded either
+        // way, and the log line the send would have written is replaced by nothing at all rather
+        // than by a broken request.
+      });
+  }
+}
+
+async function paymentResponse(result) {
+  await Promise.all(
+    result.applied.map(({ fine }) =>
+      fine.populate([
+        { path: 'typeId', select: 'name category' },
+        { path: 'memberId', select: 'name regNumber' },
+      ])
+    )
+  );
+  return {
+    fines: result.applied.map(({ fine }) => toFineJson(fine)),
+    // The first one, for callers that settled a single fine and read `fine`.
+    fine: toFineJson(result.applied[0].fine),
+    totalApplied: result.totalApplied,
+    source: result.source,
+    // What it did to his balance: null for a cash payment, which does not touch it.
+    held: result.source === 'balance' ? { before: result.heldBefore, after: result.heldAfter } : null,
+  };
+}
+
+// POST /api/fines/:id/settle — one payment against one fine, by hand.
+// Body: { amount, source: 'balance' | 'cash', date? }
+async function settleFine(req, res, next) {
+  try {
+    const source = readSource(req.body?.source);
+    if (!source) return res.status(400).json({ message: SAY_HOW });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Fine not found' });
+    }
+    const fine = await Fine.findById(req.params.id).select('memberId deleted remaining').lean();
+    if (!fine || fine.deleted) return res.status(404).json({ message: 'Fine not found' });
+    if (fine.remaining <= 0) return res.status(400).json({ message: 'Fine is already settled' });
+
+    const read = readMoney(req.body?.amount, { min: 0.01, label: 'Amount' });
+    if (read.error) return res.status(400).json({ message: read.error });
+    const when = readPaidAt(req.body?.date);
+    if (when.error) return res.status(400).json({ message: when.error });
+
+    const result = await recordFinePayment({
+      memberId: fine.memberId,
+      fineId: fine._id,
+      amount: read.value,
+      source,
+      paidAt: when.paidAt,
+      userId: req.user._id,
+    });
+    await afterPayment({ result, req, paidAt: when.paidAt });
+    res.json(await paymentResponse(result));
+  } catch (err) {
+    respondPaymentError(err, res, next);
+  }
+}
+
+// POST /api/fines/member/:memberId/pay — a payment from one member, against one named fine or,
+// with none named, spread over his pending fines oldest first. The usual shape of a meeting:
+// "he is paying 500 towards what he owes".
+// Body: { amount, source: 'balance' | 'cash', date?, fineId? }
+async function payMemberFines(req, res, next) {
+  try {
+    const source = readSource(req.body?.source);
+    if (!source) return res.status(400).json({ message: SAY_HOW });
+    if (!mongoose.Types.ObjectId.isValid(req.params.memberId)) {
+      return res.status(404).json({ message: 'Member not found' });
+    }
+    const fineId = req.body?.fineId || null;
+    if (fineId && !mongoose.Types.ObjectId.isValid(fineId)) {
+      return res.status(404).json({ message: 'Fine not found' });
+    }
+    const read = readMoney(req.body?.amount, { min: 0.01, label: 'Amount' });
+    if (read.error) return res.status(400).json({ message: read.error });
+    const when = readPaidAt(req.body?.date);
+    if (when.error) return res.status(400).json({ message: when.error });
+
+    const result = await recordFinePayment({
+      memberId: req.params.memberId,
+      fineId,
+      amount: read.value,
+      source,
+      paidAt: when.paidAt,
+      userId: req.user._id,
+    });
+    await afterPayment({ result, req, paidAt: when.paidAt });
+    res.json(await paymentResponse(result));
+  } catch (err) {
+    respondPaymentError(err, res, next);
+  }
+}
+
+// GET /api/fines/member/:memberId/position — what the payment screen needs about one member: what
+// the group holds for him (the most that can be taken from his balance), and the fines he still
+// owes, oldest first (the order a lump sum is spread over).
+async function memberFinePosition(req, res, next) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.memberId)) {
+      return res.status(404).json({ message: 'Member not found' });
+    }
+    const member = await Member.findById(req.params.memberId).select('name phone regNumber active').lean();
+    if (!member) return res.status(404).json({ message: 'Member not found' });
+
+    const [ledger, fines] = await Promise.all([
+      memberLedgerNow(member._id),
+      Fine.find({ memberId: member._id, deleted: false, remaining: { $gt: 0 } })
+        .sort({ date: 1, createdAt: 1 })
+        .populate('typeId', 'name category')
+        .lean(),
+    ]);
+
+    const owed = fines.reduce((sum, f) => sum + (Number(f.remaining) || 0), 0);
+    const memberRef = { _id: member._id, name: member.name, regNumber: member.regNumber };
+    res.json({
+      member: {
+        _id: member._id,
+        name: member.name,
+        phone: member.phone,
+        regNumber: member.regNumber || null,
+        active: member.active !== false,
+      },
+      // What the group holds for him — never negative as an offer: a member who holds nothing
+      // simply cannot have a fine taken from his balance.
+      held: Math.max(0, Math.round((Number(ledger?.money) || 0) * 100) / 100),
+      owed: Math.round(owed * 100) / 100,
+      fines: fines.map((f) => toFineJson({ ...f, memberId: memberRef })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/fines/:id/payments/:index/undo — takes back a payment keyed in by mistake. The fine is
+// owed again by that amount and, if it had come out of his balance, the money goes back to him.
+// Body: { amount } — the amount the office was looking at, so a stale screen cannot undo the wrong
+// payment.
+async function undoFinePayment(req, res, next) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Fine not found' });
+    }
+    const index = Number.parseInt(req.params.index, 10);
+    if (!Number.isInteger(index) || index < 0) {
+      return res.status(404).json({ message: 'That payment is no longer on the fine' });
+    }
+    const expected = req.body?.amount === undefined ? undefined : Number(req.body.amount);
+
+    const result = await reverseFinePayment({ fineId: req.params.id, index, expected });
+    await logAudit({
+      action: 'update',
+      entityType: 'Fine',
+      entityId: result.fine._id,
+      performedBy: req.user._id,
+      before: result.before,
+      after: {
+        ...snapshot(result.fine),
+        paymentUndone: { amount: result.amount, source: result.source },
+      },
     });
 
-    await fine.populate('typeId', 'name category');
+    await result.fine.populate([
+      { path: 'typeId', select: 'name category' },
+      { path: 'memberId', select: 'name regNumber' },
+    ]);
+    res.json({
+      fine: toFineJson(result.fine),
+      undone: result.amount,
+      returnedToBalance: result.source === 'balance' ? result.amount : 0,
+    });
+  } catch (err) {
+    respondPaymentError(err, res, next);
+  }
+}
 
-    // The member is told what was received and what is left on the fine. Not awaited:
-    // the settlement is already written and audited, and a slow mail server must not
-    // hold up the office's screen.
-    if (applied > 0) {
-      Member.findById(fine.memberId)
-        .select('name email emailNotifications')
-        .lean()
-        .then((member) =>
-          announceFinesPaid({
-            payments: [
-              {
-                label: fine.reason || fine.typeId?.name || 'Fine',
-                amount: applied,
-                remaining: fine.remaining,
-              },
-            ],
-            member,
-            totalPaid: applied,
-            paidAt,
-            performedBy: req.user._id,
-            rid: req.id,
-          })
-        )
-        .catch(() => {
-          // Nothing to do about a failure to read the member here: the payment is
-          // recorded either way, and the log line the send would have written is
-          // replaced by nothing at all rather than by a broken request.
+// GET /api/fines/payments/to-check — payments recorded before the office was asked how they were
+// made. Nobody can tell from the record whether each was cash or taken from the balance, so they
+// are listed for a person to say.
+async function paymentsToCheck(req, res, next) {
+  try {
+    const rows = await listUnreviewedPayments();
+    res.json({
+      payments: rows,
+      total: rows.reduce((sum, r) => sum + r.amount, 0),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/fines/payments/check — says how earlier payments were made.
+// Body: { items: [{ fineId, index, amount, source: 'balance' | 'cash' }] }
+async function checkPayments(req, res, next) {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (items.length === 0) return res.status(400).json({ message: 'Choose at least one payment' });
+    if (items.length > 200) return res.status(400).json({ message: 'Sort out at most 200 payments at a time' });
+
+    // One by one, in the order the office gave them: each is checked against the balance as the one
+    // before it left it, and one that cannot be done (he does not hold enough) is reported without
+    // stopping the rest.
+    const done = [];
+    const failed = [];
+    for (const item of items) {
+      const source = readSource(item?.source);
+      const label = { fineId: item?.fineId, index: item?.index };
+      if (!source || !mongoose.Types.ObjectId.isValid(item?.fineId)) {
+        failed.push({ ...label, message: 'Choose how this was paid' });
+        continue;
+      }
+      try {
+        const result = await reviewFinePayment({
+          fineId: item.fineId,
+          index: Number.parseInt(item.index, 10),
+          source,
+          expected: item.amount === undefined ? undefined : Number(item.amount),
         });
+        await logAudit({
+          action: 'update',
+          entityType: 'Fine',
+          entityId: result.fine._id,
+          performedBy: req.user._id,
+          before: result.before,
+          after: {
+            ...snapshot(result.fine),
+            paymentChecked: { index: Number(item.index), amount: result.amount, source, heldBefore: result.heldBefore },
+          },
+        });
+        done.push({ ...label, source });
+      } catch (err) {
+        if (!(err instanceof FinePaymentError)) throw err;
+        failed.push({ ...label, message: err.message });
+      }
     }
-
-    res.json({ fine: toFineJson(fine) });
+    res.json({ done: done.length, failed });
   } catch (err) {
     next(err);
   }
@@ -293,21 +568,41 @@ async function settleFine(req, res, next) {
 // DELETE /api/fines/:id — void a wrongly-issued fine (soft delete)
 async function voidFine(req, res, next) {
   try {
-    const fine = await Fine.findById(req.params.id);
-    if (!fine || fine.deleted) return res.status(404).json({ message: 'Fine not found' });
-    const before = snapshot(fine);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Fine not found' });
+    }
+    const outcome = await withOptionalTransaction(async (session) => {
+      const fine = await Fine.findById(req.params.id).session(session || null);
+      if (!fine || fine.deleted) return null;
+      const before = snapshot(fine);
 
-    fine.deleted = true;
-    await fine.save();
+      fine.deleted = true;
+      await fine.save({ session });
+      // A fine that should never have been issued cannot have been paid out of his balance: the
+      // money goes back to him in the same breath. Cash he handed over is left as the record of
+      // what was received, and reported so the office can say what it did with it.
+      const released = await releaseFineDebits(fine, { session });
+      return { fine, before, released };
+    });
+    if (!outcome) return res.status(404).json({ message: 'Fine not found' });
+
     await logAudit({
       action: 'delete',
       entityType: 'Fine',
-      entityId: fine._id,
+      entityId: outcome.fine._id,
       performedBy: req.user._id,
-      before,
-      after: snapshot(fine),
+      before: outcome.before,
+      after: {
+        ...snapshot(outcome.fine),
+        returnedToBalance: outcome.released.returned,
+        cashReceived: outcome.released.cash,
+      },
     });
-    res.json({ ok: true });
+    res.json({
+      ok: true,
+      returnedToBalance: outcome.released.returned,
+      cashReceived: outcome.released.cash,
+    });
   } catch (err) {
     next(err);
   }
@@ -367,4 +662,17 @@ async function exportFines(req, res, next) {
   }
 }
 
-module.exports = { listFines, finesSummary, exportFines, exportMemberFines, createFine, settleFine, voidFine };
+module.exports = {
+  listFines,
+  finesSummary,
+  exportFines,
+  exportMemberFines,
+  createFine,
+  settleFine,
+  payMemberFines,
+  memberFinePosition,
+  undoFinePayment,
+  paymentsToCheck,
+  checkPayments,
+  voidFine,
+};

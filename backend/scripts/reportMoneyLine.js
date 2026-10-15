@@ -63,7 +63,7 @@ async function main() {
   const limit = moneyLimitForWeek(settings, config, week);
 
   const members = await Member.find({ active: true })
-    .select('name regNumber openingBalance')
+    .select('name regNumber openingBalance fineDebits')
     .sort({ name: 1 })
     .lean();
   const dues = await computeMemberDues(members, { settings });

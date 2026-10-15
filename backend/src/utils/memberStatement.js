@@ -154,6 +154,11 @@ function buildStatement(profile) {
         { label: `Money at the start (${period.from})`, value: period.opening, strong: true },
         { label: 'Paid in during the period', value: period.paidIn },
         { label: 'Tea deducted (Group fund)', value: period.tea },
+        // Only when there is one: a fine paid out of what the group holds for him is a movement
+        // of his money exactly as tea is, and a statement that left it out would not add up.
+        ...(period.finesPaid > 0
+          ? [{ label: 'Fines paid out of his money', value: period.finesPaid }]
+          : []),
         {
           label: `Money at the end (${period.to})`,
           value: period.closing,
@@ -207,6 +212,11 @@ function buildStatement(profile) {
         },
         ...(ledger && profile.teaFundIncluded
           ? [{ label: 'Tea (deducted automatically, Group fund)', value: ledger.tea }]
+          : []),
+        // The fines he has paid out of his own money, which is what keeps "Money held" at the top
+        // adding up for a reader checking it against the lines under it.
+        ...(ledger && ledger.finesPaid > 0
+          ? [{ label: 'Fines paid out of his money (already taken off the money held)', value: ledger.finesPaid }]
           : []),
         {
           label: 'Owed (closed weeks still unpaid)',
@@ -272,6 +282,9 @@ function reconciliationLines(period) {
     { label: `Money at the start (${period.from})`, value: period.opening },
     { label: 'Plus what he paid in', value: period.paidIn, sign: '+' },
     { label: 'Less tea (Group fund)', value: period.tea, sign: '−' },
+    ...(period.finesPaid > 0
+      ? [{ label: 'Less fines paid out of his money', value: period.finesPaid, sign: '−' }]
+      : []),
     { label: `Money at the end (${period.to})`, value: period.closing, sign: '=' },
     {
       label: `Of which owed: weeks that closed, still unpaid (${period.weeksClosed} closed)`,

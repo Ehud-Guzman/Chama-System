@@ -48,6 +48,8 @@ thing — his verdict on a chapter of the constitution.
 - ✅ Everything the treasurer can do, and everything the secretary can do
 - ✅ Record contributions; create, edit and delete expenses
 - ✅ Create, settle and void fines (both categories) — all of it in one place, **Fines**
+  (a payment is recorded as taken from the member's balance or paid in cash, and only these two
+  roles can record one: it can lower what the group holds for a member)
   (`/admin/fines`): the totals, the list filtered owed/cleared/all/voided, issuing a fine to a member
   found by search, recording a payment or voiding a wrong one on the row itself, "who owes what", and
   the group's fines record as a **PDF** or an **Excel** workbook. The dashboard shows what is owed in

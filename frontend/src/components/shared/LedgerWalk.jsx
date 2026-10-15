@@ -20,10 +20,11 @@ import { money, shortDate } from '../../utils/format';
 //     the foot of the panel prints the sum in the same words the card above uses. If they ever do not,
 //     this panel says so out loud rather than printing a second, quieter total.
 //
-// The fines keep their own column here, exactly as they are kept out of the money held: a fine
-// charged steps "fines owed" up, a payment clearing it steps it back down, and the held figure is
-// untouched by either. That is the rule the rest of the app keeps, so the panel states it in words
-// instead of leaving a reader to conclude that paying a fine is money that went missing.
+// The fines keep their own column here: a fine charged steps "fines owed" up and a payment clearing
+// it steps it back down, and the held figure is untouched by what he merely *owes*. It moves only
+// when a fine is paid out of his money — taken from his balance, or out of a payment he handed over
+// — and those steps say so in words and show the money coming off, so a reader does not conclude
+// that paying a fine is money that went missing.
 export default function LedgerWalk({ walk, className = '' }) {
   const [open, setOpen] = useState(false);
 
@@ -81,7 +82,8 @@ export default function LedgerWalk({ walk, className = '' }) {
                     <p className="amount text-sm font-semibold text-alert">−{money(s.out)}</p>
                   )}
                   {s.in === 0 && s.out === 0 && <p className="text-sm text-muted">—</p>}
-                  {/* The fines column: money owed, never money off what he holds. */}
+                  {/* The fines column: money owed. Money coming off what he holds, when a fine is
+                      paid out of it, is the red figure above. */}
                   {s.owedIn > 0 && (
                     <p className="amount text-[11px] text-alert">fines owed +{money(s.owedIn)}</p>
                   )}
@@ -100,7 +102,9 @@ export default function LedgerWalk({ walk, className = '' }) {
             {walk.balanced ? (
               <p className="amount text-sm leading-6">
                 {money(totals.opening)} carried in + {money(totals.paidIn)} paid in −{' '}
-                {money(totals.teaOff)} tea ={' '}
+                {money(totals.teaOff)} tea
+                {totals.finesOff > 0 ? <> − {money(totals.finesOff)} fines paid out of his money</> : null}{' '}
+                ={' '}
                 <span className="font-semibold">{money(closing.held)}</span> held for him — the figure
                 at the top of the page.
               </p>
@@ -125,8 +129,9 @@ export default function LedgerWalk({ walk, className = '' }) {
 
             {closing.finesOwed > 0 && (
               <p className="amount text-sm leading-6 text-muted">
-                Fines still owing: {money(closing.finesOwed)}, kept on their own line — a fine is
-                chased separately and does not come off the money the group holds.
+                Fines still owing: {money(closing.finesOwed)}, kept on their own line. What he owes
+                is chased separately and only comes off the money the group holds once it is paid out
+                of it.
               </p>
             )}
 

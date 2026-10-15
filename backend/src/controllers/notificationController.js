@@ -81,7 +81,7 @@ async function computeMemberDues(members, { settings: givenSettings = null } = {
     // reminders screen both have it, and a second read would be a second answer waiting to happen.
     givenSettings ? Promise.resolve(givenSettings) : getOrCreateSettings(),
     Contribution.find({ memberId: { $in: ids }, deleted: false })
-      .select('memberId typeId amount grossAmount date')
+      .select('memberId typeId amount grossAmount fineDeducted date')
       .lean(),
     Fine.find({ memberId: { $in: ids }, deleted: false, remaining: { $gt: 0 } })
       .populate('typeId', 'name')
@@ -100,14 +100,17 @@ async function computeMemberDues(members, { settings: givenSettings = null } = {
   // the reminders list, the send and the sweep all selected fields without it. The extra query only
   // happens when a row is actually missing the field, so the three callers that select it pay
   // nothing (see the projections in listReminders, sendReminders and job:reminders).
+  // The fines paid out of his balance come off the same figure, so they are read with it. (Only the
+  // carried-in balance is checked for: a member who has never had a fine paid from his balance has no
+  // `fineDebits` on his record at all, so its absence says nothing. Every caller selects it.)
   const missingOpening = members.filter((m) => !('openingBalance' in m));
   const openings = missingOpening.length
     ? new Map(
         (
           await Member.find({ _id: { $in: missingOpening.map((m) => m._id) } })
-            .select('openingBalance')
+            .select('openingBalance fineDebits')
             .lean()
-        ).map((m) => [String(m._id), Number(m.openingBalance) || 0])
+        ).map((m) => [String(m._id), { openingBalance: Number(m.openingBalance) || 0, fineDebits: m.fineDebits || [] }])
       )
     : null;
   const typeById = new Map(types.map((t) => [String(t._id), t]));
@@ -136,7 +139,7 @@ async function computeMemberDues(members, { settings: givenSettings = null } = {
       // A member row that was projected without his carried-in balance has it filled in from the
       // read above; a caller that selected it passes straight through.
       member: openings
-        ? { ...member, openingBalance: openings.get(String(member._id)) ?? 0 }
+        ? { ...member, ...(openings.get(String(member._id)) || { openingBalance: 0, fineDebits: [] }) }
         : member,
       contributions: byMember.get(String(member._id)) || [],
       config,
@@ -217,7 +220,7 @@ async function listReminders(req, res, next) {
     // get emailed. computeMemberDues reads the field itself if a caller forgets it, but the one
     // query that loads every active member should not be the one that pays for it.
     const members = await Member.find({ active: true })
-      .select('name regNumber phone email emailNotifications photoUrl joinDate openingBalance')
+      .select('name regNumber phone email emailNotifications photoUrl joinDate openingBalance fineDebits')
       .sort({ name: 1 })
       .lean();
 
@@ -641,7 +644,7 @@ async function sendReminders(req, res, next) {
       // openingBalance for the same reason as the list's query: it is what the money line measures
       // a member against, and a batch that skipped the members who are ahead must not be the one
       // place that reads them as holding nothing.
-      .select('name phone email emailNotifications openingBalance')
+      .select('name phone email emailNotifications openingBalance fineDebits')
       .lean();
 
     const settings = await getOrCreateSettings();

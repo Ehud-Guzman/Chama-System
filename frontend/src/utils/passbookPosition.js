@@ -63,7 +63,12 @@ export function passbookPosition(ledger, fallbackTotal = 0) {
     // paper ledger's total column kept apart too.
     identity:
       `${money(ledger.openingBalance)} carried in + ${money(ledger.paid)} paid in since week `
-      + `${ledger.cycleStartWeek} − ${money(Number(ledger.tea) || 0)} tea deducted (Group fund)`,
+      + `${ledger.cycleStartWeek} − ${money(Number(ledger.tea) || 0)} tea deducted (Group fund)`
+      // Only when there is one, so a member who has paid none of his fines out of his money reads
+      // exactly the sentence he always has.
+      + (Number(ledger.finesPaid) > 0
+        ? ` − ${money(Number(ledger.finesPaid))} fines paid out of his money`
+        : ''),
     // What the figure read while the week's expectation was still being taken off it
     // (`held − weeks that have closed`). Kept because members and the office both hold older
     // statements, and "it has already happened" is answerable with a subtraction rather than an

@@ -20,7 +20,7 @@ async function computeWeeklyReconciliation() {
   const [members, settings, types] = await Promise.all([
     // Resigned members are left out: the cycle is the group's live record, and
     // somebody who has left no longer owes into it.
-    Member.find({ active: true }).select('name regNumber phone openingBalance').lean(),
+    Member.find({ active: true }).select('name regNumber phone openingBalance fineDebits').lean(),
     getOrCreateSettings(),
     ContributionType.find().select('name isGroupFund isWeekly tracksExpenses').lean(),
   ]);
@@ -34,7 +34,7 @@ async function computeWeeklyReconciliation() {
     memberId: { $in: members.map((m) => m._id) },
     deleted: false,
   })
-    .select('memberId typeId amount grossAmount date')
+    .select('memberId typeId amount grossAmount fineDeducted date')
     .lean();
 
   const byMember = new Map();

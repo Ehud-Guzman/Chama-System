@@ -216,13 +216,13 @@ test('a fine can be issued and settled, and settling it moves no week', { skip }
   assert.equal(fine.remaining, 500);
 
   const settled = await json(
-    await api('POST', `/api/fines/${fine._id}/settle`, { amount: 200, method: 'cash' })
+    await api('POST', `/api/fines/${fine._id}/settle`, { amount: 200, source: 'cash' })
   );
   assert.equal(settled.status, 200, JSON.stringify(settled.body));
   assert.equal(settled.body.fine.remaining, 300, 'a part payment leaves the rest owed');
   assert.equal(settled.body.fine.status, 'pending');
 
-  const full = await json(await api('POST', `/api/fines/${fine._id}/settle`, { amount: 300 }));
+  const full = await json(await api('POST', `/api/fines/${fine._id}/settle`, { amount: 300, source: 'cash' }));
   assert.equal(full.body.fine.remaining, 0);
   assert.equal(full.body.fine.status, 'settled');
 

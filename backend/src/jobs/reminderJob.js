@@ -55,7 +55,7 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
   // holds starts with what he carried into the cycle, so a sweep that cannot see it reads every
   // member as holding nothing and emails the ones who are furthest ahead (utils/reminderLimit).
   const members = await Member.find({ active: true })
-    .select('name regNumber phone email emailNotifications photoUrl joinDate openingBalance')
+    .select('name regNumber phone email emailNotifications photoUrl joinDate openingBalance fineDebits')
     .sort({ name: 1 })
     .lean();
 

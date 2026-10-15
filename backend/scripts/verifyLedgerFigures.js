@@ -108,6 +108,7 @@ async function main() {
   let openingTotal = 0;
   let paidTotal = 0;
   let teaTotal = 0;
+  let finesTotal = 0;
   let owedTotal = 0;
 
   for (const member of members) {
@@ -116,6 +117,9 @@ async function main() {
 
     // ---------------------------------------------------------------- the long way
     let paid = 0;
+    // Fines paid out of his money: the part of a weekly/extra payment that went to a fine, and the
+    // fines the office took from his balance. They come off what the group holds for him.
+    let finesOut = (member.fineDebits || []).reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
     let teaBeforeCycle = 0;
     // What he paid inside each week of the cycle, because a week is answered by its own 1,400 and
     // never by a surplus somewhere else (utils/memberLedger).
@@ -134,13 +138,14 @@ async function main() {
         // balance, which is where the week-92 reset folded it.
         if (week >= config.cycleStartWeek) {
           paid += cash;
+          finesOut += Number(row.fineDeducted) || 0;
           paidByWeek.set(week, (paidByWeek.get(week) || 0) + cash);
         }
       }
     }
     const opening = Number(member.openingBalance) || 0;
     const tea = teaEach + teaBeforeCycle;
-    const expectedHeld = opening + paid - tea;
+    const expectedHeld = opening + paid - tea - finesOut;
     // Each closed week stands on its own: the weeks that have closed, each asking weeklyAmount and
     // answered by what arrived in it. The opening week asks nothing, and the week still running has
     // not closed.
@@ -161,6 +166,7 @@ async function main() {
     openingTotal += ledger.openingBalance;
     paidTotal += ledger.paid;
     teaTotal += ledger.chai.due;
+    finesTotal += ledger.finesPaid;
     owedTotal += ledger.arrears;
 
     const agrees =
@@ -179,7 +185,7 @@ async function main() {
     console.log(
       `  ok ${String(member.name).padEnd(24)}`
       + `carried in ${money(opening).padStart(14)} + paid ${money(paid).padStart(12)}`
-      + ` - tea ${money(tea).padStart(8)} = holds ${money(ledger.money).padStart(14)}`
+      + ` - tea ${money(tea).padStart(8)}${finesOut ? ` - fines ${money(finesOut)}` : ''} = holds ${money(ledger.money).padStart(14)}`
       + ` | owed ${money(ledger.arrears).padStart(10)}`
     );
   }
@@ -189,12 +195,13 @@ async function main() {
   console.log(`  carried in (all)        ${money(openingTotal)}`);
   console.log(`  paid in since week ${config.cycleStartWeek}    ${money(paidTotal)}`);
   console.log(`  tea charged             ${money(teaTotal)}`);
+  console.log(`  fines paid from money   ${money(finesTotal)}`);
   console.log(`  held by members         ${money(heldTotal)}`);
   console.log(
-    `  the arithmetic          ${money(openingTotal)} + ${money(paidTotal)} - ${money(teaTotal)}`
-    + ` = ${money(openingTotal + paidTotal - teaTotal)}`
+    `  the arithmetic          ${money(openingTotal)} + ${money(paidTotal)} - ${money(teaTotal)} - ${money(finesTotal)}`
+    + ` = ${money(openingTotal + paidTotal - teaTotal - finesTotal)}`
     + `${
-        openingTotal + paidTotal - teaTotal === heldTotal
+        openingTotal + paidTotal - teaTotal - finesTotal === heldTotal
           ? '  (agrees with the total above)'
           : '  <- DOES NOT AGREE'
       }`

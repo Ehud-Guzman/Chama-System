@@ -200,7 +200,7 @@ function summariseContributionRows(rows, types) {
 async function loadContributionRows(memberIds) {
   const [rows, types] = await Promise.all([
     Contribution.find({ memberId: { $in: memberIds }, deleted: false })
-      .select('memberId typeId amount grossAmount date')
+      .select('memberId typeId amount grossAmount fineDeducted date')
       .lean(),
     ContributionType.find().select('name isWeekly isGroupFund active').lean(),
   ]);
@@ -430,6 +430,9 @@ async function getMember(req, res, next) {
         paid: ledger.paid,
         required: ledger.required,
         tea: ledger.chai.due,
+        // Fines that came off the money he holds: paid out of his balance, or out of a payment he
+        // handed over. The member page names it in the sentence under his balance.
+        finesPaid: ledger.finesPaid,
         money: ledger.money,
         // Held less every week that has closed — what this figure read while the dues were still
         // being taken off it (utils/memberLedger). On the payload so the office can reconcile a
@@ -1133,6 +1136,9 @@ async function buildPublicProfile(member, options = {}) {
       paid: ledger.paid,
       required: ledger.required,
       tea: ledger.chai.due,
+      // Fines that came off the money he holds (paid out of his balance, or out of a payment he
+      // handed over). 0 for a member whose fines were all paid in cash on the side.
+      finesPaid: ledger.finesPaid,
       money: ledger.money,
       // Held less every week that has closed — the figure the passbook's card used to subtract the
       // dues from, kept so a member's older copy reconciles (utils/memberLedger).

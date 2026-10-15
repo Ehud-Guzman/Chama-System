@@ -351,7 +351,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         <Stat
           label="Money he holds"
           value={money(ledger.money)}
-          hint="(carried in + paid in − tea)"
+          hint={ledger.finesPaid > 0 ? '(carried in + paid in − tea − fines paid out of his money)' : '(carried in + paid in − tea)'}
           accent
         />
         <Stat
@@ -386,7 +386,8 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
 
       <p className="rounded-xl border border-rule bg-canvas px-4 py-3 text-xs leading-5 text-muted">
         {money(ledger.openingBalance)} carried in at week {data.week.cycleStartWeek} +{' '}
-        {money(ledger.paid)} paid in since then − {money(ledger.chai.due)} tea ={' '}
+        {money(ledger.paid)} paid in since then − {money(ledger.chai.due)} tea
+        {ledger.finesPaid > 0 ? <> − {money(ledger.finesPaid)} fines paid out of his money</> : null} ={' '}
         <span className="amount font-semibold">{money(ledger.money)}</span> held for him. The weeks
         that have closed ({money(ledger.required)}) are what the group expected of him, not money
         taken off him: a week he has not paid is the {money(ledger.arrears)} he owes beside it, and

@@ -39,8 +39,14 @@ const row = (over = {}) => ({
   ...over,
 });
 
-const walkFor = ({ contributions = [], fines = [], openingBalance = 0, now = WEEK_94 } = {}) => {
-  const member = { openingBalance };
+const walkFor = ({
+  contributions = [],
+  fines = [],
+  openingBalance = 0,
+  fineDebits = [],
+  now = WEEK_94,
+} = {}) => {
+  const member = { openingBalance, fineDebits };
   return {
     walk: buildLedgerWalk({ member, contributions, fines, config, now }),
     ledger: computeMemberLedger({ member, contributions, config, now }),
@@ -146,10 +152,12 @@ test('a fine cleared out of a payment ends the owed column at zero', () => {
   });
 
   const payment = moneyOf(walk, 'weekly')[0];
-  // The ledger follows cash in, so the walk credits the whole 1,400 — and says where the 400 went,
-  // because a member who handed over 1,400 has to find that fine named in the same row.
+  // The week is credited the whole 1,400 he handed over, and the 400 that went to the fine comes
+  // straight back off the same row: it was spent on the fine, so it is not money the group holds
+  // for him. The row says so, because a member who handed over 1,400 has to find that fine named.
   assert.equal(payment.in, 1400);
-  assert.match(payment.detail, /Ksh 400 of this cleared his fines\./);
+  assert.equal(payment.out, 400);
+  assert.match(payment.detail, /Ksh 400 of this went to his fines, so it is not part of the money he holds\./);
 
   const settled = moneyOf(walk, 'fineSettled')[0];
   assert.equal(settled.owedOut, 400);
@@ -161,7 +169,70 @@ test('a fine cleared out of a payment ends the owed column at zero', () => {
   assert.equal(walk.closing.finesOwed, 0);
   assert.equal(walk.closing.finesRecorded, 0);
   assert.equal(walk.closing.money, ledger.money);
+  // 23,000 carried in + 1,000 that stayed with him − 100 tea: the 400 is not his any more.
+  assert.equal(walk.closing.held, 23900);
+  assert.equal(walk.totals.finesOff, 400);
   assert.equal(walk.balanced, true);
+});
+
+test('a fine taken from his balance comes off the money held, and off what he owes', () => {
+  const { walk, ledger } = walkFor({
+    openingBalance: 23000,
+    contributions: [row()],
+    fineDebits: [{ fineId: 'f3', amount: 300, date: WEEK_93 }],
+    fines: [
+      {
+        _id: 'f3',
+        amount: 300,
+        remaining: 0,
+        date: WEEK_93,
+        type: 'Late arrival',
+        settlements: [{ amount: 300, date: WEEK_93, source: 'balance', contributionId: null }],
+      },
+    ],
+  });
+
+  const paid = moneyOf(walk, 'fineSettled')[0];
+  assert.equal(paid.label, 'Fine paid from his balance — Late arrival');
+  assert.equal(paid.out, 300);
+  assert.equal(paid.owedOut, 300);
+  assert.equal(paid.effect, true);
+  assert.match(paid.detail, /Taken out of the money the group holds for him/);
+
+  // 23,000 + 1,400 paid − 100 tea − 300 fine.
+  assert.equal(walk.closing.held, 24000);
+  assert.equal(walk.closing.held, ledger.money);
+  assert.equal(ledger.finesFromBalance, 300);
+  assert.equal(walk.closing.finesOwed, 0);
+  assert.equal(walk.totals.finesOff, 300);
+  assert.equal(walk.balanced, true);
+});
+
+test('a fine paid in cash on the side, or not yet checked, leaves the money held alone', () => {
+  const fine = (id, source) => ({
+    _id: id,
+    amount: 300,
+    remaining: 0,
+    date: WEEK_93,
+    type: 'Late arrival',
+    settlements: [{ amount: 300, date: WEEK_93, source, contributionId: null }],
+  });
+  for (const source of ['cash', undefined]) {
+    const { walk, ledger } = walkFor({
+      openingBalance: 23000,
+      contributions: [row()],
+      fines: [fine('f4', source)],
+    });
+    const paid = moneyOf(walk, 'fineSettled')[0];
+    assert.equal(paid.out, 0);
+    assert.equal(paid.owedOut, 300);
+    assert.equal(paid.effect, false);
+    // 23,000 + 1,400 − 100: his balance never held the cash he paid on the side.
+    assert.equal(walk.closing.held, 24300);
+    assert.equal(walk.closing.held, ledger.money);
+    assert.equal(walk.closing.finesOwed, 0);
+    assert.equal(walk.balanced, true);
+  }
 });
 
 test('the grouped fine shape the member screens send reads the same as the flat one', () => {
@@ -296,7 +367,10 @@ test('a payment that cleared a fine says so — and the ledger’s own note is l
 
   const payments = moneyOf(walk, 'weekly');
   assert.equal(payments[0].detail, null);
-  assert.equal(payments[1].detail, 'Ksh 400 of this cleared his fines.');
+  assert.equal(
+    payments[1].detail,
+    'Ksh 400 of this went to his fines, so it is not part of the money he holds.'
+  );
 });
 
 test('a walk with nothing on it is still a walk, not a crash', () => {

@@ -327,3 +327,47 @@ test('the eatToday helper agrees with the engine about the calendar', () => {
   assert.equal(eatToday(Date.UTC(2026, 0, 2, 20, 30)), '2026-01-02');
 });
 
+
+// -----------------------------------------------------------------------------
+// Fines paid out of his money
+// -----------------------------------------------------------------------------
+
+test('a fine taken from his balance is a movement of his money, so the statement still adds up', () => {
+  const period = resolvePeriod({ from: '2026-03-01', to: '2026-04-30' }, { now: NOW });
+  const rows = payments().map((row) => ({ ...row, bucket: row.isGroupFund ? 'chai' : 'weekly' }));
+  const member = {
+    ...MEMBER,
+    fineDebits: [
+      // Before the period: part of what he held when it opened.
+      { fineId: 'a', amount: 200, date: day('2026-02-10') },
+      // Inside it: a movement of the period.
+      { fineId: 'b', amount: 300, date: day('2026-03-20') },
+      // After it: nowhere in this statement, but in what he holds today.
+      { fineId: 'c', amount: 500, date: day('2026-06-01') },
+    ],
+  };
+  const block = computePeriodBlock({
+    member,
+    config: CONFIG,
+    all: rows,
+    visible: rows.filter((row) => !row.isGroupFund),
+    period,
+    now: NOW,
+  });
+  const plain = computePeriodBlock({
+    member: MEMBER,
+    config: CONFIG,
+    all: rows,
+    visible: rows.filter((row) => !row.isGroupFund),
+    period,
+    now: NOW,
+  });
+
+  assert.equal(block.finesPaid, 300);
+  assert.equal(block.opening, plain.opening - 200);
+  assert.equal(block.closing, plain.closing - 500);
+  assert.equal(block.accountedFor, block.movement);
+  assert.equal(block.balanced, true);
+  // What he holds today has all three off it.
+  assert.equal(block.asAtToday, plain.asAtToday - 1000);
+});

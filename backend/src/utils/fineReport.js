@@ -23,6 +23,16 @@ function shortDate(value) {
   });
 }
 
+// How a payment reached the group, in the words a member would use. A payment recorded before the
+// office was asked how it was made says so rather than guessing.
+function howPaid(settlement) {
+  const source = settlement.source || (settlement.contributionId ? 'contribution' : null);
+  if (source === 'balance') return 'Taken from his balance';
+  if (source === 'cash') return 'Paid separately (cash / M-Pesa)';
+  if (source === 'contribution') return 'Out of a contribution';
+  return 'Recorded earlier';
+}
+
 // Everything both the PDF and the workbook print, in one place.
 function buildFineReport({ member, fines, voidedFines = [], scopeLabel }) {
   const rows = fines.map((fine) => {
@@ -31,6 +41,7 @@ function buildFineReport({ member, fines, voidedFines = [], scopeLabel }) {
     const settlements = (fine.settlements || []).map((s) => ({
       date: s.date,
       amount: Number(s.amount) || 0,
+      how: howPaid(s),
     }));
     return {
       id: String(fine._id),
@@ -241,6 +252,7 @@ function renderFineReportPdf(res, report, chamaName) {
         doc.font('Helvetica').fontSize(8).fillColor('#666');
         doc.text(shortDate(settlement.date), MARGIN + 10, y, { width: 120 });
         doc.text(money(settlement.amount), MARGIN + 130, y, { width: 120, align: 'right' });
+        doc.text(settlement.how, MARGIN + 265, y, { width: CONTENT_WIDTH - 265 });
         doc.fillColor('#000');
         y += 13;
       }
@@ -341,6 +353,7 @@ function fineReportSheets(report, chamaName) {
         Fine: row.type,
         'Payment date': settlement.date,
         Amount: settlement.amount,
+        'How paid': settlement.how,
       });
     }
   }
