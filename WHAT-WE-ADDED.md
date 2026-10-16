@@ -1517,8 +1517,8 @@ the answer, rather than by reasoning about the code. Both are fixed, and neither
    being emailed about a missed week. All three projections now select the field, and
    `computeMemberDues` reads it itself if a caller's projection has forgotten it, so a future
    screen cannot silently disarm the rule the same way. Checked against the real database: the line
-   reads 117,400 in week 94 and leaves Harrison Kamau (198,840), Joel Ndungu (173,300), Isaiah
-   Maina (154,400), Benard Ngugi (127,200) and Joshua Maina (117,800) alone.
+   reads 117,400 in week 94 and leaves the five members furthest ahead (198,840, 173,300, 154,400,
+   127,200 and 117,800) alone.
 
 2. A MEMBER WHO HAD PAID EVERYTHING WAS STILL QUOTED AS SHORT. One member paid Ksh 3,000 on 26
    September — the day after the week that had just closed. The money therefore covered the missed
