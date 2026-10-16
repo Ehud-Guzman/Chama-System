@@ -34,6 +34,10 @@ const AuditLogSchema = new Schema(
     },
     entityId: { type: Schema.Types.ObjectId, required: true },
     performedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    // The network address the request came from, when there was a request (utils/requestContext).
+    // Not part of the chain hash: entries written before this field existed must keep verifying,
+    // and the hash covers what was changed, not where from. Searchable by the super admin only.
+    ip: { type: String, default: '' },
     before: { type: Schema.Types.Mixed, default: null },
     after: { type: Schema.Types.Mixed, default: null },
     // --- The chain (utils/auditChain) ----------------------------------------

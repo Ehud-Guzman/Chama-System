@@ -42,6 +42,30 @@ thing — his verdict on a chapter of the constitution.
   dashboard
 - ✅ **Verify the trail** (`POST /api/audit/verify`): re-checks the whole hash chain and names the first
   entry that does not add up
+- ✅ **The Control Room** (`/admin/control`, super admin only on every route behind it —
+  `/api/superadmin/*`):
+  - **Overview:** system health (database, email, backups, jobs, the audit chain), a worst-first list of
+    what needs attention (an overdrawn fund, a failed job, accounts with wrong-password runs, failed
+    sign-ins and passbook tries, members with no usable ID), and the group's figures read with no
+    role filters
+  - **Accounts and sessions:** last sign-in and address, who is here now, sign an account (or everyone
+    else) out, **freeze** an account with a reason it is shown, **change a role** (password required;
+    ends the account's sessions), and **preview the app as any other role** — read-only, 30 minutes
+  - **Maintenance mode:** everyone but you can read and not save, with a message on every screen
+  - **Switches:** members' area, fine emails, reminder emails, constitution voting
+  - **Close the books through a date:** the office cannot add, change or remove money dated in it
+    (contributions, ledger logs, a week collected, expenses, voiding a fine); you can, with a written
+    reason that goes in the audit trail beside the change
+  - **Repair:** merge two records of one member (money moves, the duplicate is retired), reinstate a
+    member who left
+  - **Audit powers:** read any entry exactly as stored (whole before/after, chain hash, the address it
+    came from), flag it for review, search by address, download the whole trail with hashes
+  - **Backups, restore and jobs:** look inside a backup file, restore it (maintenance mode, password and
+    the word RESTORE; a safety copy is written first; adds and replaces, never empties), pause or run a
+    job, read the run history
+  - **Who can do what:** the permission table, generated from the server's own route rules
+  - **Danger zone:** clear the rehearsal's money (marks contributions, expenses and fines deleted; keeps
+    members, accounts, settings and opening balances; maintenance mode, password and a typed phrase)
 - ❌ Cannot deactivate the super admin account itself, and cannot reset its own password from the
   accounts list (that is Settings → My password)
 - ❌ Cannot change the week cycle or opening balances from Settings — those live on
@@ -260,6 +284,9 @@ phone numbers are no longer accepted anywhere on the public side.
 | **Own two-factor** (My account) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Two-factor reset** (another account) | ✅ | C (secretary/disciplinary) | ❌ | ❌ | ❌ |
 | **Group 2FA switch** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Control Room** (health, accounts, locks, restore, preview) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Money in a closed period** | R/W with a reason | R | R | R | ❌ |
+| **Read an audit entry raw / its source address** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 **Legend:** R = Read, W = Write, C = Create Only, R/W = Read & Write, ✅ = Yes, ❌ = No Access
 

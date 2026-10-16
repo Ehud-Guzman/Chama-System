@@ -161,6 +161,14 @@ After adding a new role:
 3. `ROLES_AND_PERMISSIONS.md` ← Always
 4. Frontend role selectors (if admin-facing) ← Usually
 
+**Control Room (if the new role is something the super admin can assign or preview):**
+- `backend/src/controllers/accountControlController.js` ← the `ROLES` list behind *Change role* and
+  *Preview as*
+- `frontend/src/components/control/ControlAccounts.jsx` ← `ROLE_LABEL` and `PREVIEW_ROLES`
+- `frontend/src/components/control/ControlPermissions.jsx` ← `ROLE_LABEL` (the permission table's columns
+  are read from the User model's `role` enum, so the column appears on its own; only its heading is
+  written by hand)
+
 **Extended (for complex roles):**
 5. `backend/src/controllers/` ← If role-specific logic
 6. Frontend components for role-based UI ← If needed

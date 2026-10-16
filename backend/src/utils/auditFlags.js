@@ -42,7 +42,25 @@ const CATEGORIES = [
 const WATCHED_FIELDS = {
   Member: ['name', 'phone', 'email', 'nationalId', 'regNumber', 'active', 'openingBalance', 'joinDate'],
   User: ['name', 'email', 'role', 'active'],
-  Settings: ['chamaName', 'weeklyAmount', 'chaiAmount', 'cycleStartWeek', 'weekAnchorDate', 'constitution', 'reminderMaxPerWeek'],
+  Settings: [
+    'chamaName',
+    'weeklyAmount',
+    'chaiAmount',
+    'cycleStartWeek',
+    'weekAnchorDate',
+    'constitution',
+    'reminderMaxPerWeek',
+    // The super admin's levers (Control Room): each is named when it moves.
+    'maintenanceMode',
+    'maintenanceMessage',
+    'lockedThrough',
+    'lockReason',
+    'membersAreaEnabled',
+    'fineEmailsEnabled',
+    'reminderEmailsEnabled',
+    'constitutionVotingEnabled',
+    'pausedJobs',
+  ],
   Contribution: ['memberId', 'typeId', 'amount', 'grossAmount', 'fineDeducted', 'date', 'method', 'deleted'],
   Expense: ['amount', 'date', 'description', 'typeId'],
   Fine: ['amount', 'remaining', 'status', 'reason', 'memberId', 'typeId'],
@@ -67,6 +85,15 @@ const FIELD_LABELS = {
   weekAnchorDate: 'week start',
   chamaName: 'chama name',
   reminderMaxPerWeek: 'reminders per member per week',
+  maintenanceMode: 'maintenance mode',
+  maintenanceMessage: 'maintenance message',
+  lockedThrough: 'books closed through',
+  lockReason: 'why the books are closed',
+  membersAreaEnabled: 'members’ area',
+  fineEmailsEnabled: 'fine emails',
+  reminderEmailsEnabled: 'reminder emails',
+  constitutionVotingEnabled: 'constitution voting',
+  pausedJobs: 'paused jobs',
   amount: 'amount',
   grossAmount: 'amount handed over',
   fineDeducted: 'fine deducted',
@@ -188,6 +215,27 @@ function readAuditEntry(entry) {
   return { category, flags, severity, summary: summarise(entry, { before, after, record, moved, category }) };
 }
 
+// What a group-wide entry did, in words. These entries carry an `action` and, for the super admin's
+// overrides, the reason that was given — which is the thing a reader of the trail is looking for.
+const SYSTEM_ACTIONS = {
+  'period-lock-override': 'went through closed books',
+  'restore-backup': 'restored from a backup',
+  'reset-rehearsal-money': 'cleared the rehearsal money',
+  'members-merged': 'merged two member records',
+  'member-reinstated': 'reinstated a member',
+  'preview-started': 'previewed the app as another role',
+  'audit-chain-verified-by-hand': 'checked the audit trail',
+  'audit-export-full': 'downloaded the full audit trail',
+  'backup-download': 'downloaded a backup',
+  'job-run-by-hand': 'ran a scheduled job by hand',
+};
+
+function systemSummary(record) {
+  const label = SYSTEM_ACTIONS[record?.action];
+  if (!label) return '';
+  return record.reason ? `${label}: ${record.reason}` : label;
+}
+
 // The line under the entry: what actually moved, in the group's own words. Money is
 // named as an amount and member records as a name; the sensitive fields are named by
 // their change, never printed — the flag says a phone number moved, the screen does
@@ -226,8 +274,14 @@ function summarise(entry, { before, after, record, moved, category }) {
     return rest.length > 0 ? `${name} · ${describeFields(rest)}` : name;
   }
 
-  if (entry.entityType === 'User') return record.name || record.email || '';
-  if (entry.entityType === 'Settings' || entry.entityType === 'System') return describeFields(moved);
+  if (entry.entityType === 'User') {
+    // Account actions that carry no record of their own say what they were ("account frozen",
+    // "signed out everywhere") and for whom.
+    if (record.changed) return `${record.changed}${record.for ? ` — ${record.for}` : ''}`;
+    return record.name || record.email || '';
+  }
+  if (entry.entityType === 'System') return systemSummary(record) || describeFields(moved);
+  if (entry.entityType === 'Settings') return describeFields(moved);
   return record.name || record.title || '';
 }
 

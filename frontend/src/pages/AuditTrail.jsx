@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import api, { apiMessage } from "../services/api";
 import { useToast } from "../components/shared/Toast";
 import { blobErrorMessage } from "../utils/blobError";
@@ -7,6 +8,7 @@ import BackLink from "../components/shared/BackLink";
 import Loader from "../components/shared/Loader";
 import ErrorState from "../components/shared/ErrorState";
 import AuditOversightPanel from "../components/shared/AuditOversightPanel";
+import AuditEntryModal from "../components/control/AuditEntryModal";
 import { useAuth } from "../context/AuthContext";
 
 // The audit trail, on its own screen.
@@ -50,6 +52,8 @@ const EMPTY_FILTERS = {
   from: "",
   to: "",
   q: "",
+  // The network address an entry came from. Only the super admin is shown, or can use, this one.
+  ip: "",
 };
 
 // One flag on an entry: red when it is the shape of money or access moving, amber
@@ -58,13 +62,13 @@ const EMPTY_FILTERS = {
 function FlagChip({ flag }) {
   const serious = flag.severity === "high";
   return (
-    <li
+    <span
       className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-4 ${
         serious ? "bg-alert/10 text-alert" : "bg-accent/10 text-accent"
       }`}
     >
       {flag.label}
-    </li>
+    </span>
   );
 }
 
@@ -139,7 +143,16 @@ function Tile({ label, value, hint, alert, accent }) {
 export default function AuditTrail() {
   const toast = useToast();
   const { user } = useAuth();
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const isSuper = user?.role === "super_admin";
+  // The Control Room links here with ?by= (what one account did), ?ip= (everything from one
+  // address) and ?open= (read one entry), so those three are read once, on arrival.
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState(() => ({
+    ...EMPTY_FILTERS,
+    by: searchParams.get("by") || "",
+    ip: isSuper ? searchParams.get("ip") || "" : "",
+  }));
+  const [openEntry, setOpenEntry] = useState(() => (isSuper ? searchParams.get("open") : null));
   const [unusual, setUnusual] = useState(false);
   const [perPage, setPerPage] = useState(50);
   const [page, setPage] = useState(1);
@@ -196,7 +209,7 @@ export default function AuditTrail() {
 
   // How many of the folded-away filters are doing something, so the fold can say so
   // rather than hiding an active filter behind a closed summary.
-  const moreCount = ["action", "entity", "by", "from", "to"].filter((key) => filters[key]).length;
+  const moreCount = ["action", "entity", "by", "from", "to", "ip"].filter((key) => filters[key]).length;
 
   async function exportTrail() {
     try {
@@ -452,6 +465,21 @@ export default function AuditTrail() {
                 className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
               />
             </div>
+
+            {isSuper && (
+              <div>
+                <label htmlFor="audit-ip" className="mb-1 block text-xs font-medium">
+                  From address
+                </label>
+                <input
+                  id="audit-ip"
+                  value={filters.ip}
+                  onChange={(e) => change({ ip: e.target.value })}
+                  placeholder="e.g. 41.80.12.7"
+                  className="h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
+                />
+              </div>
+            )}
           </div>
         </details>
       </section>
@@ -503,6 +531,12 @@ export default function AuditTrail() {
                   {/* The category is only worth printing when the reader is looking at
                       everything at once; filtered to Money, four hundred "Money" chips
                       are noise. */}
+                  {e.review?.status === "flagged" && (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold leading-4 text-primary">
+                      flagged by you
+                    </span>
+                  )}
+
                   {!filters.category && e.flags.length === 0 && (
                     <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[11px] leading-4 text-muted">
                       {CATEGORY_LABELS[e.category] || e.category}
@@ -513,6 +547,18 @@ export default function AuditTrail() {
                     {shortDateTime(e.createdAt)}
                   </span>
                 </div>
+                {isSuper && (
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3">
+                    {e.ip && <span className="amount text-[11px] text-muted">from {e.ip}</span>}
+                    <button
+                      type="button"
+                      onClick={() => setOpenEntry(e._id)}
+                      className="-my-2 min-h-11 text-xs font-semibold text-primary"
+                    >
+                      Read it as stored
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -536,6 +582,10 @@ export default function AuditTrail() {
           </div>
         )}
       </section>
+
+      {isSuper && (
+        <AuditEntryModal id={openEntry} onClose={() => setOpenEntry(null)} onChanged={load} />
+      )}
     </div>
   );
 }

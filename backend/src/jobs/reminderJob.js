@@ -142,7 +142,10 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
     mailed: false,
   };
 
-  const shouldSend = send === null ? sendsEnabled() : Boolean(send);
+  // Switched off by the super admin: the sweep still works out and reports who is behind, it just
+  // sends nothing — the same shape as the "report only" default.
+  const switchedOff = settings.reminderEmailsEnabled === false;
+  const shouldSend = !switchedOff && (send === null ? sendsEnabled() : Boolean(send));
   // Only the members still inside their weekly budget are targets. The cap is enforced again
   // inside deliverReminders — that copy is the one that counts, because the reminders screen
   // uses it too — but leaving a capped member out here means a sweep with nothing to actually
@@ -166,8 +169,9 @@ async function runReminderJob({ trigger = 'schedule', send = null } = {}) {
   };
 
   if (!shouldSend) {
-    summary.note =
-      'Report only. Set REMINDER_SWEEP_SEND=true to let this job email the members who are behind.';
+    summary.note = switchedOff
+      ? 'Report only. Reminder emails are switched off by the super admin (Control Room → Switches).'
+      : 'Report only. Set REMINDER_SWEEP_SEND=true to let this job email the members who are behind.';
     return summary;
   }
   if (!isMailConfigured()) {

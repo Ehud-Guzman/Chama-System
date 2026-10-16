@@ -9,6 +9,7 @@ const {
   updateSetup,
 } = require('../controllers/ledgerController');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { periodLock } = require('../middleware/periodLock');
 
 // The treasurer's whole workspace: the member list, each member's ledger, the
 // one write that logs anything, and the go-live setup. Admin and super admin
@@ -20,9 +21,9 @@ router.get('/setup', getSetup);
 router.patch('/setup', updateSetup);
 // A whole week collected for everybody at once — the one-time week-91 entry —
 // with a dry run and an undo, because it is the one bulk write in the system.
-router.post('/collect-week', collectWeek);
-router.delete('/collect-week', undoCollectWeek);
+router.post('/collect-week', periodLock('week'), collectWeek);
+router.delete('/collect-week', periodLock('week'), undoCollectWeek);
 router.get('/members/:id', memberLedger);
-router.post('/members/:id/log', createLog);
+router.post('/members/:id/log', periodLock('body'), createLog);
 
 module.exports = router;

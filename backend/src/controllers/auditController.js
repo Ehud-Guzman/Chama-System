@@ -13,6 +13,8 @@ const {
 const SecurityEvent = require('../models/SecurityEvent');
 const { verifyStoredTrail } = require('../utils/auditVerify');
 const { aboutSheet } = require('../utils/aboutSheet');
+// Required lazily where used: the Control Room's controller reads the audit trail too.
+const reviewStatusFor = (ids) => require('./groupControlController').reviewStatusFor(ids);
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { EAT_OFFSET_MS } = require('../utils/weekCycle');
@@ -43,7 +45,7 @@ const EXPORT_MAX = 5000;
 // read from them, and dropped again by present().
 function entryQuery(match, limit, skip = 0) {
   return AuditLog.find(match)
-    .select('action entityType entityId performedBy createdAt before after')
+    .select('action entityType entityId performedBy createdAt before after ip')
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
@@ -63,6 +65,8 @@ function present(entry) {
       ? { _id: entry.performedBy._id, name: entry.performedBy.name }
       : null,
     createdAt: entry.createdAt,
+    // Carried so a paged read keeps it; list() removes it again for everyone but the super admin.
+    ip: entry.ip || '',
     category: read.category,
     flags: read.flags,
     severity: read.severity,
@@ -104,6 +108,10 @@ async function list(req, res, next) {
   try {
     const built = buildFilters(req.query);
     const { unusual } = built;
+    const isSuper = req.user.role === 'super_admin';
+    // Searching by network address is the super admin's tool: it says where an entry was made
+    // from, which is not something the office needs and not something to hand out.
+    if (isSuper && req.query.ip) built.match.ip = String(req.query.ip).trim().slice(0, 64);
     // What this role may read, applied to what was asked for — so the page, the total, the
     // counts and the dropdowns all describe the same, narrower trail.
     const match = restrictToRole(req.user.role, built.match);
@@ -133,6 +141,15 @@ async function list(req, res, next) {
           ? read.slice(start, start + limit)
           : (await entryQuery(match, limit, start)).map(present);
       pages = Math.max(1, Math.ceil(total / limit));
+    }
+
+    // The super admin also sees where each entry came from and whether it has been flagged for
+    // review (a note of its own, kept outside the chained trail — see models/AuditReview).
+    if (isSuper) {
+      const reviews = await reviewStatusFor(entries.map((e) => e._id));
+      entries = entries.map((e) => ({ ...e, review: reviews[String(e._id)] || null }));
+    } else {
+      entries = entries.map(({ ip: _ip, ...rest }) => rest);
     }
 
     // The filter dropdowns: which entities have ever been touched, and which
@@ -171,6 +188,8 @@ async function exportList(req, res, next) {
   try {
     const built = buildFilters(req.query);
     const { unusual } = built;
+    // The same address filter the screen has, so "export this view" is the view.
+    if (req.user.role === 'super_admin' && req.query.ip) built.match.ip = String(req.query.ip).trim().slice(0, 64);
     const match = restrictToRole(req.user.role, built.match);
     const read = (await entryQuery(match, EXPORT_MAX)).map(present);
     const shown = unusual ? read.filter((e) => e.flags.length > 0) : read;

@@ -14,6 +14,7 @@ const {
   voidFine,
 } = require('../controllers/fineController');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { periodLock } = require('../middleware/periodLock');
 
 router.use(requireAuth);
 
@@ -40,6 +41,6 @@ router.get('/payments/to-check', requireRole('super_admin', 'admin'), paymentsTo
 router.post('/payments/check', requireRole('super_admin', 'admin'), checkPayments);
 router.post('/:id/settle', requireRole('super_admin', 'admin'), settleFine);
 router.post('/:id/payments/:index/undo', requireRole('super_admin', 'admin'), undoFinePayment);
-router.delete('/:id', requireRole('super_admin', 'admin'), voidFine);
+router.delete('/:id', requireRole('super_admin', 'admin'), periodLock('fine'), voidFine);
 
 module.exports = router;

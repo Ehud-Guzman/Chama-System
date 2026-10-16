@@ -14,6 +14,8 @@ const { seedDisciplinaryFineTypes } = require('./utils/seedDisciplinaryFineTypes
 const { seedLedgerTypes, seedGroupFunds } = require('./utils/ledgerTypes');
 const { ensureDocumentCategories } = require('./utils/documentCategories');
 const { backfillDeactivatedAt } = require('./utils/backfillDeactivatedAt');
+const { maintenanceGuard } = require('./middleware/maintenance');
+const { membersAreaOpen } = require('./middleware/membersArea');
 
 const {
   apiLimiter,
@@ -67,6 +69,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const backupRoutes = require('./routes/backupRoutes');
 const jobRoutes = require('./routes/jobRoutes');
 const auditRoutes = require('./routes/auditRoutes');
+const superAdminRoutes = require('./routes/superAdminRoutes');
 const app = express();
 
 // -----------------------------------------------------------------------------
@@ -154,6 +157,16 @@ app.use('/api/public', (req, res, next) => {
   if (req.path !== '/overview') res.setHeader('Cache-Control', 'no-store');
   next();
 });
+
+// The super admin can close the members' area (Control Room → Switches). The group's totals on the
+// front page are not behind it: the page still loads, and says why.
+app.use('/api/public', (req, res, next) => {
+  if (req.path === '/overview') return next();
+  return membersAreaOpen(req, res, next);
+});
+
+// A member's verdict on a chapter is a write, so it stops in maintenance mode like every other one.
+app.use('/api/public/constitution/decision', maintenanceGuard);
 
 // The members' gate: the two places an ID number is spent. POST, so the number and the phone travel
 // in the body and not in a URL that history and logs keep; behind the gate guard (four limits, see
@@ -256,6 +269,9 @@ app.get(
 // route has already ended its chain by the time this is reached.
 app.use('/api', apiLimiter);
 
+// Maintenance mode: reads still work, writes stop for everyone but the super admin.
+app.use('/api', maintenanceGuard);
+
 app.use('/api/auth', authRoutes);
 
 app.use('/api/members', memberRoutes);
@@ -293,6 +309,9 @@ app.use('/api/jobs', jobRoutes);
 
 // The audit trail: who changed what, when, and which of it was out of the ordinary.
 app.use('/api/audit', auditRoutes);
+
+// The Control Room: oversight and override tools, super admin only.
+app.use('/api/superadmin', superAdminRoutes);
 
 // -----------------------------------------------------------------------------
 // Error handling

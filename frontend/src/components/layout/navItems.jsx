@@ -173,4 +173,21 @@ export const NAV_ITEMS = [
       </svg>
     ),
   },
+  // The super admin's own room. Last in the list on purpose: the bottom bar takes the first four
+  // visible items as its tabs, and this is not a daily screen — it is the one you open when
+  // something needs seeing or putting right.
+  {
+    to: '/admin/control',
+    label: 'Control Room',
+    group: 'Administration',
+    roles: ['super_admin'],
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="12" rx="2" />
+        <path d="M8 20h8" />
+        <path d="M12 16v4" />
+        <path d="M7 12l3-3 2 2 4-4" />
+      </svg>
+    ),
+  },
 ];

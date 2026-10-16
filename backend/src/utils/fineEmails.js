@@ -49,7 +49,14 @@ function fineEmailSkipReason(member) {
 // One send, with everything that can go wrong caught. Returns { sent, reason } so a
 // caller or a test can see what happened; nothing is ever thrown at the caller.
 async function deliver({ member, build, kind, performedBy = null, rid = null, details = {} }) {
-  const skip = fineEmailSkipReason(member);
+  // The super admin's switch (Control Room → Switches) as well as the deployment's (FINE_EMAILS).
+  // Read defensively: settings that cannot be read this instant must not stop a fine from being
+  // recorded, and "unknown" falls back to the deployment's own answer.
+  const switches = await getOrCreateSettings().catch(() => null);
+  const skip =
+    switches && switches.fineEmailsEnabled === false
+      ? 'Fine emails are switched off by the super admin'
+      : fineEmailSkipReason(member);
   if (skip) {
     logEvent('fine_email_skipped', {
       rid,

@@ -626,6 +626,13 @@ async function sendReminders(req, res, next) {
     // production instead of the generic "Something went wrong".
     assertMailConfigured();
 
+    // The super admin's switch. Said in words written for a person, before anything is looked up.
+    if ((await getOrCreateSettings()).reminderEmailsEnabled === false) {
+      return res.status(403).json({
+        message: 'Reminder emails have been switched off by the super admin (Control Room → Switches).',
+      });
+    }
+
     const {
       memberIds,
       includeLate = true,

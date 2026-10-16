@@ -1,5 +1,6 @@
 const ConstitutionDecision = require('../models/ConstitutionDecision');
 const { loadConstitution } = require('../utils/constitutionData');
+const { getOrCreateSettings } = require('../utils/settings');
 
 // The chapter list is a row in the database now (see utils/constitutionData), so
 // the total and the number→chapter map are derived from the loaded text per
@@ -88,6 +89,11 @@ async function publicConstitution(req, res, next) {
 async function publicConstitutionDecision(req, res, next) {
   try {
     const member = req.member;
+
+    // The super admin can close the vote — for the days the chapters are being redrafted.
+    if ((await getOrCreateSettings()).constitutionVotingEnabled === false) {
+      return res.status(403).json({ message: 'Voting on the constitution is closed for now.' });
+    }
 
     const chapterNumber = Number(req.body?.chapterNumber);
     const { meta, byNumber } = await chapterIndex();

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { runWithRequest } = require('../utils/requestContext');
 
 // One structured line per request, plus a request id that ties together everything
 // the request did — including the error handler's output and any warning raised
@@ -45,7 +46,9 @@ function requestLogger(req, res, next) {
     });
   });
 
-  next();
+  // Everything the request goes on to do — including audit writes made far from here — can ask
+  // who it is for (utils/requestContext).
+  runWithRequest({ ip: req.ip, rid: req.id }, next);
 }
 
 // Failed sign-ins are the one thing a rate limiter cannot tell you about: it

@@ -21,6 +21,8 @@ const SecurityEventSchema = new Schema(
         'wrong_password',
         'no_such_account',
         'deactivated',
+        // The password was right, but the super admin has frozen the account.
+        'frozen',
         'wrong_2fa_code',
         // The members' gate. `wrong_phone` is the one that means somebody is aiming at a real member.
         'not_an_id',

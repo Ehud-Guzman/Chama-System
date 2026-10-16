@@ -7,6 +7,8 @@ import CreditLine from '../shared/CreditLine';
 import { useAuth } from '../../context/AuthContext';
 import { CHAMA_NAME } from '../../utils/branding';
 import { readCollapsed, writeCollapsed } from '../../utils/sidebarPref';
+import { MaintenanceBanner, PreviewBar } from './StatusBanners';
+import OverrideProvider from '../control/OverrideProvider';
 
 // A link to another screen's section (`/admin/settings#backup`) lands on the top of that screen:
 // the router changes the page but does not scroll to the heading the link promised. The section
@@ -37,7 +39,7 @@ function useScrollToHash() {
 }
 
 export default function AdminLayout({ children }) {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   useScrollToHash();
   // Whether the desktop menu is folded to its icons. Held here, not in the sidebar, because the page
   // beside it has to make room (or give it back) in step with it; remembered in this browser.
@@ -81,6 +83,7 @@ export default function AdminLayout({ children }) {
         </div>
       </header>
       <main className="mx-auto w-full max-w-3xl px-4 pb-40 pt-6 md:max-w-6xl md:px-8 md:pb-10">
+        <MaintenanceBanner />
         {children}
 
         {/* The credit goes at the foot of the page rather than in the sidebar: the
@@ -89,6 +92,10 @@ export default function AdminLayout({ children }) {
         <CreditLine className="mt-10 border-t border-rule pt-6 text-center" />
       </main>
       <BottomNav />
+      <PreviewBar />
+      {/* Asks the super admin for a reason when a save runs into closed books. Nobody else is ever
+          offered the way through, so nobody else loads the dialog. */}
+      {user?.role === 'super_admin' && <OverrideProvider />}
       {/* Ends a session nobody is using, with a minute's warning. */}
       <IdleGuard />
     </div>

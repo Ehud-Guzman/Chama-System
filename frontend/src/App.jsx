@@ -32,6 +32,7 @@ const Reminders = lazy(() => import('./pages/Reminders.jsx'));
 const DisciplinaryFines = lazy(() => import('./pages/DisciplinaryFines.jsx'));
 const AuditTrail = lazy(() => import('./pages/AuditTrail.jsx'));
 const MyAccount = lazy(() => import('./pages/MyAccount.jsx'));
+const ControlRoom = lazy(() => import('./pages/ControlRoom.jsx'));
 
 export default function App() {
   // Take down the splash that index.html painted.
@@ -192,6 +193,16 @@ export default function App() {
                 element={
                   <RoleGuard roles={['super_admin', 'admin', 'treasurer', 'secretary']}>
                     <AuditTrail />
+                  </RoleGuard>
+                }
+              />
+              {/* The super admin's oversight and override tools. The API refuses every other
+                  role on each of its routes; the guard just keeps the page out of their way. */}
+              <Route
+                path="/admin/control"
+                element={
+                  <RoleGuard roles={['super_admin']}>
+                    <ControlRoom />
                   </RoleGuard>
                 }
               />

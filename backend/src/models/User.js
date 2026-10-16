@@ -47,6 +47,24 @@ const UserSchema = new Schema(
     // and failed tries after it are counted there, so the banner can be cleared by somebody having
     // looked, instead of waiting a week for the entries to age out.
     auditReviewedAt: { type: Date, default: null },
+    // --- What the super admin watches (the Control Room, controllers/accountControlController) ---
+    // When this account last signed in, from where, and when it last did anything at all. All
+    // informational: nothing authorises on them, and they are written best-effort so a slow
+    // database can never make a sign-in or a page load fail.
+    lastLoginAt: { type: Date, default: null },
+    lastLoginIp: { type: String, default: '' },
+    lastActiveAt: { type: Date, default: null },
+    // Wrong passwords (or wrong codes) since the last good sign-in. Reset on success; the
+    // Control Room lists the accounts where it is climbing.
+    failedLoginCount: { type: Number, default: 0 },
+    lastFailedLoginAt: { type: Date, default: null },
+    // A frozen account is switched off for now, with a reason, without being deactivated: the
+    // super admin can lift it in one tap, and nothing about the account is lost or hidden.
+    frozenAt: { type: Date, default: null },
+    frozenReason: { type: String, default: '' },
+    // "Sign out everywhere": every token issued before this instant is refused by requireAuth,
+    // exactly as a password change does, without touching the password.
+    sessionsRevokedAt: { type: Date, default: null },
     // A password-reset link that has been asked for and not yet used. Only a hash of the token is
     // kept (the token itself exists in the email and nowhere else), `select: false` like the
     // password so nothing that merely reads a user can see it, and one at a time: asking again

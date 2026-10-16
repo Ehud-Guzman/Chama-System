@@ -2235,6 +2235,238 @@ FILES
   frontend/test/printReport.test.js            NEW - the menu and the request
 
 
+THE CONTROL ROOM: ONE SCREEN FOR THE SUPER ADMIN TO SEE THE WHOLE SYSTEM AND PUT IT RIGHT
+=========================================================================================
+
+THE PROBLEM
+
+  The super admin's powers were spread thin. Oversight of the officers lived at the top of the audit
+  screen, the backup button in Settings, the accounts list in Settings, and a good deal of what a
+  person in that seat actually needs had no screen at all: nobody could see who was signed in, end a
+  session that might be somebody else's, stop the office saving while a correction was being made,
+  agree that last month's figures were final, or look at the app the way the secretary sees it to
+  find out why she cannot find something. The backup could be downloaded, but there was no way back
+  in except a command line.
+
+WHAT IT IS
+
+  A new screen, Control Room (/admin/control, in the menu for the super admin only), with eight
+  sections on one page. It was built from the same idea as the Control Room in the newer copy of
+  this system, then fitted to how this one works: the weekly 1,400 and the 100 of tea, the members'
+  gate with its pass, and the oversight that already exists on the audit screen. Anything the newer
+  copy has that this one does not (a meeting roll, joining fees, spending approvals) was left out.
+
+  1. NEEDS YOUR ATTENTION
+
+     Worst first, in plain words, each with a button to where it is dealt with: the database is down,
+     the books have never been downloaded (or not for 30 days), a scheduled job failed, the audit
+     trail did not verify, a fund is overdrawn, an account has had three or more wrong passwords in a
+     row, accounts created a week ago and never used, only one super admin, maintenance mode left on,
+     the members' area closed, members with no usable ID, serious entries by other people this
+     week, and failed sign-ins and passbook tries in the last day. Beside it: system health (server,
+     database, email, photos, age of the last downloaded copy, the audit chain) and the group's
+     figures read straight off the books with no role filters. A part that cannot be read says so,
+     rather than going blank.
+
+  2. ACCOUNTS AND SESSIONS
+
+     Every account with its last sign-in, the address it came from, whether it is here now, and
+     whether it has a second factor. The super admin can:
+       - SIGN AN ACCOUNT OUT (ends every session it has, on its very next request), or sign
+         everyone else out ("I think somebody has a copy of a password", or after a restore);
+       - FREEZE an account, with a reason the person is shown when they try to sign in, and lift it
+         again. A frozen account is not deactivated: nothing about it is lost;
+       - CHANGE A ROLE (password required; the account is signed out and comes back with the new
+         role). Before this, a treasurer who became the chairman meant a new account and a lost
+         history;
+       - LOOK AT THE APP AS ANOTHER ROLE, read-only, for 30 minutes: exactly that role's menu and
+         screens, and nothing tapped can change anything. A bar stays at the foot of the screen
+         saying so, with an Exit button. If the 30 minutes run out, the real session is put back
+         rather than signing the super admin out.
+     Nobody can freeze, sign out or re-role their own account, so the system cannot be left without
+     a super admin by this screen.
+
+  3. MAINTENANCE MODE AND SWITCHES
+
+     Maintenance mode: everyone except the super admin can read but not save, and every screen shows
+     a banner with the super admin's own message. For the hour a restore or a correction is being
+     done, so nobody's payment is lost in the middle of it. Signing in always works (it has to, so
+     the super admin can switch it off). A member's verdict on a chapter of the constitution is a
+     write too, so it stops as well.
+
+     Four switches, all ON, so installing this changes nothing until somebody turns one off: the
+     members' area, fine emails, reminder emails, and constitution voting. They are kept with the
+     group's settings rather than as environment variables, so they are flipped without a redeploy.
+     The weekly reminder sweep still works out who is behind when reminder emails are off; it just
+     sends nothing, and says why.
+
+  4. CLOSE THE BOOKS, AND FIX RECORDS
+
+     Close the books through a date (yesterday at the latest, with a reason that is shown to anyone
+     who is stopped by it). After that, the office cannot add, change or remove money dated on or
+     before it: not a contribution, not a payment logged on a member's page, not a week collected in
+     one go (or undone), not an expense, not a fine voided. Last month's figures, once agreed, stay
+     agreed. The super admin can still go through, but only by writing a reason; the screen asks for
+     it in a dialog, the same request is then repeated once, and the reason is written to the audit
+     trail as its own entry beside the change. A treasurer or admin who is stopped is told the date
+     and the reason, and that only the super admin can change it.
+
+     Merge two records of one member: the same person entered twice, once from the sheet and once
+     by hand. Everything the duplicate holds and owes (contributions, fines, the carried-in
+     balance, payments taken from his balance, constitution verdicts) moves onto the record that is
+     kept, and the duplicate is retired with a note of where it went. A preview shows exactly what
+     would move before anything does; the reason and the password are required; nothing is deleted.
+
+     Bring back a member who left: the register could switch a member off but had no way to switch
+     him on again, which is how duplicate records get made. This clears the resignation, keeps what
+     it said in the audit trail, and writes the reason on his record. His weeks while he was away
+     are not forgiven.
+
+  5. AUDIT POWERS
+
+     The audit screen now lets the super admin (and only the super admin): see the network address
+     each entry was made from, search by address, open any entry "as stored" (the whole before and
+     after, which the ordinary screen never sends; the changed fields listed; the chain hash and
+     what it points back to), and flag an entry for a second look and clear it later. Flags are the
+     super admin's own notes, kept in a collection of their own so that writing one can never touch
+     the hash chain. The whole trail, with hashes, snapshots and addresses, can be downloaded as one
+     file, for checking the chain independently.
+
+  6. BACKUPS, RESTORE AND JOBS
+
+     The backup button is here too, with a way back in. Restore is in two steps: choose a backup file
+     and LOOK (nothing is written; it says what is in the file, how many rows would be added and how
+     many would replace what is there, and warns if it came from a different database, is a
+     data-only copy, or includes the accounts). Then restore, which needs maintenance mode, the
+     password and the word RESTORE; writes a safety copy of today first and writes nothing at all if
+     that copy cannot be written; and only ever adds and replaces. The accounts are left unticked,
+     because putting old passwords and roles back is the one part of a restore that surprises
+     people. Replace-everything stays on the command line (npm run restore:backup).
+
+     The three scheduled jobs can be run now, paused (the timer skips a paused job; running it by
+     hand still works) and resumed, with the last runs listed.
+
+  7. WHO CAN DO WHAT
+
+     A permission table generated from the server's own route rules, so it cannot drift from what is
+     enforced: one row per area, one column per role, View / Edit / part. Tap an area to list every
+     endpoint behind it and the roles allowed on each. (Rules written inside a controller, such as an
+     admin only managing secretary and disciplinary accounts, are finer than a role; they stay in
+     ROLES_AND_PERMISSIONS.md and a cell marked "part" is where to look.)
+
+  8. DANGER ZONE
+
+     Clear the rehearsal's money: contributions, expenses and fines are marked deleted (the system
+     never destroys a money record) and the fine payments taken from members' balances are cleared
+     with them. Members, accounts, settings, funds and opening balances are not touched. Needs
+     maintenance mode, the password, the typed phrase RESET REHEARSAL DATA, and a safety copy
+     written first.
+
+WHAT CHANGED ELSEWHERE, IN PLAIN ENGLISH
+
+  - Every sign-in is now booked against the account (when, from where) and a wrong password or code
+    is counted; a good sign-in starts the count again. A frozen account that gives the right password
+    is told why it is frozen.
+  - The audit trail now remembers the network address of every entry made from here on. It is part
+    of the stored entry but not part of the hash, so entries written before it existed still
+    verify. The office never sees it.
+  - The entries the Control Room writes about itself are kept from the people they concern: freezing,
+    signing out or re-roling an admin or a treasurer is readable only by the super admin (the same
+    rule that already hid role changes), and so are previewing, checking the chain by hand and
+    taking the full export. Going through closed books, merging and reinstating stay readable by the
+    committee, because they are decisions the committee should be able to see.
+  - The audit screen reads the new group-wide entries as sentences ("went through closed books:
+    Receipt 0412 was 600", "merged two member records") and names a lever when it moves
+    ("maintenance mode"), instead of a blank line.
+  - A save that is refused on purpose (maintenance, or a closed members' area) is never kept in the
+    offline outbox to be replayed later. The ledger's "no signal, kept, will send" promise is for
+    network failures; keeping a write somebody has just been told cannot be saved would be a lie.
+  - One small existing fault was fixed on the audit screen: the little flag labels on each entry
+    were list items inside list items, which browsers complain about.
+
+HOW IT WAS PROVED
+
+  Backend        29 checks through the real API and a real database in the new
+                 test/integration/superAdmin.test.js, plus 16 that need no database in
+                 test/superAdmin.test.js. Among them: a frozen or signed-out account stops on its very
+                 next request; a preview cannot write and cannot reach the Control Room; closed books
+                 stop the treasurer on contributions, ledger logs, a collected week, expenses and a
+                 voided fine, stop the super admin until a reason is given, and put that reason in the
+                 trail; maintenance lets reads through and stops writes; a restore refuses without
+                 maintenance mode, the word and the password and then brings back a lost member; a
+                 merge moves the money; the reset clears money and nothing else; and every route under
+                 /api/superadmin is found behind the super admin guard.
+  Rehearsal      all 18 suites in test/integration pass against a real MongoDB (none of the existing
+                 ones needed changing).
+  Backend unit   the whole existing suite still passes, with the new tests in it.
+  Screens        the real screens were run in a browser-like environment against the real server and a
+                 real database (not kept in the repository): the Control Room opens and every section
+                 is there; switching maintenance mode on puts the banner on every screen and off takes
+                 it away; a switch is saved; freezing needs a reason and is shown against the account;
+                 previewing shows the other role's menu and exiting puts the real session back;
+                 picking two members previews a merge; closing the books saves; a save into closed
+                 books asks the super admin why, leaving it closed changes nothing, and giving a
+                 reason lets the same save through and records it; the audit screen opens an entry
+                 from a link and flags it. No warnings were raised by the page.
+  Frontend       101 checks pass, 12 of them new (the closed-books prompt repeats the same request
+                 exactly once with the reason attached, a role that was not offered the way through is
+                 never asked, an expired preview puts the real session back, a refused save is not
+                 queued).
+  Download size  the members' page is 149.9 KB gzip against the 150 KB limit CI enforces. The
+                 Control Room is its own lazy chunk (14 KB gzip) and no member downloads it, but the
+                 sign-in plumbing and a few styles that every page shares grew the members' page by
+                 0.6 KB, which is most of the 0.7 KB it had to spare. The next thing added to that
+                 page will need something taken out of it.
+
+WHAT IS STILL OPEN
+
+  - The danger zone's wording ("rehearsal") is from the newer copy. If this group is already live,
+    the button is still the right tool for clearing money, but the committee may want the word
+    changed; it is in one place (backend/src/controllers/dataRecoveryController.js and
+    ControlDanger.jsx).
+  - Replace-everything restore is deliberately not on the screen. If a full restore to the moment of
+    a backup is ever needed, it is done from the command line with two flags.
+  - Merging does not move the failed passbook-try records that name the duplicate; they are a record
+    of attempts, not of money, and age out after ninety days.
+
+FILES
+
+  backend/src/routes/superAdminRoutes.js                NEW - every route behind the super admin guard
+  backend/src/controllers/controlRoomController.js      NEW - the overview, the permission grid, the by-hand chain check
+  backend/src/controllers/accountControlController.js   NEW - sign out, freeze, change role, preview
+  backend/src/controllers/groupControlController.js     NEW - maintenance, closing the books, switches, jobs, audit powers
+  backend/src/controllers/dataRecoveryController.js     NEW - look inside a backup, restore, the danger zone
+  backend/src/controllers/memberMergeController.js      NEW - merge two members, reinstate one
+  backend/src/middleware/maintenance.js                 NEW - read-only for everyone but the super admin
+  backend/src/middleware/periodLock.js                  NEW - closed books, with the accountable way through
+  backend/src/middleware/membersArea.js                 NEW - the members' area switch
+  backend/src/middleware/auth.js                        frozen, signed-out-everywhere, preview, last seen
+  backend/src/models/AuditReview.js                     NEW - flags on audit entries, outside the chain
+  backend/src/models/User.js, Settings.js, AuditLog.js, SecurityEvent.js   the new fields
+  backend/src/utils/overrides.js, reauth.js, permissionMatrix.js, requestContext.js   NEW
+  backend/src/utils/restore.js                          NEW - reading and writing a backup, shared with the command line
+  backend/src/scripts/restoreBackup.js                  now uses the shared restore
+  backend/src/controllers/authController.js             sign-in bookkeeping, frozen accounts, banner and preview in /me
+  backend/src/controllers/auditController.js            the address, its filter, review badges (super admin only)
+  backend/src/controllers/constitutionController.js, notificationController.js,
+    backend/src/utils/fineEmails.js, backend/src/jobs/reminderJob.js, backend/src/jobs/index.js   the switches, paused jobs
+  backend/src/utils/auditFlags.js, auditVisibility.js, auditLogger.js   sentences, what the office may read, the address
+  backend/src/routes/contributionRoutes.js, expenseRoutes.js, ledgerRoutes.js, fineRoutes.js   the closed-books guard
+  backend/src/app.js                                    the guards and the mount
+  backend/test/superAdmin.test.js                       NEW - 16 checks, no database
+  backend/test/integration/superAdmin.test.js           NEW - 29 checks, real database
+  frontend/src/pages/ControlRoom.jsx                    NEW
+  frontend/src/components/control/                      NEW - the eight sections, the confirm dialog, the closed-books prompt, the entry reader
+  frontend/src/components/layout/StatusBanners.jsx      NEW - the maintenance banner and the preview bar
+  frontend/src/services/preview.js                      NEW - start and leave a preview
+  frontend/src/utils/timeAgo.js, auditDiff.js           NEW
+  frontend/src/services/api.js, context/AuthContext.jsx   the closed-books prompt, the parked session, maintenance and preview state
+  frontend/src/pages/AuditTrail.jsx                     address filter, read an entry as stored, flagged badge
+  frontend/src/App.jsx, components/layout/AdminLayout.jsx, navItems.jsx, services/prefetch.js   route, menu entry, banners
+  frontend/test/controlRoom.test.js                     NEW - 12 checks
+  ROLES_AND_PERMISSIONS.md, README.md, ADDING_NEW_ROLES_GUIDE.md, backend/.env.example   documented
+
+
 END OF DOCUMENT
 ===============
 

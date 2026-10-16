@@ -22,6 +22,7 @@ const JobRun = require('../models/JobRun');
 const JobLock = require('../models/JobLock');
 const { parseSchedule, nextRunAt, describeGap } = require('../utils/jobSchedule');
 const { logEvent } = require('../middleware/requestLogger');
+const { getOrCreateSettings } = require('../utils/settings');
 
 const { runBackupJob } = require('./backupJob');
 const { runAuditJob } = require('./auditJob');
@@ -61,6 +62,18 @@ const DEFINITIONS = [
 
 let timer = null;
 let stopped = false;
+
+// Whether the super admin has paused this job (Control Room → Backups, restore and jobs).
+// Unreadable settings count as "not paused": a backup that did not run because the database
+// blinked is worse than one that ran while somebody meant to pause it.
+async function isPaused(name) {
+  try {
+    const settings = await getOrCreateSettings();
+    return (settings.pausedJobs || []).includes(name);
+  } catch {
+    return false;
+  }
+}
 
 function jobsEnabled() {
   return String(process.env.JOBS_ENABLED || 'true').toLowerCase() !== 'false';
@@ -206,7 +219,13 @@ function scheduleNext(holder) {
   const delay = Math.max(1000, Math.min(next.at - Date.now(), 20 * 24 * 3600 * 1000));
 
   timer = setTimeout(async () => {
-    await executeJob(next.definition, { trigger: 'schedule', holder });
+    // A job the super admin has paused is skipped, not rescheduled differently: the timer still
+    // wakes for it, so un-pausing takes effect at its next due time without a restart.
+    if (await isPaused(next.definition.name)) {
+      logEvent('job_skipped_paused', { job: next.definition.name });
+    } else {
+      await executeJob(next.definition, { trigger: 'schedule', holder });
+    }
     scheduleNext(holder);
   }, delay);
   timer.unref?.();
@@ -244,4 +263,5 @@ module.exports = {
   listDefinitions,
   acquireLease,
   releaseLease,
+  isPaused,
 };

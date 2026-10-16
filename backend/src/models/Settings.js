@@ -113,6 +113,27 @@ const SettingsSchema = new Schema(
     // back on restores exactly the state it was in - the panel says how many accounts that affects
     // before anybody flips it.
     twoFactorAuthEnabled: { type: Boolean, default: false },
+    // --- Super-admin controls (the Control Room, controllers/groupControlController) ------------
+    // Maintenance mode: while on, every account except the super admin can read but not write,
+    // and the app says why. For the hour a restore or a correction is being done.
+    maintenanceMode: { type: Boolean, default: false },
+    maintenanceMessage: { type: String, default: '', maxlength: 300 },
+    maintenanceSince: { type: Date, default: null },
+    // The books are closed up to and including this day. Anybody but the super admin is refused
+    // when they add, change or remove money dated on or before it; the super admin may go
+    // through it with a written reason, which the audit trail keeps. Null means nothing is locked.
+    lockedThrough: { type: Date, default: null },
+    lockReason: { type: String, default: '', maxlength: 300 },
+    // Feature switches. All ON by default, so a deploy carrying this code changes nothing.
+    // They sit here rather than in environment variables so the super admin can flip them
+    // without a redeploy.
+    membersAreaEnabled: { type: Boolean, default: true },
+    fineEmailsEnabled: { type: Boolean, default: true },
+    reminderEmailsEnabled: { type: Boolean, default: true },
+    constitutionVotingEnabled: { type: Boolean, default: true },
+    // Scheduled jobs the super admin has paused (by name). A paused job is skipped by the timer
+    // and can still be run by hand.
+    pausedJobs: { type: [String], default: [] },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

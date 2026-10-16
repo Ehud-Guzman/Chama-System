@@ -3,6 +3,8 @@
 import { queueRequest } from './offlineQueue.js';
 
 export const TOKEN_KEY = 'cm_token';
+// Where the super admin's real session is parked while previewing another role (AuthContext).
+export const REAL_TOKEN_KEY = 'cm_real_token';
 
 // A phone on a dying 3G cell does not fail, it stalls: without a ceiling the
 // request never settles, the button stays on "Saving…" and the admin has no way to
@@ -117,9 +119,40 @@ async function readBody(response, responseType) {
   }
 }
 
+// Going through a closed period (the super admin only).
+//
+// The server answers 423 `period_locked` and says the caller may override it. The app registers a
+// handler that asks for the reason in a dialog (components/control/OverrideProvider); if one comes
+// back, the very same request is sent again with the reason attached, once. Registered rather than
+// imported so this module stays free of React and can still be loaded by the test runner.
+let overrideHandler = null;
+export function setOverrideHandler(fn) {
+  overrideHandler = fn;
+  return () => {
+    if (overrideHandler === fn) overrideHandler = null;
+  };
+}
+
 // The 401 bounce and the outbox, in one place, whichever transport was used.
 async function handleFailure(err) {
   const config = err.config || {};
+
+  if (
+    err.response?.status === 423 &&
+    err.response.data?.code === 'period_locked' &&
+    err.response.data?.canOverride &&
+    overrideHandler &&
+    !config.__overridden
+  ) {
+    const reason = await overrideHandler(err.response.data);
+    if (reason) {
+      return request({
+        ...config,
+        headers: { ...(config.headers || {}), 'X-Override-Reason': encodeURIComponent(reason) },
+        __overridden: true,
+      });
+    }
+  }
 
   if (typeof window !== 'undefined') {
     // Expired/invalid session on an admin page → back to login.
@@ -127,12 +160,22 @@ async function handleFailure(err) {
       window.location.pathname.startsWith('/admin') &&
       window.location.pathname !== '/admin/login';
     if (err.response?.status === 401 && onAdminPage) {
+      // A preview that simply ran out (it lasts 30 minutes) is not a reason to sign the super admin
+      // out: the real session is still parked, so put it back and return to the Control Room.
+      // Anything else is a genuinely ended session.
+      let parked = null;
       try {
-        localStorage.removeItem(TOKEN_KEY);
+        parked = localStorage.getItem(REAL_TOKEN_KEY);
+        if (parked) {
+          localStorage.setItem(TOKEN_KEY, parked);
+          localStorage.removeItem(REAL_TOKEN_KEY);
+        } else {
+          localStorage.removeItem(TOKEN_KEY);
+        }
       } catch {
         // Nothing to clean up when there is no storage.
       }
-      window.location.assign('/admin/login');
+      window.location.assign(parked ? '/admin/control' : '/admin/login');
     }
   }
 
@@ -145,7 +188,12 @@ async function handleFailure(err) {
   // screen telling it so. `queuedOffline` is set so the message can say "kept, will send".
   if (config.offlineQueue && !config.__queuedOffline) {
     const status = err.response?.status;
-    const worthRetrying = status === undefined || status === 408 || status === 429 || status >= 500;
+    // Maintenance and a closed members' area are 503s that are decisions, not faults: the super
+    // admin has said "no saving for now". Keeping the write to replay later would tell the
+    // treasurer "saved, will send" about something she was just told cannot be saved.
+    const refusedOnPurpose = ['maintenance', 'members_area_closed'].includes(err.response?.data?.code);
+    const worthRetrying =
+      !refusedOnPurpose && (status === undefined || status === 408 || status === 429 || status >= 500);
     if (worthRetrying) {
       try {
         await queueRequest({

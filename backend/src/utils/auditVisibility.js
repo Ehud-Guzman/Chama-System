@@ -20,9 +20,17 @@
 const PRIVILEGED_ROLES = ['super_admin', 'admin', 'treasurer'];
 
 // `System` entries are marked by the operation that wrote them (after.action, or
-// before.action on a delete). Only these two belong to the super admin; a ledger reset or a
+// before.action on a delete). Only these belong to the super admin; a ledger reset or a
 // week collected is group-wide, and the committee is meant to see it.
-const SUPER_ONLY_SYSTEM_ACTIONS = ['backup-download', 'restore-backup'];
+const SUPER_ONLY_SYSTEM_ACTIONS = [
+  'backup-download',
+  'restore-backup',
+  // The Control Room's own housekeeping: looking at the app as another role, checking the chain by
+  // hand, taking the full export. Not news to the office, and nothing they act on.
+  'preview-started',
+  'audit-chain-verified-by-hand',
+  'audit-export-full',
+];
 const SUPER_ONLY_ENTITIES = ['JobRun'];
 
 const isSuperAdmin = (role) => role === 'super_admin';

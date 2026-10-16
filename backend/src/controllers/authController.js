@@ -33,7 +33,43 @@ function toDTO(user) {
     // the settings screen both need to show this, and neither may see the secret.
     twoFactorEnabled: Boolean(user.twoFactor?.enabled),
     twoFactorEnrolledAt: user.twoFactor?.enrolledAt || null,
+    // Switched off by the super admin, with a reason, without being deactivated.
+    frozen: Boolean(user.frozenAt),
   };
+}
+
+// Books a sign-in against the account: when, from where, and that the wrong-password count starts
+// again. Best effort — a failed write here must not turn a correct password into an error.
+async function recordSignIn(user, req) {
+  try {
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          lastLoginAt: new Date(),
+          lastLoginIp: String(req?.ip || ''),
+          lastActiveAt: new Date(),
+          failedLoginCount: 0,
+        },
+      }
+    );
+  } catch {
+    // Bookkeeping only.
+  }
+}
+
+// One more wrong password (or wrong code) against an account that exists. The super admin's
+// Control Room lists the accounts where this is climbing.
+async function recordFailedSignIn(user) {
+  if (!user?._id) return;
+  try {
+    await User.updateOne(
+      { _id: user._id },
+      { $inc: { failedLoginCount: 1 }, $set: { lastFailedLoginAt: new Date() } }
+    );
+  } catch {
+    // Bookkeeping only.
+  }
 }
 
 // At least 8 characters with a mix of letters and numbers — stops trivial
@@ -114,11 +150,22 @@ async function login(req, res, next) {
         reason: user ? 'wrong_password' : 'no_such_account',
         user,
       });
+      await recordFailedSignIn(user);
       return res.status(401).json({ message: 'Invalid email or password' });
     }
     if (!user.active) {
       void recordLoginFailure({ email: address, ip: req.ip, rid: req.id, reason: 'deactivated', user });
       return res.status(401).json({ message: 'This account has been deactivated' });
+    }
+    // Only said to somebody who has proved the password: a frozen account's existence is no secret
+    // to its owner, and the reason is what they need to go and ask about.
+    if (user.frozenAt) {
+      void recordLoginFailure({ email: address, ip: req.ip, rid: req.id, reason: 'frozen', user });
+      return res.status(401).json({
+        message: user.frozenReason
+          ? `This account is frozen: ${user.frozenReason}`
+          : 'This account has been frozen. Ask the super admin.',
+      });
     }
 
     // The password was right, but it is not the whole sign-in any more - for groups that have
@@ -136,6 +183,7 @@ async function login(req, res, next) {
     }
 
     logEvent('login_ok', { rid: req.id, userId: String(user._id), role: user.role });
+    await recordSignIn(user, req);
     res.json({ token: signToken(user), user: toDTO(user) });
   } catch (err) {
     next(err);
@@ -200,6 +248,7 @@ async function verifyTwoFactor(req, res, next) {
         },
       });
       logEvent('login_ok_recovery_code', { rid: req.id, userId: String(user._id), remaining: remaining.length });
+      await recordSignIn(user, req);
       return res.json({
         token: signToken(user),
         user: toDTO(user),
@@ -215,6 +264,7 @@ async function verifyTwoFactor(req, res, next) {
       user.twoFactor.lastFailedAt = new Date();
       await user.save();
       void recordLoginFailure({ email: user.email, ip: req.ip, rid: req.id, reason: 'wrong_2fa_code', user });
+      await recordFailedSignIn(user);
       return res.status(401).json({
         message:
           result.reason === 'format'
@@ -229,6 +279,7 @@ async function verifyTwoFactor(req, res, next) {
     await user.save();
 
     logEvent('login_ok_2fa', { rid: req.id, userId: String(user._id), role: user.role });
+    await recordSignIn(user, req);
     res.json({ token: signToken(user), user: toDTO(user) });
   } catch (err) {
     next(err);
@@ -241,9 +292,28 @@ async function verifyTwoFactor(req, res, next) {
 // it to know whether to offer enrolment or explain that the feature is off, and this endpoint is
 // the one place every signed-in role can reach without a new permission.
 async function me(req, res) {
+  // The maintenance banner rides along: every signed-in screen needs to know the books are
+  // read-only right now, and this is the one call every one of them already makes.
+  let maintenance = null;
+  try {
+    const settings = await getOrCreateSettings();
+    if (settings?.maintenanceMode) {
+      maintenance = {
+        message: settings.maintenanceMessage || '',
+        since: settings.maintenanceSince || null,
+      };
+    }
+  } catch {
+    // Settings unreadable this instant: no banner is better than a failed /me.
+  }
   res.json({
-    user: toDTO(req.user),
+    user: req.previewing ? { ...toDTO(req.user), role: req.previewing } : toDTO(req.user),
     twoFactorAuthEnabled: await twoFactorInUse(),
+    maintenance,
+    // Set only while the super admin is looking at the app as another role (read-only).
+    preview: req.previewing
+      ? { role: req.previewing, realName: req.realUser?.name || '' }
+      : null,
   });
 }
 

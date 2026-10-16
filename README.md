@@ -263,6 +263,15 @@ set it to the deployed API URL.
   paid, with what each answer does to his figures shown before it is recorded), and the group's
   fines record as a PDF or a workbook. Issuing a fine and clearing one both email the member (see Key behaviors). The
   disciplinary officer's `/admin/disciplinary` screen stays separate and narrowed to his category.
+- `/admin/control` — the **Control Room**, the super admin's alone (the API refuses every other role
+  on each of its `/api/superadmin/*` routes; the route guard only keeps the page out of their way).
+  Eight sections on one page: what needs attention and how healthy the system is; accounts and
+  sessions (sign out, freeze, change a role, preview the app as another role, read-only); maintenance
+  mode and the on/off switches; closing the books through a date and repairing records (merge two
+  members, reinstate one who left); audit powers (an entry as stored, flag for review, search by
+  address, the full export); backups, restore and the scheduled jobs; a permission table generated
+  from the real routes; and the danger zone. Every action is in the audit trail, and every one that
+  cannot be undone with a tap asks for the password again. See *The Control Room* under Key behaviors.
 - `/admin/account` — **My account**, reachable by every signed-in role: change your own password and
   enrol your own second factor. It exists because those two panels otherwise live on the dashboard
   (money roles only) and on `/admin/settings` (admins only), which left the treasurer, secretary and
@@ -774,6 +783,55 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
 - **CSV export:** members and full contribution register, UTF-8 with BOM so Excel opens them
   correctly.
 
+### The Control Room
+
+The super admin's one screen for seeing the whole system and putting it right (`/admin/control`,
+`backend/src/routes/superAdminRoutes.js`). It is mounted behind `requireAuth` **and**
+`requireRole('super_admin')` as a whole, so a route added to that file is protected before it is
+written; `backend/test/superAdmin.test.js` fails if any `/api/superadmin` route is found without it.
+
+- **Sessions.** An account's last sign-in, address and last activity are booked as it happens
+  (`User.lastLoginAt` and friends, written best-effort — a failed bookkeeping write never fails the
+  sign-in). *Sign out* sets `sessionsRevokedAt`; *freeze* sets `frozenAt` and a reason; `requireAuth`
+  checks both on **every request**, so either takes hold on the very next one, not when the token
+  expires. A role change also ends the account's sessions.
+- **Preview.** *See the app as the treasurer* mints a 30-minute token with a `viewAs` claim. It is
+  honoured only when the real account behind it is a super admin, and only for reading: every write
+  is refused before it reaches a controller (`preview_read_only`), the Control Room itself is
+  unreachable from inside it, and the session never overrides a lock.
+- **Maintenance mode.** `middleware/maintenance` refuses every write with a 503 (`maintenance`) for
+  everyone but the super admin, with the message the super admin wrote. Sign-in and the password
+  reset stay open — locking out sign-in would lock out the one person who has to switch it off. The
+  members' constitution verdict is a write and stops too. `/api/auth/me` carries the banner text.
+- **Closing the books.** `middleware/periodLock` sits in front of the money routes (contributions,
+  ledger logs, collecting or undoing a week, expenses, voiding a fine). Money dated on or before the
+  closing day answers 423 (`period_locked`). The super admin can go through with a written reason
+  (`X-Override-Reason`, at least five characters, honoured for no one else and never in a preview);
+  the pass is written to the audit trail as its own entry before the change it allowed. The browser
+  asks for the reason in a dialog and repeats the same request once.
+- **Switches** (`Settings.membersAreaEnabled`, `fineEmailsEnabled`, `reminderEmailsEnabled`,
+  `constitutionVotingEnabled`): all on by default, so deploying this changes nothing. Each lives in
+  the database, not an environment variable, so it is flipped without a redeploy. The fine-email
+  switch sits beside `FINE_EMAILS`; either one off stops the email.
+- **Restore** reads a backup file in two steps — look (nothing is written; it says what is in the file
+  and what would be added or replaced), then restore, which needs maintenance mode, the password and
+  the word `RESTORE`, writes a safety copy first (and writes nothing if that fails), and only ever
+  adds and replaces — it never empties a collection. The destructive `--replace` restore stays on the
+  command line. The reading and writing is `utils/restore.js`, shared with `npm run restore:backup`.
+- **Danger zone.** *Clear the rehearsal's money* marks contributions, expenses and fines deleted (the
+  system never hard-deletes money) and clears the fine debits left on members; it keeps members,
+  accounts, settings, funds and opening balances. Maintenance mode, the password, the phrase
+  `RESET REHEARSAL DATA` and a successful safety copy are all required.
+- **Merging two members** moves contributions, fines, the opening balance (added), fine debits and
+  constitution verdicts onto the record kept, and retires the duplicate with a note saying where it
+  went. Nothing is deleted. A verdict is permanent, so one that would collide with a chapter the kept
+  record already voted on stays on the duplicate, and the preview says so.
+- **Reviews of audit entries** live in their own collection (`AuditReview`), never on the entry: the
+  trail is hash-chained, and a note about an entry must not be able to touch the chain.
+- **Where it stops.** The Control Room does not duplicate Audit → Oversight (the officers' table,
+  failed sign-ins and passbook tries, account posture, the chain check); it counts them and links
+  there. Changing the week cycle or anyone's opening balance stays on Finance → Setup, deliberately.
+
 ### The members' gate
 
 The ID number is the key to a member's own record, so the two places it is spent — the passbook
@@ -949,6 +1007,7 @@ bundle as a foreign-looking URL).
 | `REMINDER_SWEEP_SEND` | `true` lets the weekly sweep actually email members who are behind. Off by default |
 | `REMINDER_SWEEP_MAX` | Most members one sweep will email, default 200 |
 | `FINE_EMAILS` | `off` stops the emails a fine sends on its own — the one that tells a member a fine has been recorded and the one that acknowledges his payment. On by default, because both are triggered by somebody recording or settling a fine, not by a schedule. Needs a mail configuration either way; a member with no address or with email reminders switched off is skipped |
+| `RESTORE_MAX_MB` | Largest backup file the Control Room's restore screen will take, default 50. A bigger one is restored from the command line (`npm run restore:backup`) |
 | `SYSTEM_ACTOR_EMAIL` | Which account automatic writes are credited to in the audit trail. Defaults to the earliest super admin |
 
 **Not an environment variable: how often one member may be emailed.** That is

@@ -2,6 +2,7 @@ const AuditLog = require('../models/AuditLog');
 const { chainedEntry } = require('./auditChain');
 const { logEvent } = require('../middleware/requestLogger');
 const { alertOnAuditEntry } = require('./superAdminAlerts');
+const { currentRequest } = require('./requestContext');
 
 // How many times a writer will re-read the head and try again when two entries race for
 // the same place in the chain. Losing the race means being overtaken between reading the
@@ -34,7 +35,8 @@ async function logAudit({ action, entityType, entityId, performedBy, before = nu
     try {
       const previous = await chainHead();
       const document = chainedEntry({ previous, entry });
-      const created = await AuditLog.create(document);
+      // The address is stored beside the chained fields, not inside them (see models/AuditLog).
+      const created = await AuditLog.create({ ...document, ip: currentRequest()?.ip || '' });
       // Not awaited: telling the super admin is never a reason for the write to be slower, and
       // it catches its own errors.
       void alertOnAuditEntry(created.toObject());
