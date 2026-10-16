@@ -208,7 +208,21 @@ async function overview(req, res, next) {
       for (const u of staff.filter((x) => x.frozenAt)) {
         flag('info', `frozen-${u._id}`, `${u.name} is frozen`, 'They cannot sign in until you lift it.', 'accounts');
       }
-      const stale = staff.filter((u) => !u.lastLoginAt && now - new Date(u.createdAt).getTime() > 7 * DAY_MS);
+      // Sign-ins are only recorded from when tracking began, which is the earliest time anybody has
+      // on file. An account made before then may have been used for months, so only accounts made
+      // after tracking began can honestly be called unused.
+      const seen = accounts.flatMap((u) => [u.lastLoginAt, u.lastActiveAt]).filter(Boolean).map((d) => new Date(d).getTime());
+      const trackingSince = seen.length ? Math.min(...seen) : null;
+      const stale =
+        trackingSince === null
+          ? []
+          : staff.filter(
+              (u) =>
+                !u.lastLoginAt &&
+                !u.lastActiveAt &&
+                new Date(u.createdAt).getTime() > trackingSince &&
+                now - new Date(u.createdAt).getTime() > 7 * DAY_MS
+            );
       if (stale.length) {
         flag('info', 'never-signed-in', `${stale.length} account${stale.length === 1 ? '' : 's'} created over a week ago, never used`, stale.map((u) => u.name).join(', '), 'accounts');
       }

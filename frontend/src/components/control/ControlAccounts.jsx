@@ -32,7 +32,9 @@ function Presence({ account }) {
   if (account.frozen) return <Pill tone="bad">Frozen</Pill>;
   if (account.online) return <Pill tone="good">Here now</Pill>;
   if (account.lastActiveAt) return <Pill tone="quiet">Seen {timeAgo(account.lastActiveAt)}</Pill>;
-  return <Pill tone="warn">Never signed in</Pill>;
+  // Sign-ins are only recorded from when the Control Room was added, so an account with nothing on
+  // file may well have signed in before then: it is not "never".
+  return <Pill tone="quiet">No sign-in recorded yet</Pill>;
 }
 
 export default function ControlAccounts({ onChanged }) {
@@ -155,7 +157,9 @@ export default function ControlAccounts({ onChanged }) {
               <p className="mt-1 text-xs leading-5 text-muted">
                 {account.lastLoginAt
                   ? `Signed in ${shortDateTime(account.lastLoginAt)}${account.lastLoginIp ? ` from ${account.lastLoginIp}` : ''}.`
-                  : 'Has never signed in.'}
+                  : account.lastActiveAt
+                    ? 'Signed in before sign-ins were recorded.'
+                    : 'No sign-in recorded yet — it may have signed in before they were tracked.'}
                 {account.frozen && account.frozenReason ? ` Frozen: ${account.frozenReason}.` : ''}
               </p>
 
