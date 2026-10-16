@@ -22,6 +22,8 @@ const { readAuditEntry } = require('../src/utils/auditFlags');
 const { canSeeEntry } = require('../src/utils/auditVisibility');
 const { parseEatDate } = require('../src/utils/weekCycle');
 
+const { routeOf, signatureOf } = require('../src/utils/serverErrors');
+
 const ROLES = ['super_admin', 'admin', 'treasurer', 'secretary', 'disciplinary'];
 const matrix = buildPermissionMatrix(app, ROLES);
 const area = (mount) => matrix.areas.find((a) => a.mount === mount);
@@ -200,4 +202,14 @@ test('the Control Room’s own housekeeping and its account actions are kept fro
     asEntry('User', { role, frozen: false }, { role, changed: 'account frozen', frozen: true });
   assert.equal(canSeeEntry('admin', freeze('treasurer')), false);
   assert.equal(canSeeEntry('admin', freeze('secretary')), true);
+});
+
+test('one fault is one signature, whichever member it happened to', () => {
+  const a = routeOf({ originalUrl: '/api/members/66f0c2a1b3d4e5f607182930/ledger?week=5' });
+  const b = routeOf({ originalUrl: '/api/members/77a1d2e3f4a5b6c7d8e9f001/ledger' });
+  assert.equal(a, '/api/members/:id/ledger');
+  assert.equal(a, b);
+  assert.equal(signatureOf({ kind: 'request', route: a, message: 'boom' }), signatureOf({ kind: 'request', route: b, message: 'boom' }));
+  assert.notEqual(signatureOf({ kind: 'request', route: a, message: 'boom' }), signatureOf({ kind: 'request', route: a, message: 'bang' }));
+  assert.notEqual(signatureOf({ kind: 'request', route: a, message: 'boom' }), signatureOf({ kind: 'uncaught_exception', route: a, message: 'boom' }));
 });

@@ -18,6 +18,7 @@ const { logAudit } = require('../utils/auditLogger');
 const { listDefinitions, jobsEnabled } = require('../jobs');
 const { walkChain } = require('../jobs/auditJob');
 const { toEatDateString } = require('../utils/weekCycle');
+const { recentServerErrors } = require('../utils/serverErrors');
 
 // The Control Room's first screen: is the system healthy, what needs the super admin's attention,
 // and where do the group's figures stand — in one call, so the page opens on an answer rather than
@@ -80,7 +81,7 @@ async function overview(req, res, next) {
     const settings = await getOrCreateSettings();
     const definitions = listDefinitions();
 
-    const [health, glance, accounts, auditWeek, jobRuns, openReviews, signIns] = await Promise.all([
+    const [health, glance, accounts, auditWeek, jobRuns, openReviews, serverErrors, signIns] = await Promise.all([
       section('Health', async () => {
         const backup = await computeBackupHealth();
         return {
@@ -147,6 +148,7 @@ async function overview(req, res, next) {
       }),
       section('Scheduled jobs', () => latestJobRuns(definitions)),
       section('Reviews', openReviewCount),
+      section('Server errors', () => recentServerErrors()),
       section('Sign-ins', async () => {
         const since = new Date(now - DAY_MS);
         const [failedSignIns, failedLookups] = await Promise.all([
@@ -249,6 +251,16 @@ async function overview(req, res, next) {
       }
     }
 
+    if (serverErrors && !serverErrors.error && serverErrors.distinct > 0) {
+      flag(
+        'medium',
+        'server-errors',
+        `${serverErrors.total} server error${serverErrors.total === 1 ? '' : 's'} in the last ${serverErrors.days} days (${serverErrors.distinct} different)`,
+        'Something failed on the server. Each distinct error was emailed to you once; the list is on this page.',
+        'errors'
+      );
+    }
+
     if (settings.maintenanceMode) {
       const since = settings.maintenanceSince ? new Date(settings.maintenanceSince).getTime() : now;
       flag(now - since > 2 * 60 * 60 * 1000 ? 'medium' : 'info', 'maintenance', 'Maintenance mode is on', 'Everyone but you can read and not write. Switch it off when you are done.', 'controls');
@@ -318,6 +330,7 @@ async function overview(req, res, next) {
               failedLookups: signIns && !signIns.error ? signIns.failedLookups : null,
             }
           : auditWeek,
+      serverErrors,
       controls: controlsOf(settings),
     });
   } catch (err) {

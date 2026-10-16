@@ -192,7 +192,39 @@ async function alertOnGateFailures({ ip, countByIp, countByTarget, memberName })
   }
 }
 
+// The server itself failed. One message per distinct fault per quiet period (utils/serverErrors
+// decides that); this only has to respect the hourly budget and say it plainly.
+async function alertOnServerError({ kind, message, route, method, count, requestId, at }) {
+  try {
+    if (!alertsEnabled()) return;
+    if (!withinBudget()) {
+      logEvent('security_alert_throttled', { kind: 'server_error' });
+      return;
+    }
+    const what =
+      kind === 'request'
+        ? `A request to ${method || ''} ${route || 'the API'} failed with a server error.`
+        : kind === 'unhandled_rejection'
+          ? 'The server hit an unhandled error and is restarting.'
+          : 'The server crashed and is restarting.';
+    await send({
+      subject: `server error - ${String(message).slice(0, 80)}`,
+      lines: [
+        what,
+        `What it said: ${message}`,
+        count > 1 ? `This has happened ${count} times.` : null,
+        requestId ? `Request id: ${requestId} (find it in the host's log).` : null,
+        at ? `At: ${new Date(at).toISOString()}` : null,
+        'Open the Control Room, Server errors, for the list. You will not be emailed about this same error again for six hours.',
+      ].filter(Boolean),
+    });
+  } catch (err) {
+    logEvent('security_alert_failed', { error: err.message }, 'error');
+  }
+}
+
 module.exports = {
+  alertOnServerError,
   alertOnGateFailures,
   GATE_ADDRESS_THRESHOLD,
   alertsEnabled,

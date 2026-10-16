@@ -15,6 +15,7 @@ const { seedLedgerTypes, seedGroupFunds } = require('./utils/ledgerTypes');
 const { ensureDocumentCategories } = require('./utils/documentCategories');
 const { backfillDeactivatedAt } = require('./utils/backfillDeactivatedAt');
 const { backfillLastActive } = require('./utils/backfillLastActive');
+const { recordServerError } = require('./utils/serverErrors');
 const { maintenanceGuard } = require('./middleware/maintenance');
 const { membersAreaOpen } = require('./middleware/membersArea');
 
@@ -432,13 +433,20 @@ if (require.main === module) {
   // A promise that rejects outside a route (a timer, a fire-and-forget write) has
   // nowhere to return its error. Log it with enough context to act on, then let
   // the platform restart a clean process.
+  // Recorded (and the super admin emailed) before the process goes, but never for longer than three
+  // seconds: a crash that waits on a database that is the thing that failed would never exit.
+  const recordThenExit = (err, kind) =>
+    Promise.race([recordServerError({ err, kind }), new Promise((resolve) => setTimeout(resolve, 3000))]).finally(() =>
+      process.exit(1)
+    );
+
   process.on('unhandledRejection', (reason) => {
     logEvent(
       'unhandled_rejection',
       { error: reason instanceof Error ? reason.message : String(reason) },
       'error'
     );
-    process.exit(1);
+    recordThenExit(reason instanceof Error ? reason : new Error(String(reason)), 'unhandled_rejection');
   });
   process.on('uncaughtException', (err) => {
     logEvent(
@@ -446,7 +454,7 @@ if (require.main === module) {
       { error: err.message, stack: String(err.stack || '').split('\n').slice(0, 4).join(' | ') },
       'error'
     );
-    process.exit(1);
+    recordThenExit(err, 'uncaught_exception');
   });
 
   boot.catch((err) => {

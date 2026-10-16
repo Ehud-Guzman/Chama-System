@@ -571,6 +571,41 @@ test('an account used before sign-ins were recorded gets a last-seen from the au
   assert.ok(!again.filled.some((f) => String(f.id) === String(old._id)));
 });
 
+test('a server fault is recorded once per kind of fault, counted, and shown in the Control Room', { skip }, async () => {
+  const { recordServerError } = require('../../src/utils/serverErrors');
+  const ServerError = require('../../src/models/ServerError');
+  const { errorHandler } = require('../../src/middleware/errorHandler');
+  const mk = (id) => ({ id: 'req-' + id, method: 'GET', originalUrl: '/api/members/66f0c2a1b3d4e5f607182930/ledger?x=1' });
+
+  // The same fault on two different members is one fault.
+  await recordServerError({ err: new Error('boom: ledger could not be built'), req: mk(1) });
+  await recordServerError({
+    err: new Error('boom: ledger could not be built'),
+    req: { ...mk(2), originalUrl: '/api/members/77a1d2e3f4a5b6c7d8e9f001/ledger' },
+  });
+  await recordServerError({ err: new Error('a different failure'), req: mk(3) });
+  const rows = await ServerError.find().sort({ count: -1 });
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].count, 2);
+  assert.equal(rows[0].route, '/api/members/:id/ledger');
+  assert.ok(rows[0].notifiedAt, 'the super admin is told once (an email that cannot be sent is still the one attempt)');
+  const before = rows[0].notifiedAt.getTime();
+  await recordServerError({ err: new Error('boom: ledger could not be built'), req: mk(4) });
+  assert.equal((await ServerError.findById(rows[0]._id)).notifiedAt.getTime(), before, 'and not again for six hours');
+
+  // The error handler records a 5xx and does not record a 4xx.
+  const res = { status() { return this; }, json() { return this; } };
+  errorHandler(Object.assign(new Error('handler boom'), { status: 500 }), { ...mk(5), path: '/x' }, res, () => {});
+  errorHandler(Object.assign(new Error('not found'), { status: 404 }), { ...mk(6), path: '/y' }, res, () => {});
+  await sleep(300);
+  assert.ok(await ServerError.findOne({ message: 'handler boom' }));
+  assert.equal(await ServerError.countDocuments({ message: 'not found' }), 0);
+
+  const overview = await call('GET', '/api/superadmin/overview', { token: tokens.super });
+  assert.ok(overview.body.serverErrors.distinct >= 3, JSON.stringify(overview.body.serverErrors));
+  assert.ok(overview.body.attention.some((a) => a.id === 'server-errors'));
+});
+
 test('closing the members’ area stops members and leaves the front page and the office alone', { skip }, async () => {
   const bad = await call('PUT', '/api/superadmin/switches', { token: tokens.super, body: { membersAreaEnabled: 'no' } });
   assert.equal(bad.status, 400);
