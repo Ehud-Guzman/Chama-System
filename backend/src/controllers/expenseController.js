@@ -12,6 +12,7 @@ const {
 } = require('../utils/expenseReport');
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
+const { withOptionalTransaction } = require('../utils/fineAllocation');
 
 // Every expense on the books, newest first, with the fund and the person who logged
 // it resolved. One loader, so the list, the report and the export can never be
@@ -85,6 +86,52 @@ async function listExpenses(req, res, next) {
 // the group's total money could pay for anything.
 function readSource(value) {
   return value === 'group' ? 'group' : 'fund';
+}
+
+// Checking what a pot holds and then recording the expense are two steps, and two expenses arriving
+// together would each be checked against the same balance and both be let through, leaving the
+// pot overdrawn without anyone having been asked. So every create and edit goes through here, one
+// at a time:
+//
+//   - within this process, a queue, which is all there is when the database has no transactions;
+//   - across processes, a lock document written first thing inside the transaction. Two
+//     transactions writing it conflict, so the later one waits for the earlier to commit and then
+//     runs again from the top, reading a balance that already counts the first expense.
+let queue = Promise.resolve();
+
+async function withExpenseLock(work) {
+  const turn = queue.then(() =>
+    withOptionalTransaction(async (session) => {
+      if (session) {
+        await mongoose.connection
+          .collection('locks')
+          .updateOne({ _id: 'expense-balance' }, { $inc: { n: 1 } }, { upsert: true, session });
+      }
+      return work(session);
+    })
+  );
+  // The next caller waits for this one to finish either way; its failure is its own caller's.
+  queue = turn.catch(() => {});
+  return turn;
+}
+
+// The lock document has to exist before two transactions race to create it, or the second of them
+// fails on the duplicate instead of waiting. Made once, and a duplicate here just means someone
+// else made it first.
+let lockReady = null;
+function ensureLock() {
+  if (!lockReady) {
+    lockReady = mongoose.connection
+      .collection('locks')
+      .updateOne({ _id: 'expense-balance' }, { $setOnInsert: { n: 0 } }, { upsert: true })
+      .catch((err) => {
+        if (err?.code !== 11000) {
+          lockReady = null;
+          throw err;
+        }
+      });
+  }
+  return lockReady;
 }
 
 const ksh = (n) => `Ksh ${Number(n || 0).toLocaleString('en-KE')}`;
@@ -174,21 +221,31 @@ async function createExpense(req, res, next) {
       return res.status(400).json({ message: 'Date cannot be in the future' });
     }
 
-    // More than the pot holds is allowed, but only when the treasurer has said they know.
-    const check = await overdrawn({ source: from, typeId: type?._id, amount: n });
+    // More than the pot holds is allowed, but only when the treasurer has said they know. The
+    // check and the save happen together, so another expense cannot land between them.
     const confirmed = req.body?.confirmOverdraw === true;
-    if (check.overdraws && !confirmed) return res.status(409).json(overdrawRefusal(check));
-
-    const expense = await Expense.create({
-      source: from,
-      typeId: from === 'fund' ? type._id : null,
-      amount: n,
-      date: when,
-      description: String(description || '').trim(),
-      reference: String(reference || '').trim(),
-      note: String(note || '').trim(),
-      loggedBy: req.user._id,
+    await ensureLock();
+    const { check, expense } = await withExpenseLock(async (session) => {
+      const found = await overdrawn({ source: from, typeId: type?._id, amount: n });
+      if (found.overdraws && !confirmed) return { check: found, expense: null };
+      const [created] = await Expense.create(
+        [
+          {
+            source: from,
+            typeId: from === 'fund' ? type._id : null,
+            amount: n,
+            date: when,
+            description: String(description || '').trim(),
+            reference: String(reference || '').trim(),
+            note: String(note || '').trim(),
+            loggedBy: req.user._id,
+          },
+        ],
+        { session }
+      );
+      return { check: found, expense: created };
     });
+    if (!expense) return res.status(409).json(overdrawRefusal(check));
 
     await logAudit({
       action: 'create',
@@ -267,17 +324,20 @@ async function updateExpense(req, res, next) {
       return res.status(400).json({ message: 'Say what the group bought with it' });
     }
 
-    const check = await overdrawn({
-      source: expense.source || 'fund',
-      typeId: expense.typeId,
-      amount: expense.amount,
-      current,
+    await ensureLock();
+    const { check, saved } = await withExpenseLock(async (session) => {
+      const found = await overdrawn({
+        source: expense.source || 'fund',
+        typeId: expense.typeId,
+        amount: expense.amount,
+        current,
+      });
+      if (found.overdraws && req.body?.confirmOverdraw !== true) return { check: found, saved: false };
+      await expense.save({ session });
+      return { check: found, saved: true };
     });
-    if (check.overdraws && req.body?.confirmOverdraw !== true) {
-      return res.status(409).json(overdrawRefusal(check));
-    }
+    if (!saved) return res.status(409).json(overdrawRefusal(check));
 
-    await expense.save();
     await logAudit({
       action: 'update',
       entityType: 'Expense',

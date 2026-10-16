@@ -405,6 +405,55 @@ test('spending more than a pot holds needs the treasurer to say they know', { sk
   await call(tokens.treasurer, 'DELETE', `/api/expenses/${id}`);
 });
 
+test('expenses arriving together cannot overdraw a fund between them', { skip }, async () => {
+  const fund = await ContributionType.create({
+    name: 'Rehearsal Race Fund',
+    isGroupFund: true,
+    tracksExpenses: true,
+    openingBalance: 1000,
+    active: true,
+  });
+  const post = async () =>
+    json(
+      await call(tokens.treasurer, 'POST', '/api/expenses', {
+        typeId: fund._id,
+        amount: 600,
+        date: YESTERDAY,
+        description: 'Raced',
+      })
+    );
+
+  // Each of the six fits the fund on its own (600 of 1,000); two of them do not. Exactly one may
+  // be recorded, and the rest are told to tick.
+  const results = await Promise.all(Array.from({ length: 6 }, post));
+  const made = results.filter((r) => r.status === 201);
+  assert.equal(made.length, 1, JSON.stringify(results.map((r) => r.status)));
+  assert.ok(results.filter((r) => r.status !== 201).every((r) => r.status === 409 && r.body.code === 'OVERDRAW'));
+
+  const summary = await json(await call(tokens.treasurer, 'GET', '/api/expenses/summary'));
+  assert.equal(summary.body.funds.find((f) => f.id === String(fund._id)).balance, 400);
+
+  // The same holds for corrections raised together.
+  const second = await json(
+    await call(tokens.treasurer, 'POST', '/api/expenses', {
+      typeId: fund._id, amount: 100, date: YESTERDAY, description: 'Small',
+    })
+  );
+  assert.equal(second.status, 201);
+  const firstId = made[0].body.expense._id;
+  const secondId = second.body.expense._id;
+  // 600 + 100 spent of 1,000 leaves 300: raising the first to 800 (+200) or the second to 400
+  // (+300) fits alone, but both together do not.
+  const raised = await Promise.all([
+    call(tokens.treasurer, 'PATCH', `/api/expenses/${firstId}`, { amount: 800 }).then(json),
+    call(tokens.treasurer, 'PATCH', `/api/expenses/${secondId}`, { amount: 400 }).then(json),
+  ]);
+  assert.equal(raised.filter((r) => r.status === 200).length, 1, JSON.stringify(raised.map((r) => r.status)));
+
+  for (const id of [firstId, secondId]) await call(tokens.treasurer, 'DELETE', `/api/expenses/${id}`);
+  await ContributionType.deleteOne({ _id: fund._id });
+});
+
 test('a group purchase has to say what it bought', { skip }, async () => {
   const nameless = await json(
     await call(tokens.treasurer, 'POST', '/api/expenses', {
