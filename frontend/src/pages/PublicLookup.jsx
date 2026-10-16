@@ -16,15 +16,16 @@ export default function PublicLookup() {
   const [id, setId] = useState('');
   const [status, setStatus] = useState('idle');
   const [result, setResult] = useState(null);
-  // The ID that was accepted, normalised: it keys the passbook, the statement
-  // downloads and the members' area below.
-  const [lookedUpId, setLookedUpId] = useState('');
+  // What the lookup handed back besides the passbook: the pass the statements and the members' area
+  // use from here on. The ID is spent at the lookup; only its masked form is kept, to say whose
+  // record is open. Held in state, not storage - closing the tab ends it.
+  const [memberToken, setMemberToken] = useState('');
+  const [openMask, setOpenMask] = useState('');
   // The phone number registered on his record. Only asked for once the API says the group has
   // switched the second check on (it answers 401 with `phoneRequired`), so a group that has not
   // switched it on sees the form it always had.
   const [phone, setPhone] = useState('');
   const [needsPhone, setNeedsPhone] = useState(false);
-  const [lookedUpPhone, setLookedUpPhone] = useState('');
   const [error, setError] = useState('');
   // The ID field itself, so "check another ID" can put the cursor back in the box that just stood
   // down rather than leaving somebody to hunt for it.
@@ -59,7 +60,12 @@ export default function PublicLookup() {
   useEffect(() => {
     api
       .get('/api/public/overview')
-      .then((res) => setOverview(res.data))
+      .then((res) => {
+        setOverview(res.data);
+        // The group asks for the phone number as well: ask for both at once, so the first try is the
+        // only try and the form never has to find out from a refusal.
+        if (res.data?.passbookPhoneCheck) setNeedsPhone(true);
+      })
       .catch(() => {
         // Non-fatal — the page still works for personal lookup without it
       });
@@ -76,28 +82,37 @@ export default function PublicLookup() {
       return;
     }
 
+    if (needsPhone && !phone.trim()) {
+      setStatus('error');
+      setError('Enter the phone number registered with the chama as well.');
+      return;
+    }
+
     setStatus('loading');
     setError('');
     setResult(null);
 
     try {
-      const res = await api.get('/api/public/lookup', {
-        params: {
-          nationalId: normalized,
-          phone: needsPhone && phone.trim() ? phone.trim() : undefined,
-        },
+      // A POST, so the number and the phone travel in the body and not in a URL that browser history
+      // and every proxy on the way would keep.
+      const res = await api.post('/api/public/lookup', {
+        nationalId: normalized,
+        phone: needsPhone && phone.trim() ? phone.trim() : undefined,
       });
 
-      setResult(res.data);
-      setLookedUpId(normalized);
-      setLookedUpPhone(needsPhone ? phone.trim() : '');
+      const { memberToken: pass, memberTokenExpiresIn, ...passbook } = res.data;
+      void memberTokenExpiresIn;
+      setResult(passbook);
+      setMemberToken(pass || '');
+      setOpenMask(maskNationalId(normalized));
       setStatus('found');
     } catch (err) {
       if (err.response?.status === 404) {
         setStatus('notFound');
       } else if (err.response?.data?.phoneRequired) {
-        // The ID is right and the group asks for the phone number as well. Say so, in the group's
-        // own words, and leave the ID where it is.
+        // The group asks for the phone number as well, and this try did not open anything. The
+        // server gives the same words whether the ID, the phone or both were wrong - that is on
+        // purpose - so say them as they are and leave the form where it is.
         setNeedsPhone(true);
         setStatus('error');
         setError(apiMessage(err, 'Enter the phone number registered with the group.'));
@@ -119,8 +134,8 @@ export default function PublicLookup() {
   function resetLookup() {
     setStatus('idle');
     setResult(null);
-    setLookedUpId('');
-    setLookedUpPhone('');
+    setMemberToken('');
+    setOpenMask('');
     setPhone('');
     setError('');
     setId('');
@@ -218,7 +233,7 @@ export default function PublicLookup() {
                   <p className="truncate text-sm font-semibold">
                     {result.regNumber ? `Member № ${result.regNumber}` : 'Your record'}
                     <span className="amount ml-2 text-xs font-normal text-muted">
-                      ID {maskNationalId(lookedUpId)}
+                      ID {openMask}
                     </span>
                   </p>
                 </div>
@@ -439,8 +454,9 @@ export default function PublicLookup() {
               <PassbookCard
                 key={result.regNumber || result.name}
                 result={result}
-                statementUrl={`/api/public/lookup/statement?nationalId=${lookedUpId}${lookedUpPhone ? `&phone=${encodeURIComponent(lookedUpPhone)}` : ''}`}
-                statementExcelUrl={`/api/public/lookup/statement/excel?nationalId=${lookedUpId}${lookedUpPhone ? `&phone=${encodeURIComponent(lookedUpPhone)}` : ''}`}
+                statementUrl="/api/public/lookup/statement"
+                statementExcelUrl="/api/public/lookup/statement/excel"
+                memberToken={memberToken}
               />
             </section>
           )}
@@ -455,8 +471,9 @@ export default function PublicLookup() {
 
           <section aria-label="Chama documents, minutes and constitution">
             <PublicRecords
-              key={lookedUpId || 'locked'}
-              verifiedId={lookedUpId}
+              key={openMask || 'locked'}
+              verifiedPass={memberToken}
+              verifiedMask={openMask}
             />
           </section>
 

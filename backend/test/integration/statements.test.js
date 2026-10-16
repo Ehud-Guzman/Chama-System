@@ -51,20 +51,21 @@ let weeklyType;
 let chaiType;
 let admin;
 
-const api = (method, route, body) =>
+const api = (method, route, body, extra = {}) =>
   fetch(`${base}${route}`, {
     method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...extra,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
 
 // These endpoints answer with a file, so the interesting assertions are on the bytes: a PDF starts
 // with `%PDF`, and an .xlsx is a zip, which starts with `PK`.
-async function download(route) {
-  const res = await api('GET', route);
+async function download(route, extra) {
+  const res = await api('GET', route, undefined, extra);
   const buffer = Buffer.from(await res.arrayBuffer());
   return { status: res.status, type: res.headers.get('content-type'), buffer };
 }
@@ -210,7 +211,7 @@ test('the office can download a statement as a PDF and as a workbook', { skip },
 test('a statement with no period is the whole book, exactly as it always was', { skip }, async () => {
   // The default must not have moved: every existing link and bookmark has to keep working, and the
   // passbook JSON must stay free of a field nobody asked for.
-  const lookup = await api('GET', '/api/public/lookup?nationalId=90000001');
+  const lookup = await api('POST', '/api/public/lookup', { nationalId: '90000001' });
   const profile = await lookup.json();
   assert.equal(lookup.status, 200);
   assert.equal(profile.period, undefined, 'the passbook JSON must not carry a period block');
@@ -329,19 +330,26 @@ test('a period that cannot be understood is refused before any file is made', { 
 test('a member downloads his own statement for a period, and nobody else’s', { skip }, async () => {
   const XLSX = require('xlsx');
 
-  const mine = await download('/api/public/lookup/statement?nationalId=90000001&range=this-year');
+  // The ID is spent once, at the lookup; the downloads carry the pass it hands back.
+  const opened = await api('POST', '/api/public/lookup', { nationalId: '90000001' });
+  const pass = { 'X-Member-Token': (await opened.json()).memberToken };
+
+  const mine = await download('/api/public/lookup/statement?range=this-year', pass);
   assert.equal(mine.status, 200);
   assert.match(mine.type, /application\/pdf/);
   assert.equal(mine.buffer.subarray(0, 4).toString(), '%PDF');
 
-  const mineExcel = await download(
-    '/api/public/lookup/statement/excel?nationalId=90000001&range=this-year'
-  );
+  const mineExcel = await download('/api/public/lookup/statement/excel?range=this-year', pass);
   assert.equal(mineExcel.status, 200);
   assert.equal(mineExcel.buffer.subarray(0, 2).toString(), 'PK');
 
-  // The gate still holds: an ID nobody holds opens nothing, period or no period.
-  const stranger = await api('GET', '/api/public/lookup/statement?nationalId=12345678');
+  // The gate still holds: no pass opens nothing, and neither does an ID in the URL, period or no
+  // period. An ID nobody holds is turned away at the lookup that would have issued the pass.
+  const noPass = await api('GET', '/api/public/lookup/statement?range=this-year');
+  assert.equal(noPass.status, 401);
+  const oldWay = await api('GET', '/api/public/lookup/statement?nationalId=90000001');
+  assert.equal(oldWay.status, 401);
+  const stranger = await api('POST', '/api/public/lookup', { nationalId: '12345678' });
   assert.equal(stranger.status, 404);
 
   // And another member's money must not appear on his statement.

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { DatabaseStore } = require('./rateLimitStore');
+const { nationalIdFingerprint } = require('../utils/nationalId');
 
 // The limits that guard a credential keep their counts in the database (middleware/rateLimitStore),
 // so a restart or a deploy does not hand an attacker a fresh set of tries. The rest stay in memory.
@@ -57,18 +58,88 @@ const loginSprayLimiter = rateLimit({
 });
 
 
-// Public lookup limiter: defaults to 5 requests/minute per IP.
-// Sends 429 with RateLimit/Retry-After headers on breach.
-// The ID gate is a short number that is written on a card, so the rate limit is
-// the thing standing between a script and the whole register — it stays tight.
-const lookupLimiter = rateLimit({
-  store: durable('lookup'),
-  windowMs: Number(process.env.LOOKUP_RATE_LIMIT_WINDOW_MS) || 60000,
-  max: Number(process.env.LOOKUP_RATE_LIMIT_MAX) || 5,
+// The members' gate: the passbook lookup and the records unlock, the two places an ID number is
+// spent. Four limits stand in front of them, and the reason there are four is that each one closes
+// a way round the others:
+//
+//   * a per-address ceiling on volume, successful or not, in memory — a runaway client, not an
+//     attacker;
+//   * per address, FAILURES only — twenty in a quarter of an hour. A script walking through ID
+//     numbers runs out here; an office or a mobile carrier's shared address does not, because the
+//     members behind it succeed far more often than they fail;
+//   * per (address, ID), failures only — a member who mistypes his own number a few times is stopped
+//     from hammering it, and nobody else on his connection is touched;
+//   * per ID, failures only, from ANY address — the one that matters most with the phone check on.
+//     The phone number is the thing being guessed then, and without this a stranger with an ID card
+//     and a few hundred addresses (an IPv6 /64 is enough, and is only counted as one here) could try
+//     them in parallel for as long as he liked. The cost is that someone can lock a member out of
+//     his passbook for a quarter of an hour by getting his own ID wrong on purpose; a short lock the
+//     owner can wait out is a better trade than a number that can be ground down.
+//
+// Successful requests are not counted against the failure limits, so a member who opens his passbook
+// and then downloads two statements has used none of his budget — the old single limit of five
+// requests a minute counted all three and shared them with everyone on his address.
+//
+// The statements and the records themselves no longer take an ID at all (utils/memberToken), so
+// there is nothing on them to guess and they only need a volume ceiling.
+//
+// Keys are fingerprints, never the number: a limiter row is a copy of whatever it is keyed on.
+const GATE_WINDOW_MS = Number(process.env.GATE_WINDOW_MS) || 15 * 60 * 1000;
+
+function gateFingerprint(req) {
+  return nationalIdFingerprint(req.body && req.body.nationalId);
+}
+
+const publicCeiling = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.PUBLIC_CEILING_MAX) || 120,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: 'Too many lookups. Please wait a minute and try again.' },
+  keyGenerator: (req) => ipKey(req),
+  message: { message: 'Too many requests. Please wait a minute and try again.' },
 });
+
+const gateMessage = { message: 'Too many tries. Please wait a few minutes and try again.' };
+
+const gateSprayLimiter = rateLimit({
+  store: durable('gate-spray'),
+  windowMs: GATE_WINDOW_MS,
+  max: Number(process.env.GATE_SPRAY_MAX) || 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => ipKey(req),
+  message: gateMessage,
+});
+
+const gateAttemptLimiter = rateLimit({
+  store: durable('gate-attempt'),
+  windowMs: GATE_WINDOW_MS,
+  max: Number(process.env.GATE_ATTEMPT_MAX) || 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  // Something that is not an ID is turned away before the register is touched and is the spray
+  // limit's business; it must not share one bucket between everybody who typed rubbish.
+  skip: (req) => !gateFingerprint(req),
+  keyGenerator: (req) => `${ipKey(req)}:${gateFingerprint(req)}`,
+  message: gateMessage,
+});
+
+const gateTargetLimiter = rateLimit({
+  store: durable('gate-target'),
+  windowMs: GATE_WINDOW_MS,
+  max: Number(process.env.GATE_TARGET_MAX) || 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  skip: (req) => !gateFingerprint(req),
+  keyGenerator: (req) => `id:${gateFingerprint(req)}`,
+  message: gateMessage,
+});
+
+// In the order they should run: the cheap in-memory ceiling first.
+const gateGuard = [publicCeiling, gateSprayLimiter, gateAttemptLimiter, gateTargetLimiter];
 
 // Group overview loads automatically on every page visit (not per search),
 // so it needs a much more generous budget than the passbook lookup.
@@ -77,18 +148,19 @@ const overviewLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => ipKey(req),
   message: { message: 'Too many requests. Please wait a minute and try again.' },
 });
 
-// The document vault, the minutes and the constitution are all ID-gated but
-// browsed — a member unlocks once and then opens several things, so this is more
-// generous than the passbook lookup while still capping scripted scraping of an
-// ID, which is a short number and so worth capping.
+// The document vault, the minutes and the constitution are browsed — a member unlocks once
+// (the gate above) and then opens several things with the pass that earned him, so this is a
+// ceiling on volume and scraping, not a guard on the ID: those routes no longer take one.
 const documentLimiter = rateLimit({
   windowMs: 60000,
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => ipKey(req),
   message: { message: 'Too many requests. Please wait a minute and try again.' },
 });
 
@@ -101,6 +173,7 @@ const constitutionDecisionLimiter = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => ipKey(req),
   message: { message: 'Too many decisions at once. Please wait a minute and try again.' },
 });
 
@@ -203,7 +276,9 @@ module.exports = {
   twoFactorLimiter,
   twoFactorSprayLimiter,
   apiLimiter,
-  lookupLimiter,
+  gateGuard,
+  gateFingerprint,
+  ipKey,
   overviewLimiter,
   documentLimiter,
   passwordChangeLimiter,

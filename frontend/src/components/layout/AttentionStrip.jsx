@@ -59,13 +59,36 @@ export default function AttentionStrip() {
         api
           .get('/api/audit/attention')
           .then((res) => {
-            const { seriousEntries = 0, failedSignIns = 0 } = res.data || {};
+            const {
+              seriousEntries = 0,
+              failedSignIns = 0,
+              failedLookups = 0,
+              passbookPhoneCheck = true,
+            } = res.data || {};
             if (seriousEntries > 0) {
               add({
                 id: 'audit-serious',
                 text: `${seriousEntries} serious ${seriousEntries === 1 ? 'entry' : 'entries'} by other people in the audit trail this week — amounts cut, money removed or moved, a role or phone number changed.`,
                 to: '/admin/audit',
                 action: 'Open the trail',
+              });
+            }
+            if (failedLookups > 0) {
+              add({
+                id: 'failed-lookups',
+                text: `${failedLookups} failed ${failedLookups === 1 ? 'try' : 'tries'} at the members' passbook in the last day.`,
+                to: '/admin/audit',
+                action: 'See which',
+              });
+            }
+            // An ID is on a card and in other people's phones. Until the phone number is asked for as
+            // well, it is all a stranger needs to read a member's balance, fines and payments.
+            if (!passbookPhoneCheck) {
+              add({
+                id: 'passbook-phone',
+                text: 'Members’ passbooks open with the ID number alone. Asking for the registered phone number as well keeps a stranger holding an ID card out.',
+                to: '/admin/settings#passbook',
+                action: 'Switch it on',
               });
             }
             if (failedSignIns > 0) {

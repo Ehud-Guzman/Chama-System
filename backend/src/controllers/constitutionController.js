@@ -1,5 +1,4 @@
 const ConstitutionDecision = require('../models/ConstitutionDecision');
-const { findActiveMemberByNationalId } = require('../utils/publicAccess');
 const { loadConstitution } = require('../utils/constitutionData');
 
 // The chapter list is a row in the database now (see utils/constitutionData), so
@@ -47,7 +46,7 @@ async function decisionsForMember(memberId) {
 }
 
 
-// GET /api/public/constitution?nationalId= — MEMBERS ONLY.
+// GET /api/public/constitution — MEMBERS ONLY (the member pass, utils/memberToken).
 //
 // The constitution is the group's own document, so it sits behind the same gate
 // as the document vault and the minutes: an ID recorded against an active member,
@@ -63,9 +62,7 @@ async function decisionsForMember(memberId) {
 // page can badge each chapter without a second request.
 async function publicConstitution(req, res, next) {
   try {
-    const gate = await findActiveMemberByNationalId(req.query.nationalId);
-    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
-    const member = gate.member;
+    const member = req.member;
     const { meta, chapters } = await chapterIndex();
 
     // Never let a shared device or a proxy cache a document unlocked by an ID —
@@ -81,8 +78,8 @@ async function publicConstitution(req, res, next) {
   }
 }
 
-// POST /api/public/constitution/decision — MEMBERS ONLY (by the same ID gate).
-// { nationalId, chapterNumber, decision: 'approved' | 'rejected', reason? }
+// POST /api/public/constitution/decision — MEMBERS ONLY (the member pass, utils/memberToken).
+// { chapterNumber, decision: 'approved' | 'rejected', reason? }
 //
 // A decision is written once and never changed: the row is inserted, the pair
 // (member, chapter) is uniquely indexed, and no route updates it. That is what
@@ -90,11 +87,7 @@ async function publicConstitution(req, res, next) {
 // the same record the office sees on the member's profile.
 async function publicConstitutionDecision(req, res, next) {
   try {
-    const gate = await findActiveMemberByNationalId(
-      req.body?.nationalId || req.query.nationalId
-    );
-    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
-    const member = gate.member;
+    const member = req.member;
 
     const chapterNumber = Number(req.body?.chapterNumber);
     const { meta, byNumber } = await chapterIndex();

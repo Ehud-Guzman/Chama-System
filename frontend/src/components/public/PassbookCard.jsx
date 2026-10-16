@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { passHeaders } from '../../services/memberPass';
 import api from '../../services/api';
 import { useToast } from '../shared/Toast';
 import { money, shortDate, METHOD_LABELS } from '../../utils/format';
@@ -33,14 +34,15 @@ const PAGE_SIZE = 20;
 // the ledger, so on a laptop the actual record began below the fold and the biggest figure on the
 // page competed with four identical cards for attention.
 //
-// `statementUrl` (relative, e.g. /api/public/lookup/statement?nationalId=...) and `statementExcelUrl`
-// (e.g. /api/public/lookup/statement/excel?nationalId=...) are both optional — omit them if the
-// caller has no way to re-identify this member. They are independent URLs, not derived from one
+// `statementUrl` (relative, e.g. /api/public/lookup/statement) and `statementExcelUrl`
+// (e.g. /api/public/lookup/statement/excel) are both optional — omit them if the caller has no way
+// to re-identify this member. They carry no ID and no phone number: the member's pass
+// (`memberToken`, from the lookup) is sent in a header, which is what proves them. They are independent URLs, not derived from one
 // another — always pass both explicitly from the caller.
 //
 // The period picker sits with those two buttons rather than with the ledger, so the member's own
 // statement and the office's copy take their period from the same control and the same wording.
-export default function PassbookCard({ result, statementUrl, statementExcelUrl }) {
+export default function PassbookCard({ result, statementUrl, statementExcelUrl, memberToken }) {
   const toast = useToast();
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
@@ -65,7 +67,10 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl }
   async function exportStatement() {
     setExporting(true);
     try {
-      const res = await api.get(`${statementUrl}${period.query}`, { responseType: 'blob' });
+      const res = await api.get(`${statementUrl}${period.query}`, {
+        responseType: 'blob',
+        headers: passHeaders(memberToken),
+      });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
       a.href = url;
@@ -82,7 +87,10 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl }
   async function exportStatementExcel() {
     setExporting(true);
     try {
-      const res = await api.get(`${statementExcelUrl}${period.query}`, { responseType: 'blob' });
+      const res = await api.get(`${statementExcelUrl}${period.query}`, {
+        responseType: 'blob',
+        headers: passHeaders(memberToken),
+      });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
       a.href = url;
@@ -229,6 +237,7 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl }
                 alert={result.fines?.totalOwed > 0}
               />
               <Fact label="Fines settled" value={`${result.finesSettledCount || 0} cleared`} />
+              {!result.contactsHeld && (
               <Fact
                 label="Notifications"
                 value={
@@ -245,6 +254,7 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl }
                   )
                 }
               />
+              )}
 
               {result.email && (
                 <div className="col-span-2">
@@ -255,6 +265,13 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl }
                 </div>
               )}
             </dl>
+
+            {result.contactsHeld && (
+              <p className="mt-3 border-t border-rule pt-3 text-xs leading-5 text-muted">
+                Your email and next of kin are not shown on a passbook opened with an ID number
+                alone. They appear when the group asks for your phone number as well.
+              </p>
+            )}
 
             {/* The next-of-kin list he gave the office — a spouse, the children, the in-laws. Given
                 its own block rather than a grid cell: a family does not fit in one, and each contact

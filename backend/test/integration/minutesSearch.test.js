@@ -43,19 +43,29 @@ let token;
 
 const MEMBER_ID = '91110001';
 
-const api = (method, route, body) =>
+const api = (method, route, body, extra = {}) =>
   fetch(`${base}${route}`, {
     method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...extra,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
 
-async function search(route) {
-  const res = await api('GET', route);
+async function search(route, headers) {
+  const res = await api('GET', route, undefined, headers);
   return { status: res.status, ...(await res.json()) };
+}
+
+// A member's pass for the members' area: the ID is spent once, at the records gate, and every request
+// after it carries the pass in a header — never the number.
+async function memberPass(nationalId) {
+  const res = await api('POST', '/api/public/records/unlock', { nationalId });
+  const body = await res.json();
+  assert.equal(res.status, 200, JSON.stringify(body));
+  return { 'X-Member-Token': body.memberToken };
 }
 
 // The minutes the whole file searches. Written through the API, so what is searched
@@ -233,7 +243,8 @@ test('a minute withheld from members is still found by the office', { skip }, as
   const office = await search('/api/minutes?q=fertilizer');
   assert.equal(office.total, 2);
 
-  const members = await search(`/api/public/minutes?nationalId=${MEMBER_ID}&q=fertilizer`);
+  const pass = await memberPass(MEMBER_ID);
+  const members = await search('/api/public/minutes?q=fertilizer', pass);
   assert.equal(members.status, 200);
   assert.equal(members.total, 1, 'the disciplinary minute must not reach a member');
   assert.equal(String(members.minutes[0].id), String(written[0]._id));
@@ -244,12 +255,15 @@ test('a minute withheld from members is still found by the office', { skip }, as
     assert.equal('content' in minute, false, 'the members list must not carry a minute body');
   }
 
-  const hearing = await search(`/api/public/minutes?nationalId=${MEMBER_ID}&q=disciplinary`);
+  const hearing = await search('/api/public/minutes?q=disciplinary', pass);
   assert.equal(hearing.total, 0);
 
-  // The gate still stands in front of the search itself.
+  // The gate still stands in front of the search itself: no pass, no minutes — and the ID in the
+  // URL, which is how the gate used to be passed, is no longer a way in.
   const ungated = await search('/api/public/minutes?q=fertilizer');
-  assert.equal(ungated.status, 400);
+  assert.equal(ungated.status, 401);
+  const oldWay = await search(`/api/public/minutes?nationalId=${MEMBER_ID}&q=fertilizer`);
+  assert.equal(oldWay.status, 401);
 });
 
 test('browsing the minutes is unchanged', { skip }, async () => {
@@ -266,7 +280,7 @@ test('browsing the minutes is unchanged', { skip }, async () => {
     assert.equal('match' in minute, false, 'a browse row has no search match to show');
   }
 
-  const members = await search(`/api/public/minutes?nationalId=${MEMBER_ID}`);
+  const members = await search('/api/public/minutes', await memberPass(MEMBER_ID));
   assert.equal(members.status, 200);
   assert.equal(members.total, 3, 'the disciplinary minute is not published to members');
   for (const minute of members.minutes) {

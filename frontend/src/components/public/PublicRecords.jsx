@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../../services/api';
 import { normalizeNationalId, maskNationalId, NATIONAL_ID_ERROR } from '../../utils/nationalId';
+import { passHeaders, sessionEnded } from '../../services/memberPass';
 import { shortDate, formatBytes } from '../../utils/format';
 import { pageCountLabel, pageCountTitle } from '../../utils/minutePages';
 import { documentCategoryLabel } from '../../utils/documentCategories';
@@ -17,16 +18,19 @@ const MinutesReader = lazy(() => import('../minutes/MinutesReader'));
 
 // The members' area: the chama's documents (title deeds, certificates), the
 // meeting minutes, and the constitution, behind one ID gate. A successful passbook
-// lookup counts as having entered an ID, so `verifiedId` unlocks it without asking
-// twice.
+// lookup counts as having entered an ID, so the pass it earned (`verifiedPass`) opens it without
+// asking twice.
 //
-// Every tab is served by an ID-gated endpoint that re-checks the number itself —
-// the gate below is a convenience, never the protection. Anything that must not be
+// The ID is spent once, at the gate below (or at the lookup), and what comes back is a pass for
+// that member that every request after carries in a header. Every tab is served by an endpoint
+// that checks the pass itself — the gate below is a convenience, never the protection. Anything that must not be
 // public is not in the app bundle either: the constitution is a server-side
 // document now, not a page anyone can read from the source.
-export default function PublicRecords({ verifiedId }) {
+export default function PublicRecords({ verifiedPass = '', verifiedMask = '' }) {
   const [id, setId] = useState('');
-  const [unlockedId, setUnlockedId] = useState('');
+  // The pass, and the masked ID that says whose it is. The number itself is not kept.
+  const [pass, setPass] = useState('');
+  const [maskedId, setMaskedId] = useState('');
   const [status, setStatus] = useState('locked'); // locked | loading | unlocked | error
   const [error, setError] = useState('');
   const [tab, setTab] = useState('documents');
@@ -51,27 +55,18 @@ export default function PublicRecords({ verifiedId }) {
   const [minuteResults, setMinuteResults] = useState(null);
   const [minuteSearching, setMinuteSearching] = useState(false);
 
-  const unlock = useCallback(async (rawId) => {
-    const normalized = normalizeNationalId(rawId);
-
-    if (!normalized) {
-      setStatus('error');
-      setError(NATIONAL_ID_ERROR);
-      return;
-    }
-
+  // Opening the area with a pass already in hand. The documents list doubles as the gate: it only
+  // answers for a pass that is still good, and an empty vault still answers 200.
+  const openWithPass = useCallback(async (token, mask) => {
     setStatus('loading');
     setError('');
 
     try {
-      // The documents list doubles as the gate: it only answers for the ID on a
-      // registered member's record, and an empty vault still answers 200.
-      const res = await api.get('/api/public/documents', {
-        params: { nationalId: normalized },
-      });
+      const res = await api.get('/api/public/documents', { headers: passHeaders(token) });
       setDocuments(res.data.documents || []);
       setCategories(res.data.categories || []);
-      setUnlockedId(normalized);
+      setPass(token);
+      setMaskedId(mask);
       setTab('documents');
       setMinutes([]);
       setMinutesLoaded(false);
@@ -83,19 +78,64 @@ export default function PublicRecords({ verifiedId }) {
     } catch (err) {
       setDocuments([]);
       setCategories([]);
-      setUnlockedId('');
+      setPass('');
+      setMaskedId('');
       setStatus('error');
-      setError(
-        err.response?.status === 404
-          ? 'That ID is not recorded against any active member. Check the number, or ask the treasurer to add it.'
-          : apiMessage(err, 'Could not fetch the records right now. Please try again.')
-      );
+      setError(apiMessage(err, 'Could not fetch the records right now. Please try again.'));
     }
   }, []);
 
+  // The ID, once: the records gate asks for it, trades it for a pass, and does not keep it.
+  const unlock = useCallback(
+    async (rawId) => {
+      const normalized = normalizeNationalId(rawId);
+
+      if (!normalized) {
+        setStatus('error');
+        setError(NATIONAL_ID_ERROR);
+        return;
+      }
+
+      setStatus('loading');
+      setError('');
+
+      try {
+        const res = await api.post('/api/public/records/unlock', { nationalId: normalized });
+        await openWithPass(res.data.memberToken, maskNationalId(normalized));
+      } catch (err) {
+        setDocuments([]);
+        setCategories([]);
+        setPass('');
+        setMaskedId('');
+        setStatus('error');
+        setError(
+          err.response?.status === 404
+            ? 'That ID is not recorded against any active member. Check the number, or ask the treasurer to add it.'
+            : apiMessage(err, 'Could not fetch the records right now. Please try again.')
+        );
+      }
+    },
+    [openWithPass]
+  );
+
   useEffect(() => {
-    if (verifiedId) unlock(verifiedId);
-  }, [verifiedId, unlock]);
+    if (verifiedPass) openWithPass(verifiedPass, verifiedMask);
+  }, [verifiedPass, verifiedMask, openWithPass]);
+
+  // A pass that has run out (an hour), been refused, or belongs to somebody who has left: back to the
+  // gate, in words, rather than a tab that quietly stops working.
+  const endSession = useCallback((err) => {
+    setPass('');
+    setMaskedId('');
+    setDocuments([]);
+    setMinutes([]);
+    setMinutesLoaded(false);
+    setOpenMinute(null);
+    setMinuteResults(null);
+    setTab('documents');
+    setStatus('error');
+    setError(apiMessage(err, 'Your session has ended. Enter your ID number again.'));
+  }, []);
 
   // Minutes are fetched the first time that tab is opened, not on unlock —
   // they're long documents, and most visits are for the ledger above.
@@ -105,14 +145,16 @@ export default function PublicRecords({ verifiedId }) {
     let cancelled = false;
     setMinutesLoading(true);
     api
-      .get('/api/public/minutes', { params: { nationalId: unlockedId } })
+      .get('/api/public/minutes', { headers: passHeaders(pass) })
       .then((res) => {
         if (cancelled) return;
         setMinutes(res.data.minutes || []);
         setMinutesLoaded(true);
       })
       .catch((err) => {
-        if (!cancelled) setError(apiMessage(err, 'Could not load the minutes right now.'));
+        if (cancelled) return;
+        if (sessionEnded(err)) endSession(err);
+        else setError(apiMessage(err, 'Could not load the minutes right now.'));
       })
       .finally(() => {
         if (!cancelled) setMinutesLoading(false);
@@ -121,11 +163,12 @@ export default function PublicRecords({ verifiedId }) {
     return () => {
       cancelled = true;
     };
-  }, [status, tab, minutesLoaded, unlockedId]);
+  }, [status, tab, minutesLoaded, pass, endSession]);
 
   function lock() {
     setId('');
-    setUnlockedId('');
+    setPass('');
+    setMaskedId('');
     setDocuments([]);
     setMinutes([]);
     setMinutesLoaded(false);
@@ -148,7 +191,8 @@ export default function PublicRecords({ verifiedId }) {
     setError('');
     try {
       const res = await api.get(`/api/public/documents/${doc.id}/file`, {
-        params: { nationalId: unlockedId, download: download ? 1 : undefined },
+        params: { download: download ? 1 : undefined },
+        headers: passHeaders(pass),
         responseType: 'blob',
       });
       const url = URL.createObjectURL(res.data);
@@ -167,7 +211,8 @@ export default function PublicRecords({ verifiedId }) {
         URL.revokeObjectURL(url);
       }
     } catch (err) {
-      setError(await blobErrorMessage(err, 'Could not open that document. Please try again.'));
+      if (sessionEnded(err)) endSession(err);
+      else setError(await blobErrorMessage(err, 'Could not open that document. Please try again.'));
     } finally {
       setBusyDocId(null);
     }
@@ -177,12 +222,11 @@ export default function PublicRecords({ verifiedId }) {
     setOpeningMinuteId(id);
     setError('');
     try {
-      const res = await api.get(`/api/public/minutes/${id}`, {
-        params: { nationalId: unlockedId },
-      });
+      const res = await api.get(`/api/public/minutes/${id}`, { headers: passHeaders(pass) });
       setOpenMinute(res.data.minute);
     } catch (err) {
-      setError(apiMessage(err, 'Could not open that minute. Please try again.'));
+      if (sessionEnded(err)) endSession(err);
+      else setError(apiMessage(err, 'Could not open that minute. Please try again.'));
     } finally {
       setOpeningMinuteId(null);
     }
@@ -206,14 +250,16 @@ export default function PublicRecords({ verifiedId }) {
     setMinuteSearching(true);
     try {
       const res = await api.get('/api/public/minutes', {
-        params: { nationalId: unlockedId, q: term },
+        params: { q: term },
+        headers: passHeaders(pass),
       });
       setMinuteResults(res.data.minutes || []);
       // The term the answer belongs to, so what is highlighted on screen is what was
       // actually searched for.
       setMinuteQuery(term);
     } catch (err) {
-      setError(apiMessage(err, 'Could not search the minutes right now.'));
+      if (sessionEnded(err)) endSession(err);
+      else setError(apiMessage(err, 'Could not search the minutes right now.'));
     } finally {
       setMinuteSearching(false);
     }
@@ -607,7 +653,7 @@ export default function PublicRecords({ verifiedId }) {
 
               <Link
                 to="/constitution"
-                state={{ nationalId: unlockedId }}
+                state={{ memberToken: pass, maskedId }}
                 className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-white"
               >
                 Read the constitution
@@ -616,8 +662,8 @@ export default function PublicRecords({ verifiedId }) {
           )}
 
           <p className="mt-3 text-[11px] text-muted">
-            Unlocked for {maskNationalId(unlockedId)} — records stay visible until you lock them or
-            leave the page.
+            Unlocked for {maskedId} — records stay visible until you lock them, leave the page, or an hour
+            passes.
           </p>
         </div>
       )}

@@ -9,7 +9,8 @@ const ContributionType = require('../models/ContributionType');
 const Counter = require('../models/Counter');
 const { normalizePhone } = require('../utils/phone');
 const { normalizeNationalId, storedNationalId } = require('../utils/nationalId');
-const { openPassbook } = require('../utils/publicAccess');
+const { openPassbook, findActiveMemberByNationalId } = require('../utils/publicAccess');
+const { signMemberToken, TTL_SECONDS } = require('../utils/memberToken');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { parseMembersCSV } = require('../utils/csvImport');
 const { typeBreakdown } = require('../utils/typeBreakdown');
@@ -250,6 +251,12 @@ async function listMembers(req, res, next) {
     const status = req.query.status || 'active';
     const search = String(req.query.search || '').trim();
 
+    // The disciplinary officer reads the register to pick the right member and issue a fine, and is
+    // given neither the ID nor the phone number whole (see below). A search that matched part of
+    // them would hand them back one digit at a time — "1", "12", "123" — so for him a phone or an ID
+    // matches only when it is typed in full, which is something he can only do if he already has it.
+    const identityOnly = req.user.role === 'disciplinary';
+
     const filter = {};
     if (status === 'active') filter.active = true;
     if (status === 'inactive') filter.active = false;
@@ -258,30 +265,40 @@ async function listMembers(req, res, next) {
       // Phone searches should also match normalized storage format
       const normalized = normalizePhone(search);
       // An ID typed in full is matched exactly (it is the credential, so a hit
-      // should be the member, not a list), and a partial one still filters by
-      // regex the way a name does.
+      // should be the member, not a list). It used to replace the partial match — which meant
+      // "12345", the first five digits of "12345678", found nobody, because anything of five
+      // characters or more was taken for a whole ID. A whole ID still matches exactly; what was
+      // typed also filters as a fragment, with the separators a card is written with taken out.
       const idKey = normalizeNationalId(search);
-      filter.$or = [
-        { name: rx },
-        { phone: normalized ? normalized : rx },
-        { regNumber: rx },
-        { nationalId: idKey || rx },
-      ];
+      const idFragment = idKey ? new RegExp(escapeRegex(idKey), 'i') : null;
+      filter.$or = identityOnly
+        ? [
+            { name: rx },
+            { regNumber: rx },
+            ...(normalized ? [{ phone: normalized }] : []),
+            ...(idKey ? [{ nationalId: idKey }] : []),
+          ]
+        : [
+            { name: rx },
+            { phone: normalized ? normalized : rx },
+            { regNumber: rx },
+            { nationalId: rx },
+            ...(idFragment ? [{ nationalId: idFragment }] : []),
+          ];
     }
 
     // The disciplinary officer reads the register for one reason: to pick the right member and
-    // issue a fine. His screen needs a name to recognise, a phone and a registration number to
-    // tell two people apart, and the ID to search by — so that, and nothing else, is what this
-    // endpoint returns to him. A member's family, his next of kin, his notes, his photograph and
-    // his money are not his to read: a screen that does not show them is not a permission, and the
-    // register is the one collection here that holds everybody.
-    const identityOnly = req.user.role === 'disciplinary';
-
+    // issue a fine. His screen needs a name to recognise and a registration number and a phone to
+    // tell two people apart — and that, with the phone masked, is all this endpoint returns to him.
+    // The ID and the whole phone number are the two halves of the key to every member's passbook, so
+    // they are not his; neither are a member's family, his next of kin, his notes, his photograph or
+    // his money. A screen that does not show them is not a permission, and the register is the one
+    // collection here that holds everybody.
     const membersQuery = Member.find(filter)
       .sort({ name: 1 })
       .skip((page - 1) * limit)
       .limit(limit);
-    if (identityOnly) membersQuery.select('name phone regNumber nationalId active');
+    if (identityOnly) membersQuery.select('name phone regNumber active');
 
     const [members, total] = await Promise.all([
       membersQuery.lean(),
@@ -305,7 +322,10 @@ async function listMembers(req, res, next) {
     // carries — which is a number, not a member's record.
     if (identityOnly) {
       res.json({
-        members,
+        // The phone is shown masked, enough to tell two Johns apart; the ID is not sent at all. They
+        // are the two halves of the key to every member's passbook, and the register is the one
+        // collection that holds everybody.
+        members: members.map((m) => ({ ...m, phone: maskPhone(m.phone) })),
         total,
         page,
         pages: Math.ceil(total / limit) || 1,
@@ -1259,13 +1279,22 @@ async function buildPublicProfile(member, options = {}) {
     // see their own contact details back. Strangers (or someone looking up a
     // friend) never see email or next of kin — one of each of those is
     // personal and one is someone else's contact.
-    ...(callerIsSelf && {
-      email: member.email || '',
-      // The list, cleaned — an empty list says "no contacts on file" just as the
-      // old null did, and a member with a spouse and four children sees all five.
-      nextOfKin: nextOfKinList(member.nextOfKin),
-      emailNotifications: member.emailNotifications,
-    }),
+    //
+    // **Only when the phone number was proved as well.** An ID is on a card and in other people's
+    // phones, and the contacts are more sensitive than the balance: his email, and a list of other
+    // people's names, relationships and phone numbers. With the group's phone check off, a stranger
+    // holding the card would be handed all of it, so it is held back — `contactsHeld` tells the
+    // screen to say so rather than show an empty "no contacts on file".
+    ...(callerIsSelf && options.contactsVerified
+      ? {
+          email: member.email || '',
+          // The list, cleaned — an empty list says "no contacts on file" just as the
+          // old null did, and a member with a spouse and four children sees all five.
+          nextOfKin: nextOfKinList(member.nextOfKin),
+          emailNotifications: member.emailNotifications,
+        }
+      : {}),
+    ...(callerIsSelf && !options.contactsVerified ? { contactsHeld: true } : {}),
   };
 }
 
@@ -1299,33 +1328,38 @@ function readStatementPeriod(req, res) {
   return { period };
 }
 
-// GET /api/public/lookup/statement?nationalId= — PUBLIC, same access rule as
-// publicLookup. `?year=`, `?quarter=`, `?from=&to=` and `?range=` narrow it to a period.
+// GET /api/public/lookup/statement — MEMBER PASS (utils/memberToken), the passbook kind.
+// `?year=`, `?quarter=`, `?from=&to=` and `?range=` narrow it to a period. No ID and no phone
+// number in the request: both were spent at the lookup, and what the lookup handed back is what
+// proves them here.
 async function publicLookupStatement(req, res, next) {
   try {
-    const gate = await openPassbook(req);
-    if (gate.error) {
-      return res.status(gate.error.status).json({ message: gate.error.message, ...(gate.error.extra || {}) });
-    }
     const read = readStatementPeriod(req, res);
     if (read.failed) return undefined;
-    await sendStatement(res, await buildPublicProfile(gate.member, { self: true, period: read.period }));
+    await sendStatement(
+      res,
+      await buildPublicProfile(req.member, {
+        self: true,
+        period: read.period,
+        contactsVerified: req.memberAccess.phoneVerified,
+      })
+    );
   } catch (err) {
     next(err);
   }
 }
-// GET /api/public/lookup/statement/excel?nationalId= — PUBLIC
+// GET /api/public/lookup/statement/excel — MEMBER PASS, the passbook kind
 async function publicLookupStatementExcel(req, res, next) {
   try {
-    const gate = await openPassbook(req);
-    if (gate.error) {
-      return res.status(gate.error.status).json({ message: gate.error.message, ...(gate.error.extra || {}) });
-    }
     const read = readStatementPeriod(req, res);
     if (read.failed) return undefined;
     await sendStatementExcel(
       res,
-      await buildPublicProfile(gate.member, { self: true, period: read.period })
+      await buildPublicProfile(req.member, {
+        self: true,
+        period: read.period,
+        contactsVerified: req.memberAccess.phoneVerified,
+      })
     );
   } catch (err) {
     next(err);
@@ -1349,7 +1383,11 @@ async function memberStatement(req, res, next) {
   }
 }
 
-// GET /api/public/lookup?nationalId= — PUBLIC, rate-limited, EXACT match only.
+// POST /api/public/lookup { nationalId, phone? } — PUBLIC, behind the gate guard, EXACT match only.
+//
+// A POST so that the ID and the phone number travel in the body: in a URL they would sit in browser
+// history and in every proxy log on the way. What comes back is the passbook and, beside it, the pass
+// (utils/memberToken) that the statements and the members' area use from here on.
 async function publicLookup(req, res, next) {
   try {
     // Exact match is enforced inside the gate — no regex, no partial search, one
@@ -1359,11 +1397,37 @@ async function publicLookup(req, res, next) {
       return res.status(gate.error.status).json({ message: gate.error.message, ...(gate.error.extra || {}) });
     }
 
-    // The ID that just matched IS the credential, so this caller is the member:
-    // he sees his own email and next of kin. Nobody reaches this without his own
-    // ID, and there is no directory to browse any more, so there is no other way
-    // in.
-    res.json(await buildPublicProfile(gate.member, { self: true }));
+    // The ID that just matched IS the credential, so this caller is the member — and, when the group
+    // asks for the phone number too, he has given that as well, which is what unlocks his contacts.
+    const profile = await buildPublicProfile(gate.member, {
+      self: true,
+      contactsVerified: gate.phoneVerified,
+    });
+    res.json({
+      ...profile,
+      memberToken: signMemberToken(gate.member, { phoneVerified: gate.phoneVerified }),
+      memberTokenExpiresIn: TTL_SECONDS,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/public/records/unlock { nationalId } — PUBLIC, behind the gate guard.
+//
+// The door to the group's papers (documents, minutes, constitution). These stay on the ID alone — they
+// are the group's, not one member's money — so the pass it hands out says the phone was NOT checked
+// and will not open a passbook while the group's phone check is on.
+async function unlockRecords(req, res, next) {
+  try {
+    const gate = await findActiveMemberByNationalId(req.body && req.body.nationalId, req);
+    if (gate.error) {
+      return res.status(gate.error.status).json({ message: gate.error.message });
+    }
+    res.json({
+      memberToken: signMemberToken(gate.member, { phoneVerified: false }),
+      memberTokenExpiresIn: TTL_SECONDS,
+    });
   } catch (err) {
     next(err);
   }
@@ -1413,6 +1477,7 @@ module.exports = {
   memberStatement,
   memberStatementExcel,
   publicLookup,
+  unlockRecords,
   publicLookupStatement,
   publicLookupStatementExcel,
 };

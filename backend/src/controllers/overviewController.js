@@ -115,6 +115,10 @@ async function publicOverview(req, res, next) {
 
     res.json({
       chamaName: settings.chamaName,
+      // Whether the passbook asks for the phone number as well as the ID. The lookup form reads it so
+      // that it asks for both at once, instead of finding out from a refusal — which is also what lets
+      // the gate refuse every wrong try in the same words (utils/publicAccess).
+      passbookPhoneCheck: Boolean(settings.passbookPhoneCheck),
       // The group's own statements and its mark, for the top of the page and its
       // foot. Both clauses fall back to the published constitution while Settings
       // holds nothing (utils/groupIdentity) — the vision and mission are meant to

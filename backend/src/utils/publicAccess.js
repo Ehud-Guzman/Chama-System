@@ -1,22 +1,35 @@
-const crypto = require('crypto');
 const Member = require('../models/Member');
-const { normalizeNationalId } = require('./nationalId');
+const { normalizeNationalId, nationalIdFingerprint } = require('./nationalId');
 const { logEvent } = require('../middleware/requestLogger');
 const { getOrCreateSettings } = require('./settings');
+const { recordGateFailure } = require('./securityEvents');
 
 const ID_ERROR = 'Enter a valid ID number, e.g. 12345678 (or a passport number)';
 
-// A failed lookup is the only signal that somebody is guessing at the gate — a rate
-// limiter reports its own 429s, not who was being tried. So every refusal is logged,
-// with a short hash of the number rather than the number itself: the ID *is* the
-// credential, and a log line is a copy of it. The hash is enough to see the same
-// one being tried over and over.
-function fingerprint(value) {
-  return crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 12);
-}
+// What a member is told when the group's phone check is on and the try did not open anything. It is
+// the same words, the same status and the same body whether the ID belongs to nobody, belongs to two
+// people, or belongs to one person whose phone number was wrong — because any difference between
+// those answers is a way to ask the gate "is this number a member?" without owning the number.
+const GENERIC_FAILURE = {
+  status: 401,
+  message: 'We could not open a record with that ID number and phone number. Check both and try again.',
+  extra: { phoneRequired: true },
+};
 
-function denied(reason, id) {
-  logEvent('members_gate_denied', { reason, id: fingerprint(id) }, 'warn');
+// A failed try is the only signal that somebody is guessing at the gate — a rate limiter reports its
+// own 429s, not who was being tried. So every refusal is logged with a short hash of the number rather
+// than the number itself (the ID *is* the credential, and a log line is a copy of it), and stored
+// where the super admin's oversight screen can read it.
+function denied(reason, id, { req = null, member = null } = {}) {
+  const target = nationalIdFingerprint(id);
+  logEvent('members_gate_denied', { reason, id: target }, 'warn');
+  void recordGateFailure({
+    reason,
+    target,
+    ip: req && req.ip,
+    rid: req && req.id,
+    member,
+  });
 }
 
 // The group's public access rule: the ID registered on a member's record is the
@@ -27,10 +40,13 @@ function denied(reason, id) {
 // Returns `{ member }` on a single match, or `{ error: { status, message } }` for
 // the caller to return as it stands: 400 for something that is not an ID at all,
 // 404 for an ID nobody holds, 409 when the register has it twice.
-async function findActiveMemberByNationalId(rawId) {
+//
+// This is where an ID is *spent*. Past it the member holds a pass (utils/memberToken) and the number
+// is not asked for again.
+async function findActiveMemberByNationalId(rawId, req = null) {
   const key = normalizeNationalId(String(rawId ?? ''));
   if (!key) {
-    denied('not_an_id', rawId);
+    denied('not_an_id', rawId, { req });
     return { error: { status: 400, message: ID_ERROR } };
   }
 
@@ -41,11 +57,11 @@ async function findActiveMemberByNationalId(rawId) {
   // ever slip through.
   const matches = await Member.find({ nationalId: key, active: true }).limit(2).lean();
   if (!matches.length) {
-    denied('no_such_member', key);
+    denied('no_such_member', key, { req });
     return { error: { status: 404, message: 'not_found' } };
   }
   if (matches.length > 1) {
-    denied('duplicate_id', key);
+    denied('duplicate_id', key, { req });
     return {
       error: {
         status: 409,
@@ -74,37 +90,38 @@ function phoneTail(value) {
 // stranger holding his ID card usually does not. Only the passbook asks: the group's documents,
 // minutes and constitution are the group's papers, not one member's money, and stay on the ID alone.
 //
-// Same return shape as the ID gate, with `extra` for what the screen needs to react: `phoneRequired`
-// says to ask for the number, and a wrong one is refused in words (the ID's existence is already
-// known by then, so nothing more is given away).
+// Read from the request BODY (POST), never the URL: the number and the phone are credentials, and a
+// URL is copied into browser history and into every log between the phone and the server.
+//
+// Same return shape as the ID gate, plus `phoneVerified` on success. With the check on, every refusal
+// that depends on the register is the one GENERIC_FAILURE above; with it off there is nothing more to
+// protect than the ID, so the gate keeps its plain 404 and 409.
 async function openPassbook(req) {
-  const gate = await findActiveMemberByNationalId(req.query.nationalId);
-  if (gate.error) return gate;
-
+  const input = req.body || {};
   const settings = await getOrCreateSettings();
-  if (!settings.passbookPhoneCheck) return gate;
+  const phoneCheck = Boolean(settings.passbookPhoneCheck);
 
-  const given = phoneTail(req.query.phone);
-  if (!given) {
-    return {
-      error: {
-        status: 401,
-        message: 'Enter the phone number registered with the group to open your passbook.',
-        extra: { phoneRequired: true },
-      },
-    };
+  const gate = await findActiveMemberByNationalId(input.nationalId, req);
+  if (gate.error) {
+    // "That is not an ID" says nothing about the register, so it can stay specific.
+    if (phoneCheck && gate.error.status !== 400) return { error: GENERIC_FAILURE };
+    return gate;
   }
-  if (given !== phoneTail(gate.member.phone)) {
-    denied('wrong_phone', req.query.nationalId);
-    return {
-      error: {
-        status: 403,
-        message: 'That phone number does not match the one registered for this ID.',
-        extra: { phoneRequired: true },
-      },
-    };
+  if (!phoneCheck) return { member: gate.member, phoneVerified: false };
+
+  const given = phoneTail(input.phone);
+  const registered = phoneTail(gate.member.phone);
+  if (!given || given !== registered) {
+    denied(given ? 'wrong_phone' : 'phone_missing', input.nationalId, { req, member: gate.member });
+    return { error: GENERIC_FAILURE };
   }
-  return gate;
+  return { member: gate.member, phoneVerified: true };
 }
 
-module.exports = { findActiveMemberByNationalId, openPassbook, phoneTail, ID_ERROR };
+module.exports = {
+  findActiveMemberByNationalId,
+  openPassbook,
+  phoneTail,
+  ID_ERROR,
+  GENERIC_FAILURE,
+};

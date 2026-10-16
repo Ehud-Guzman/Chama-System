@@ -1,6 +1,5 @@
 const Minute = require('../models/Minute');
 const { logAudit, snapshot } = require('../utils/auditLogger');
-const { findActiveMemberByNationalId } = require('../utils/publicAccess');
 const { sanitizeMinuteHtml } = require('../utils/sanitizeHtml');
 // How many A4/12pt pages a minute is — the figure the office bills on. Counted when a minute is
 // written rather than when one is read: it is a real layout of the whole document, not a sum of
@@ -221,15 +220,12 @@ async function deleteMinute(req, res, next) {
   }
 }
 
-// GET /api/public/minutes?nationalId=&page=&limit=&q= — PUBLIC, ID-gated. Members
+// GET /api/public/minutes?page=&limit=&q= — MEMBER PASS (utils/memberToken). Members
 // read the minutes; a minute an admin marked as not-for-members never appears
 // here, and the body itself is held back until one is opened. `q` searches the
 // minutes for a word from a meeting and answers with the sentence it was found in.
 async function publicListMinutes(req, res, next) {
   try {
-    const gate = await findActiveMemberByNationalId(req.query.nationalId);
-    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
-
     const visible = { deleted: false, visibleToMembers: { $ne: false } };
 
     const term = String(req.query.q || '').trim();
@@ -264,14 +260,11 @@ async function publicListMinutes(req, res, next) {
   }
 }
 
-// GET /api/public/minutes/:id?nationalId= — PUBLIC, ID-gated. The single minute's
+// GET /api/public/minutes/:id — MEMBER PASS. The single minute's
 // full body. Deliberately not part of the list response: a member reading on a
 // phone shouldn't download every minute's full rich text to read one.
 async function publicGetMinute(req, res, next) {
   try {
-    const gate = await findActiveMemberByNationalId(req.query.nationalId);
-    if (gate.error) return res.status(gate.error.status).json({ message: gate.error.message });
-
     const minute = await Minute.findOne({
       _id: req.params.id,
       deleted: false,

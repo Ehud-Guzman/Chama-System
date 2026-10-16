@@ -51,8 +51,7 @@ export default function DisciplinaryFines() {
       (m) =>
         m.name.toLowerCase().includes(q) ||
         m.phone.includes(q) ||
-        m.regNumber?.toLowerCase().includes(q) ||
-        m.nationalId?.toLowerCase().includes(q)
+        m.regNumber?.toLowerCase().includes(q)
     );
   }, [members, search]);
 

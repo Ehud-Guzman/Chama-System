@@ -192,8 +192,11 @@ dashboard.
 **Key Permissions:**
 - ✅ Create fines for the **disciplinary** category of fine types (record disciplinary actions)
 - ✅ See the amount each type carries as a default penalty, and change it for a particular case
-- ✅ **Pick a member from the register** — name, phone number, registration number and ID, which is
-  what it takes to tell two people apart (see Note 3: nothing else about a member reaches him)
+- ✅ **Pick a member from the register** — name, registration number and a *masked* phone number
+  (`07XX XXX 678`), which is what it takes to tell two people apart. He is not sent the ID number or
+  the whole phone number: together they are the key to a member's passbook. Searching by a fragment of
+  either finds nobody; typed in full, they still find the member. (See Note 3: nothing else about a
+  member reaches him.)
 - ✅ Read a member's own fine record in that category, and export it as a PDF or a workbook
 - ✅ The group's disciplinary register: totals, by type, by month and by member, with an export
 - ✅ Change his own password and enrol his own second factor (My account, below)

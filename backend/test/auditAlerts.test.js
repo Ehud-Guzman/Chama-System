@@ -16,7 +16,7 @@ const {
   alertsEnabled,
   MAX_PER_HOUR,
 } = require('../src/utils/superAdminAlerts');
-const { summariseSignIns, countAttention } = require('../src/utils/auditOversight');
+const { summariseSignIns, summariseGate, countAttention } = require('../src/utils/auditOversight');
 const { buildSecurityAlertEmail } = require('../src/utils/mailer');
 
 const keys = (entry) => alertableFlags(entry).map((f) => f.key);
@@ -143,4 +143,23 @@ test('the dashboard count is serious entries by other people, and only those', (
   ];
   assert.equal(countAttention(entries), 2);
   assert.equal(countAttention([]), 0);
+});
+
+// --- Failed tries at the members' gate -----------------------------------------
+
+test('a real member being aimed at is listed above a number nobody holds', () => {
+  const tries = [
+    ...Array.from({ length: 8 }, () => event('', 'no_such_member', { target: 'aaaaaaaaaaaa' })),
+    ...Array.from({ length: 3 }, () => event('', 'wrong_phone', { target: 'bbbbbbbbbbbb', memberId: { name: 'Example Member' } })),
+  ];
+  const summary = summariseGate(tries);
+  assert.equal(summary.failed, 11);
+  assert.deepEqual(summary.targets.map((t) => t.target), ['bbbbbbbbbbbb', 'aaaaaaaaaaaa']);
+  assert.equal(summary.targets[0].memberName, 'Example Member');
+  assert.deepEqual(summary.targets[0].reasons, ['wrong_phone']);
+  assert.deepEqual(summary.addresses, [{ ip: '203.0.113.7', count: 11 }]);
+});
+
+test('no failed tries at the gate is a quiet summary', () => {
+  assert.deepEqual(summariseGate([]), { failed: 0, targets: [], addresses: [] });
 });

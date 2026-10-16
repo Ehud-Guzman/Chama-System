@@ -3,7 +3,13 @@ const User = require('../models/User');
 const { CATEGORIES, readAuditEntry } = require('../utils/auditFlags');
 const { buildFilters, ACTIONS } = require('../utils/auditFilters');
 const { restrictToRole, hiddenEntityTypes } = require('../utils/auditVisibility');
-const { summariseActors, accountPosture, summariseSignIns, countAttention } = require('../utils/auditOversight');
+const {
+  summariseActors,
+  accountPosture,
+  summariseSignIns,
+  summariseGate,
+  countAttention,
+} = require('../utils/auditOversight');
 const SecurityEvent = require('../models/SecurityEvent');
 const { verifyStoredTrail } = require('../utils/auditVerify');
 const { aboutSheet } = require('../utils/aboutSheet');
@@ -219,7 +225,7 @@ const OVERSIGHT_SCAN = 5000;
 async function oversight(req, res, next) {
   try {
     const since = new Date(Date.now() - OVERSIGHT_DAYS * 24 * 60 * 60 * 1000);
-    const [entries, users, settings, signIns] = await Promise.all([
+    const [entries, users, settings, signIns, gateTries] = await Promise.all([
       AuditLog.find({ createdAt: { $gte: since } })
         .select('action entityType entityId performedBy createdAt before after')
         .sort({ createdAt: -1 })
@@ -228,16 +234,24 @@ async function oversight(req, res, next) {
         .lean(),
       User.find().select('name role active passwordChangedAt twoFactor.enabled').lean(),
       getOrCreateSettings(),
-      SecurityEvent.find({ createdAt: { $gte: since } })
+      SecurityEvent.find({ kind: 'login_failed', createdAt: { $gte: since } })
         .select('reason email userId role ip createdAt')
         .sort({ createdAt: -1 })
         .limit(OVERSIGHT_SCAN)
+        .lean(),
+      SecurityEvent.find({ kind: 'gate_failed', createdAt: { $gte: since } })
+        .select('reason target memberId ip createdAt')
+        .sort({ createdAt: -1 })
+        .limit(OVERSIGHT_SCAN)
+        .populate('memberId', 'name')
         .lean(),
     ]);
 
     res.json({
       days: OVERSIGHT_DAYS,
       signIns: summariseSignIns(signIns),
+      lookups: summariseGate(gateTries),
+      passbookPhoneCheck: Boolean(settings.passbookPhoneCheck),
       scanned: entries.length,
       // True when the window held more than was read, so the table says so rather than
       // implying it counted everything.
@@ -259,16 +273,24 @@ async function attention(req, res, next) {
   try {
     const week = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const day = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [entries, failedSignIns] = await Promise.all([
+    const [entries, failedSignIns, failedLookups, settings] = await Promise.all([
       AuditLog.find({ createdAt: { $gte: week } })
         .select('action entityType performedBy before after')
         .sort({ createdAt: -1 })
         .limit(1000)
         .populate('performedBy', 'role')
         .lean(),
-      SecurityEvent.countDocuments({ createdAt: { $gte: day } }),
+      SecurityEvent.countDocuments({ kind: 'login_failed', createdAt: { $gte: day } }),
+      SecurityEvent.countDocuments({ kind: 'gate_failed', createdAt: { $gte: day } }),
+      getOrCreateSettings(),
     ]);
-    res.json({ seriousEntries: countAttention(entries), failedSignIns });
+    res.json({
+      seriousEntries: countAttention(entries),
+      failedSignIns,
+      failedLookups,
+      // Passbooks open with an ID alone until this is switched on.
+      passbookPhoneCheck: Boolean(settings.passbookPhoneCheck),
+    });
   } catch (err) {
     next(err);
   }

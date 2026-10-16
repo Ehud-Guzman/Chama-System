@@ -134,4 +134,38 @@ function countAttention(entries, { isSelf = () => false } = {}) {
   return serious;
 }
 
-module.exports = { summariseActors, accountPosture, summariseSignIns, countAttention };
+// Failed tries at the members' gate, grouped by the ID that was aimed at (a one-way tag — the number
+// itself is never stored) and by address. A real member being aimed at (`wrong_phone`: the ID was
+// right, the phone was not) is listed above a number nobody holds, which is usually somebody
+// mistyping. `events` are SecurityEvent rows with `memberId` populated as { name }.
+function summariseGate(events) {
+  const targets = new Map();
+  const addresses = new Map();
+
+  for (const e of events) {
+    const key = e.target || '(not an ID)';
+    if (!targets.has(key)) {
+      targets.set(key, { target: key, count: 0, lastAt: null, reasons: new Set(), memberName: '' });
+    }
+    const row = targets.get(key);
+    row.count += 1;
+    row.reasons.add(e.reason);
+    if (e.memberId && e.memberId.name) row.memberName = e.memberId.name;
+    if (!row.lastAt || new Date(e.createdAt) > new Date(row.lastAt)) row.lastAt = e.createdAt;
+    if (e.ip) addresses.set(e.ip, (addresses.get(e.ip) || 0) + 1);
+  }
+
+  const rank = (r) => (r.reasons.includes('wrong_phone') ? 1 : 0);
+  return {
+    failed: events.length,
+    targets: [...targets.values()]
+      .map((r) => ({ ...r, reasons: [...r.reasons] }))
+      .sort((a, b) => rank(b) - rank(a) || b.count - a.count),
+    addresses: [...addresses.entries()]
+      .map(([ip, count]) => ({ ip, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5),
+  };
+}
+
+module.exports = { summariseActors, accountPosture, summariseSignIns, summariseGate, countAttention };

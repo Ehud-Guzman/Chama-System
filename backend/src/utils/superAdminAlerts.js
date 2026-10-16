@@ -39,6 +39,9 @@ const ALERT_FLAGS = new Set([
 
 // Failed sign-ins before it is a pattern rather than a typo.
 const FAILURE_THRESHOLD = 5;
+// Failed tries at the members' gate from one address. Higher than a sign-in's: a member behind a
+// shared connection mistypes his number now and then, and ten in a quarter of an hour is a script.
+const GATE_ADDRESS_THRESHOLD = 10;
 const FAILURE_WINDOW_MS = 15 * 60 * 1000;
 
 // At most this many messages an hour from one process. A bulk delete of fifty rows is fifty
@@ -158,7 +161,40 @@ async function alertOnFailedSignIns({ email, ip, countByEmail, countByIp, accoun
   }
 }
 
+// A try at the members' gate that failed has just been stored. Two things are worth a message:
+// somebody guessing the phone number on one real member's passbook (the ID is right, the phone is
+// not — that is an attack on a person), and one address working through ID numbers.
+async function alertOnGateFailures({ ip, countByIp, countByTarget, memberName }) {
+  try {
+    if (!alertsEnabled()) return;
+    let subject = null;
+    let line = null;
+
+    if (countByTarget === FAILURE_THRESHOLD) {
+      subject = `${FAILURE_THRESHOLD} wrong phone numbers on ${memberName || 'a member'}'s passbook`;
+      line = `${FAILURE_THRESHOLD} wrong phone numbers were tried against ${memberName || 'one member'}'s passbook in the last 15 minutes, with the right ID. Somebody has that ID and is guessing the number. The passbook locks for that ID after ${Number(process.env.GATE_TARGET_MAX) || 15} misses; it is worth telling the member.`;
+    } else if (countByIp === GATE_ADDRESS_THRESHOLD) {
+      subject = `${GATE_ADDRESS_THRESHOLD} failed member lookups from one address`;
+      line = `${GATE_ADDRESS_THRESHOLD} failed tries at the members' gate from ${ip || 'one address'} in the last 15 minutes. That is more than a mistyped number — it looks like someone working through ID numbers.`;
+    }
+    if (!subject) return;
+
+    if (!withinBudget()) {
+      logEvent('security_alert_throttled', { kind: 'gate_failures' });
+      return;
+    }
+    await send({
+      subject,
+      lines: [line, 'Open Audit → Oversight to see the tries.'],
+    });
+  } catch (err) {
+    logEvent('security_alert_failed', { error: err.message }, 'error');
+  }
+}
+
 module.exports = {
+  alertOnGateFailures,
+  GATE_ADDRESS_THRESHOLD,
   alertsEnabled,
   alertableFlags,
   alertOnAuditEntry,

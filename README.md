@@ -614,8 +614,9 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   member, and it is kept for a scripted one-off backfill. Every other workbook — statements, fines,
   performance, monthly, weekly reconciliation, audit trail — is a report to read, to hand to a
   committee or to give an auditor. None of them is disguised as an import format.
-- **Public lookup — your own record, nobody else's:** exact ID match only, 5 requests/minute/IP
-  (configurable via env), returning the member's masked phone, member-since date, what he holds
+- **Public lookup — your own record, nobody else's:** exact ID match only, `POST /api/public/lookup`
+  (the ID and the phone number travel in the body, never in a URL), behind four limits — see *The
+  members' gate* below — returning the member's masked phone, member-since date, what he holds
   today with the four figures it is made of, the rows he has logged since the cycle opened,
   pledges by type, fines (pending + settled) and the weekly schedule. Never returns internal ids
   or admin metadata. There is deliberately **no public member directory**: a member's record is
@@ -650,9 +651,10 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   8 MB) and minutes are written at `/admin/minutes`. Both are stored in MongoDB itself —
   Render/Railway disks are ephemeral, so a file written to disk would not survive a deploy or a
   backup. Members open those, and the constitution, on the public page only after entering the
-  ID recorded for them (`GET /api/public/documents?nationalId=…`,
-  `…/documents/:id/file?nationalId=…`, `GET /api/public/minutes?nationalId=…`,
-  `…/minutes/:id?nationalId=…`, `GET /api/public/constitution?nationalId=…`, 30 requests/minute/IP).
+  ID recorded for them. The ID is spent once, at `POST /api/public/records/unlock` (or at the lookup),
+  and what comes back is a one-hour **member pass** sent in an `X-Member-Token` header to
+  `GET /api/public/documents`, `…/documents/:id/file`, `GET /api/public/minutes`, `…/minutes/:id` and
+  `GET /api/public/constitution` (30 requests/minute/IP) — none of them takes an ID any more.
   A `q` on the minutes list searches the whole of every published minute — see
   *Searching the minutes* below.
   An upload or a minute can be marked hidden from members to keep it admin-only; removals are soft
@@ -772,6 +774,42 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
 - **CSV export:** members and full contribution register, UTF-8 with BOM so Excel opens them
   correctly.
 
+### The members' gate
+
+The ID number is the key to a member's own record, so the two places it is spent — the passbook
+lookup and the records unlock — are the most guarded endpoints in the API.
+
+- **Four limits, each closing a way round the others** (`middleware/rateLimiter.js`, `gateGuard`):
+  a per-address volume ceiling; per address, *failures only*; per address and ID, failures only; and
+  per ID from *any* address, failures only. Successful requests are not counted, so a member who
+  opens his passbook and downloads two statements has used none of his budget — the old single limit
+  of 5 requests a minute counted all three and shared them with everyone on his connection (an
+  office, or a mobile carrier's shared address). Addresses are counted per IPv6 /64, not per
+  address. The per-ID limit is what stops a phone number being ground down from many addresses at
+  once; the price is that someone can lock a member out for 15 minutes by failing on purpose.
+- **The ID is spent once.** The lookup and the records unlock hand back a signed one-hour pass
+  (`utils/memberToken.js`) sent in `X-Member-Token`. It cannot be used as an office session or the
+  other way round, it is re-checked against the register on every use (a member who leaves loses
+  it at once), and it remembers whether the phone number was proved — the statements need that
+  whenever the group's phone check is on.
+- **One answer for every wrong try.** With the phone check on, an ID nobody holds, an ID held by two
+  people, a wrong phone and a missing phone all get the same status and the same words
+  (`publicAccess.js`). The lookup form reads `passbookPhoneCheck` from the public overview and asks
+  for both fields at once.
+- **Contacts need the phone.** An ID alone opens the passbook but not the member's email or next of
+  kin (`contactsHeld`); those come with the phone number.
+- **Nothing is stored by a browser.** Everything under `/api/public` except the group totals is
+  `Cache-Control: no-store`.
+- **Failed tries are recorded** (`models/SecurityEvent.js`, 90 days) with a one-way tag of the ID,
+  never the number, and shown to the super admin under Audit → Oversight. Five wrong phones on one
+  real member's passbook, or ten failed tries from one address, email the super admin
+  (`SECURITY_ALERTS=off` silences it).
+- **The disciplinary officer** gets neither the ID nor the whole phone number from
+  `GET /api/members` (the phone is masked), and cannot search them by fragment.
+
+Tests: `test/integration/memberGate.test.js` (the limits, IPv6, the per-ID lock, the pass, the cache
+headers, the disciplinary view), `passbookPhone.test.js`.
+
 ## Deploying
 
 This is a monorepo (`frontend/` + `backend/` at the root) — both hosts need to be told which
@@ -883,8 +921,12 @@ bundle as a foreign-looking URL).
 | `JWT_SECRET` | 32+ random characters — the server refuses to start without it |
 | `JWT_EXPIRES_IN` | Token lifetime, default `8h`. A password change ends every existing session immediately, so this is a ceiling rather than a promise |
 | `FRONTEND_URL` | Allowed CORS origins — one, or several separated by commas. **Required in production**: without it every request from the live site is refused, so the server refuses to start instead of failing quietly |
-| `LOOKUP_RATE_LIMIT_WINDOW_MS` | Lookup rate-limit window (default 60000) |
-| `LOOKUP_RATE_LIMIT_MAX` | Max lookups per window per IP (default 5) |
+| `GATE_WINDOW_MS` | Window for the members' gate failure limits (default 900000, 15 minutes) |
+| `GATE_SPRAY_MAX` | Failed tries per address per window (default 20) |
+| `GATE_ATTEMPT_MAX` | Failed tries per address **and** ID per window (default 8) |
+| `GATE_TARGET_MAX` | Failed tries on one ID, from anywhere, per window, before it locks (default 15) |
+| `PUBLIC_CEILING_MAX` | Requests a minute per address at the gate, any outcome (default 120) |
+| `SECURITY_ALERTS` | `off` stops the super admin's alert emails (default on) |
 | `LOGIN_RATE_LIMIT_WINDOW_MS` · `LOGIN_RATE_LIMIT_MAX` | Sign-in budget per (address + email), default 5 per 15 minutes |
 | `LOGIN_SPRAY_LIMIT_MAX` | Sign-in attempts per address regardless of email, default 30 per 15 minutes |
 | `API_RATE_LIMIT_MAX` | Authenticated requests per minute per session, default 300 |
@@ -964,7 +1006,7 @@ office writes it (`21/05/2026`, `2026-05-21`, or just `2026`) — rather than fi
 handful of rows already on the screen. That is the point: the minute somebody wants is
 usually one from months back, and a minute's body is not in the list payload at all. The
 candidates come from a regex over the stored HTML (`GET /api/minutes?q=…`,
-`GET /api/public/minutes?nationalId=…&q=…`) and are then checked against the minute's own
+`GET /api/public/minutes?q=…` with the member pass) and are then checked against the minute's own
 text (`utils/minuteSearch.js`), so `href`, `li` and `strong` are never offered as words
 somebody said in a meeting. A result opens with the sentence the word was found in, with
 the term marked, and one search scans the newest hundred candidates — saying so when it
@@ -1084,8 +1126,8 @@ requests before exiting, so a deploy mid-collection does not leave a half-posted
 ID alone opens the papers. A second one — the last three digits of the phone number on
 the record, or a short code sent by SMS — is a change to what members must carry, not
 a bug to patch, so it waits on a decision. What is in place meanwhile is the rate limit
-(5 lookups a minute per address), `Cache-Control: no-store` on everything unlocked by
-an ID, the refusal to answer at all when an ID matches two members, and the denial log
+(four limits at the gate — see *The members' gate*), `Cache-Control: no-store` on everything under
+`/api/public` except the group totals, the refusal to answer at all when an ID matches two members, and the denial log
 above. (2) Money is stored as two-decimal numbers rather than integer cents; exact to
 two places, which is what the shilling needs, but integer cents would be exact beyond
 it if the group ever trades in fractions of a shilling.

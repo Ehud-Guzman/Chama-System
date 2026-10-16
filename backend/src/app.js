@@ -17,7 +17,7 @@ const { backfillDeactivatedAt } = require('./utils/backfillDeactivatedAt');
 
 const {
   apiLimiter,
-  lookupLimiter,
+  gateGuard,
   overviewLimiter,
   documentLimiter,
   constitutionDecisionLimiter,
@@ -30,9 +30,11 @@ const {
 
 const {
   publicLookup,
+  unlockRecords,
   publicLookupStatement,
   publicLookupStatementExcel,
 } = require('./controllers/memberController');
+const { requireMember } = require('./utils/memberToken');
 
 const { publicOverview } = require('./controllers/overviewController');
 const { publicConstitution, publicConstitutionDecision } = require('./controllers/constitutionController');
@@ -145,22 +147,43 @@ app.get('/api/health', (req, res) => {
 // PUBLIC API
 // -----------------------------------------------------------------------------
 
-// Public member lookup
-app.get(
+// Everything under /api/public that carries a member's data is never stored by a browser, a
+// shared phone's cache or a proxy. Only the group overview — public totals, the same for everyone —
+// may be.
+app.use('/api/public', (req, res, next) => {
+  if (req.path !== '/overview') res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
+// The members' gate: the two places an ID number is spent. POST, so the number and the phone travel
+// in the body and not in a URL that history and logs keep; behind the gate guard (four limits, see
+// middleware/rateLimiter). Each hands back a pass (utils/memberToken); the rest of the members' area
+// asks for that, never the number.
+app.post(
   '/api/public/lookup',
-  lookupLimiter,
+  gateGuard,
   publicLookup
 );
 
+app.post(
+  '/api/public/records/unlock',
+  gateGuard,
+  unlockRecords
+);
+
+// The passbook's own statements: his money, so they need the kind of pass the lookup gives (phone
+// proved too, whenever the group asks for it).
 app.get(
   '/api/public/lookup/statement',
-  lookupLimiter,
+  documentLimiter,
+  requireMember({ passbook: true }),
   publicLookupStatement
 );
 
 app.get(
   '/api/public/lookup/statement/excel',
-  lookupLimiter,
+  documentLimiter,
+  requireMember({ passbook: true }),
   publicLookupStatementExcel
 );
 
@@ -171,13 +194,14 @@ app.get(
   publicOverview
 );
 
-// The chama's constitution — members only, by the same ID gate as the document
+// The chama's constitution — members only, by the same member pass as the document
 // vault below. There is deliberately no public directory of members: a member's
 // record is theirs, and it is opened by proving his ID, not by anybody browsing a
 // list of names.
 app.get(
   '/api/public/constitution',
   documentLimiter,
+  requireMember(),
   publicConstitution
 );
 
@@ -185,6 +209,7 @@ app.get(
 app.post(
   '/api/public/constitution/decision',
   constitutionDecisionLimiter,
+  requireMember(),
   publicConstitutionDecision
 );
 
@@ -193,26 +218,30 @@ app.post(
 app.get(
   '/api/public/documents',
   documentLimiter,
+  requireMember(),
   publicListDocuments
 );
 
 app.get(
   '/api/public/documents/:id/file',
   documentLimiter,
+  requireMember(),
   publicDocumentFile
 );
 
-// Public meeting minutes — ID-gated by the same rule as the document vault:
-// enter the ID on a registered member's record, or see nothing.
+// Public meeting minutes — behind the same member pass as the document vault:
+// prove the ID on a registered member's record at the gate, or see nothing.
 app.get(
   '/api/public/minutes',
   documentLimiter,
+  requireMember(),
   publicListMinutes
 );
 
 app.get(
   '/api/public/minutes/:id',
   documentLimiter,
+  requireMember(),
   publicGetMinute
 );
 

@@ -29,4 +29,16 @@ function storedNationalId(input) {
   return normalizeNationalId(raw) || raw.slice(0, 40);
 }
 
-module.exports = { normalizeNationalId, storedNationalId };
+// A short, one-way tag for an ID, for the places that need to say "the same number again" without
+// holding the number: the request log, the failed-lookup record and the rate limiters' keys. The ID
+// *is* the credential, so a log line or a limiter row that carried it would be a copy of it. Twelve
+// hex characters is enough to tell numbers apart and too little to recover one from.
+//
+// Null for something that is not an ID at all, so a caller can tell "garbage" from "a number".
+function nationalIdFingerprint(input) {
+  const key = normalizeNationalId(input);
+  if (!key) return null;
+  return require('crypto').createHash('sha256').update(key).digest('hex').slice(0, 12);
+}
+
+module.exports = { normalizeNationalId, storedNationalId, nationalIdFingerprint };

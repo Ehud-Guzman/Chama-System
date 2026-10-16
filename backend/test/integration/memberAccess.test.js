@@ -246,11 +246,13 @@ test('the disciplinary officer is given the fields his screen uses, and no other
   const member = res.body.members.find((m) => String(m._id) === memberId);
   assert.ok(member, 'the officer must still be able to pick a member');
 
-  // What he needs to pick the right person.
+  // What he needs to pick the right person. The phone is masked and the ID is not sent at all: the
+  // two together are the key to a member's passbook, and the register holds everybody
+  // (memberGate.test.js covers searching them).
   assert.equal(member.name, 'Rehearsal Member');
-  assert.equal(member.phone, '0722000111');
+  assert.equal(member.phone, '07XX XXX 111');
   assert.equal(member.regNumber, 'REH-0001');
-  assert.equal(member.nationalId, '12345678');
+  assert.equal(member.nationalId, undefined);
 
   // What he does not: a member's family, his contacts, his notes, his photograph, and his money.
   for (const field of ['nextOfKin', 'notes', 'email', 'family', 'photoUrl', 'dateOfBirth']) {

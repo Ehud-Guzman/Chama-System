@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api, { apiMessage } from "../services/api";
 import { normalizeNationalId, NATIONAL_ID_ERROR } from "../utils/nationalId";
+import { passHeaders, sessionEnded } from "../services/memberPass";
 import { shortDate } from "../utils/format";
 import { CHAMA_NAME_TOP } from "../utils/branding";
 import CreditLine from "../components/shared/CreditLine";
@@ -188,52 +189,72 @@ export default function PublicConstitution() {
    * nothing to read here before proving a number — see
    * GET /api/public/constitution.
    */
-  const linkedId = location.state?.nationalId || "";
+  // Arriving from the members' area, the pass it earned comes with the link: the ID is not carried
+  // from page to page, only the one-hour pass for it.
+  const linkedPass = location.state?.memberToken || "";
   const [id, setId] = useState("");
-  const [status, setStatus] = useState(linkedId ? "loading" : "locked");
+  const [status, setStatus] = useState(linkedPass ? "loading" : "locked");
   const [gateError, setGateError] = useState("");
   const [doc, setDoc] = useState(null);
-  // The ID that opened the document, kept normalized so a decision can be
-  // posted without asking for the number again.
-  const [unlockedId, setUnlockedId] = useState("");
+  // The pass that opened the document, so a decision can be posted without asking for the number
+  // again. The number itself is never kept.
+  const [pass, setPass] = useState("");
   // What this member has already decided, chapter by chapter, as the server
   // reports it — the same record the office sees on his profile.
   const [summary, setSummary] = useState(null);
   const [savingChapter, setSavingChapter] = useState(null);
   const [decisionError, setDecisionError] = useState({ chapterNumber: null, message: "" });
 
-  const unlock = useCallback(async (rawId) => {
-    const normalized = normalizeNationalId(rawId);
-
-    if (!normalized) {
-      setStatus("error");
-      setGateError(NATIONAL_ID_ERROR);
-      return;
-    }
-
+  const openWithPass = useCallback(async (token) => {
     setStatus("loading");
     setGateError("");
 
     try {
-      const res = await api.get("/api/public/constitution", {
-        params: { nationalId: normalized },
-      });
+      const res = await api.get("/api/public/constitution", { headers: passHeaders(token) });
       setDoc(res.data);
       setSummary(res.data?.summary || null);
-      setUnlockedId(normalized);
+      setPass(token);
       setStatus("unlocked");
     } catch (err) {
       setDoc(null);
       setSummary(null);
-      setUnlockedId("");
+      setPass("");
       setStatus("error");
-      setGateError(
-        err.response?.status === 404
-          ? "That ID is not recorded against any active member. Check the number, or ask the treasurer to add it."
-          : apiMessage(err, "Could not open the constitution right now. Please try again.")
-      );
+      setGateError(apiMessage(err, "Could not open the constitution right now. Please try again."));
     }
   }, []);
+
+  // The ID, once: traded here for a pass, and not kept.
+  const unlock = useCallback(
+    async (rawId) => {
+      const normalized = normalizeNationalId(rawId);
+
+      if (!normalized) {
+        setStatus("error");
+        setGateError(NATIONAL_ID_ERROR);
+        return;
+      }
+
+      setStatus("loading");
+      setGateError("");
+
+      try {
+        const res = await api.post("/api/public/records/unlock", { nationalId: normalized });
+        await openWithPass(res.data.memberToken);
+      } catch (err) {
+        setDoc(null);
+        setSummary(null);
+        setPass("");
+        setStatus("error");
+        setGateError(
+          err.response?.status === 404
+            ? "That ID is not recorded against any active member. Check the number, or ask the treasurer to add it."
+            : apiMessage(err, "Could not open the constitution right now. Please try again.")
+        );
+      }
+    },
+    [openWithPass],
+  );
 
   function onSubmitGate(event) {
     event.preventDefault();
@@ -243,8 +264,8 @@ export default function PublicConstitution() {
   // Arriving from the members' area: the ID was proved there a moment ago, so
   // the page opens straight onto the document instead of asking for it twice.
   useEffect(() => {
-    if (linkedId) unlock(linkedId);
-  }, [linkedId, unlock]);
+    if (linkedPass) openWithPass(linkedPass);
+  }, [linkedPass, openWithPass]);
 
   // The document's shape is unchanged from when it lived in the bundle: a meta
   // block and the chapters. Aliased to the names the rest of the file uses.
@@ -366,27 +387,25 @@ export default function PublicConstitution() {
       setDecisionError({ chapterNumber: null, message: "" });
 
       try {
-        const res = await api.post("/api/public/constitution/decision", {
-          nationalId: unlockedId,
-          chapterNumber,
-          decision,
-          reason,
-        });
+        const res = await api.post(
+          "/api/public/constitution/decision",
+          { chapterNumber, decision, reason },
+          { headers: passHeaders(pass) },
+        );
 
         setSummary(res.data?.summary || null);
       } catch (err) {
         setDecisionError({
           chapterNumber,
-          message: apiMessage(
-            err,
-            "Could not record your decision right now. Please try again.",
-          ),
+          message: sessionEnded(err)
+            ? "Your session has ended. Go back and enter your ID number again — nothing you have already recorded is lost."
+            : apiMessage(err, "Could not record your decision right now. Please try again."),
         });
       } finally {
         setSavingChapter(null);
       }
     },
-    [unlockedId],
+    [pass],
   );
 
   /*

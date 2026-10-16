@@ -15,6 +15,14 @@ const REASON_LABELS = {
   wrong_2fa_code: "wrong code",
 };
 
+const GATE_REASON_LABELS = {
+  not_an_id: "not an ID",
+  no_such_member: "no such member",
+  duplicate_id: "on two records",
+  wrong_phone: "right ID, wrong phone",
+  phone_missing: "no phone given",
+};
+
 const ROLE_LABELS = {
   super_admin: "Super admin",
   admin: "Admin",
@@ -275,6 +283,56 @@ export default function AuditOversightPanel() {
               <p className="amount border-t border-rule px-4 py-1.5 text-[11px] text-muted">
                 Busiest addresses:{" "}
                 {data.signIns.addresses.map((a) => `${a.ip} (${a.count})`).join(" · ")}
+              </p>
+            )}
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-rule bg-surface">
+            <div className="border-b border-rule px-4 py-2">
+              <h3 className="text-sm font-bold">Failed tries at the members' passbook, last {data.days} days</h3>
+              <p className="text-[11px] leading-4 text-muted">
+                {data.lookups.failed === 0
+                  ? "None."
+                  : `${data.lookups.failed} in all. A member whose ID was right but whose phone was not is listed first — somebody has that ID and is guessing.`}
+                {" "}The number tried is never stored, only a tag that shows when it is the same one
+                again. A passbook locks for 15 minutes after 15 misses.
+                {!data.passbookPhoneCheck &&
+                  " The phone check is off, so an ID alone opens a passbook: there is no phone to guess."}
+              </p>
+            </div>
+            {data.lookups.targets.length > 0 && (
+              <ul className="divide-y divide-rule">
+                {data.lookups.targets.slice(0, 10).map((t) => (
+                  <li key={t.target} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-1.5">
+                    <span className="text-sm font-medium">
+                      {t.memberName || (
+                        <span className="amount text-muted">ID tag {t.target}</span>
+                      )}
+                    </span>
+                    {t.reasons.map((r) => (
+                      <span
+                        key={r}
+                        className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-4 ${
+                          r === "wrong_phone" ? "bg-alert/10 text-alert" : "bg-canvas text-muted"
+                        }`}
+                      >
+                        {GATE_REASON_LABELS[r] || r}
+                      </span>
+                    ))}
+                    <span className="amount ml-auto text-sm font-semibold">
+                      {t.count}×
+                      <span className="ml-2 text-[11px] font-normal text-muted">
+                        {t.lastAt ? shortDateTime(t.lastAt) : ""}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {data.lookups.addresses.length > 0 && (
+              <p className="amount border-t border-rule px-4 py-1.5 text-[11px] text-muted">
+                Busiest addresses:{" "}
+                {data.lookups.addresses.map((a) => `${a.ip} (${a.count})`).join(" · ")}
               </p>
             )}
           </div>
