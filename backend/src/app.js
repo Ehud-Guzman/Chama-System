@@ -14,6 +14,7 @@ const { seedDisciplinaryFineTypes } = require('./utils/seedDisciplinaryFineTypes
 const { seedLedgerTypes, seedGroupFunds } = require('./utils/ledgerTypes');
 const { ensureDocumentCategories } = require('./utils/documentCategories');
 const { backfillDeactivatedAt } = require('./utils/backfillDeactivatedAt');
+const { backfillLastActive } = require('./utils/backfillLastActive');
 const { maintenanceGuard } = require('./middleware/maintenance');
 const { membersAreaOpen } = require('./middleware/membersArea');
 
@@ -353,6 +354,15 @@ if (require.main === module) {
           if (result.filled.length > 0) logEvent('deactivated_at_backfilled', { count: result.filled.length });
         })
         .catch((err) => logEvent('deactivated_at_backfill_failed', { error: err.message }, 'error'))
+    )
+    // Accounts in use before sign-ins were recorded get a "last seen" from the audit trail, so the
+    // Control Room does not call a daily user "no sign-in recorded". Idempotent, never fatal.
+    .then(() =>
+      backfillLastActive()
+        .then((result) => {
+          if (result.filled.length > 0) logEvent('last_active_backfilled', { count: result.filled.length });
+        })
+        .catch((err) => logEvent('last_active_backfill_failed', { error: err.message }, 'error'))
     )
     // The scheduled work: the nightly backup, the weekly audit check and the reminder sweep.
     // Started last, after the seeds, so a job can never run against a half-initialised database.

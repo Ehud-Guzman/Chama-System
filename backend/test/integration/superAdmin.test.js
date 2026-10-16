@@ -553,6 +553,24 @@ test('a merge that cannot save one of the records moves nothing', { skip }, asyn
   assert.equal((await Member.findById(dupe._id)).active, true);
 });
 
+test('an account used before sign-ins were recorded gets a last-seen from the audit trail, and no more', { skip }, async () => {
+  const { backfillLastActive } = require('../../src/utils/backfillLastActive');
+  const old = await User.create({ name: 'Old Hand', email: 'oldhand@example.com', password: 'x', role: 'treasurer' });
+  const idle = await User.create({ name: 'Idle Ivy', email: 'idle@example.com', password: 'x', role: 'secretary' });
+  const entry = await AuditLog.create({
+    action: 'update', entityType: 'Member', entityId: old._id, performedBy: old._id, createdAt: new Date('2026-09-01T10:00:00Z'),
+  });
+  await AuditLog.updateOne({ _id: entry._id }, { $set: { createdAt: new Date('2026-09-01T10:00:00Z') } }, { timestamps: false });
+
+  const result = await backfillLastActive();
+  assert.ok(result.filled.some((f) => String(f.id) === String(old._id)));
+  assert.equal((await User.findById(old._id)).lastActiveAt.toISOString(), '2026-09-01T10:00:00.000Z');
+  assert.equal((await User.findById(idle._id)).lastActiveAt, null, 'nothing is invented for an account that never did anything');
+  // Running it again moves nothing.
+  const again = await backfillLastActive();
+  assert.ok(!again.filled.some((f) => String(f.id) === String(old._id)));
+});
+
 test('closing the members’ area stops members and leaves the front page and the office alone', { skip }, async () => {
   const bad = await call('PUT', '/api/superadmin/switches', { token: tokens.super, body: { membersAreaEnabled: 'no' } });
   assert.equal(bad.status, 400);
