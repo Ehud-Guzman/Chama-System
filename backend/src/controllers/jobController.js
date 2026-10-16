@@ -1,5 +1,6 @@
+const crypto = require('crypto');
 const JobRun = require('../models/JobRun');
-const { listDefinitions, executeJob, findDefinition, jobsEnabled, LEASE_MS } = require('../jobs');
+const { listDefinitions, executeJob, runMissedJobs, findDefinition, jobsEnabled, LEASE_MS } = require('../jobs');
 const { listBackups, backupDir, retentionCount } = require('../jobs/backupJob');
 const { logAudit } = require('../utils/auditLogger');
 
@@ -119,4 +120,28 @@ async function runJobNow(req, res, next) {
   }
 }
 
-module.exports = { jobStatus, runJobNow };
+// GET /api/cron/tick — for an outside pinger (cron-job.org, UptimeRobot, GitHub Actions).
+//
+// On a host that sleeps, nothing inside the app can promise a 02:00 backup. This is the door for
+// something outside to do it: each call wakes the app if it is asleep and then runs whatever was
+// due and missed (jobs/index runMissedJobs). It needs the secret in JOBS_CRON_TOKEN, sent as the
+// X-Cron-Token header (or `Authorization: Bearer`), and does not exist at all without one. A GET,
+// so maintenance mode (which refuses writes) does not stop the backups it exists to make.
+async function tick(req, res, next) {
+  try {
+    const expected = process.env.JOBS_CRON_TOKEN;
+    if (!expected) return res.status(404).json({ message: 'Not found' });
+    const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const given = String(req.headers['x-cron-token'] || bearer || '');
+    const digest = (value) => crypto.createHash('sha256').update(value).digest();
+    if (!crypto.timingSafeEqual(digest(given), digest(expected))) {
+      return res.status(401).json({ message: 'Not authorised' });
+    }
+    const report = await runMissedJobs();
+    res.json({ ok: true, at: new Date().toISOString(), jobs: report });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { jobStatus, runJobNow, tick };

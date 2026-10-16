@@ -173,6 +173,20 @@ async function overview(req, res, next) {
       } else if (health.backup?.stale) {
         flag('medium', 'backup-stale', `The last downloaded copy is ${health.backup.daysAgo} days old`, health.backup.note, 'data');
       }
+      const off = health.backup?.offsite;
+      if (off && !off.enabled) {
+        flag(
+          'medium',
+          'offsite-off',
+          'Backups exist only on this server',
+          'The server\u2019s disk is wiped on every deploy on a free host, so those files are not a safe copy. Set up Cloudinary (the same account as the photos) and each night\u2019s backup is also kept there.',
+          'data'
+        );
+      } else if (off?.lastTry && !off.lastTry.ok) {
+        flag('high', 'offsite-failed', 'The last off-server backup failed', off.lastTry.error || 'See Backups, restore and jobs.', 'data');
+      } else if (off?.enabled && off.lastGoodAt && now - new Date(off.lastGoodAt).getTime() > 3 * DAY_MS) {
+        flag('medium', 'offsite-old', 'The newest off-server backup is more than 3 days old', 'The nightly job may not be running. If the host sleeps, an outside pinger has to call /api/cron/tick (see the README).', 'data');
+      }
       if (!health.mail.configured) {
         flag('info', 'mail-off', 'Email is not set up', 'Reminders, fine emails and password-reset links cannot be sent.');
       }

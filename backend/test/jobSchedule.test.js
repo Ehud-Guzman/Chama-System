@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
 const {
   parseSchedule,
   nextRunAt,
+  previousRunAt,
   describeGap,
   eatParts,
   fromEatParts,
@@ -110,4 +111,28 @@ test('the gap is described the way a person would say it', () => {
   assert.equal(describeGap(3 * 3600 * 1000 + 20 * 60 * 1000), '3h 20m');
   assert.equal(describeGap(26 * 3600 * 1000), '1d 2h');
   assert.equal(describeGap(-5000), '0m'); // a job that is overdue reads as due, never as negative
+});
+
+test('the previous run is the latest scheduled time at or before now', () => {
+  const daily = parseSchedule('daily@02:00');
+  // 09:00 on the 2nd: the 02:00 of the same day.
+  assert.equal(previousRunAt(daily, EAT(2026, 1, 2, 9)), EAT(2026, 1, 2, 2));
+  // 01:00 on the 2nd: not reached yet today, so yesterday's.
+  assert.equal(previousRunAt(daily, EAT(2026, 1, 2, 1)), EAT(2026, 1, 1, 2));
+  // Exactly on time counts as having fired.
+  assert.equal(previousRunAt(daily, EAT(2026, 1, 2, 2)), EAT(2026, 1, 2, 2));
+
+  // Saturday 04:00 weekly, asked on Monday the 5th: Saturday the 3rd.
+  const weekly = parseSchedule('weekly@sat@04:00');
+  assert.equal(previousRunAt(weekly, EAT(2026, 1, 5, 12)), EAT(2026, 1, 3, 4));
+  // Asked on the Saturday itself before 04:00: the one before.
+  assert.equal(previousRunAt(weekly, EAT(2026, 1, 3, 3)), EAT(2025, 12, 27, 4));
+
+  // Monthly on the 31st in a month with no 31st: its last day.
+  const monthly = parseSchedule('monthly@31@04:00');
+  assert.equal(previousRunAt(monthly, EAT(2026, 3, 10, 12)), EAT(2026, 2, 28, 4));
+
+  // The pair agree: the next run after the previous one is the one after now.
+  const now = EAT(2026, 1, 2, 9);
+  assert.ok(previousRunAt(daily, now) <= now && nextRunAt(daily, now) > now);
 });

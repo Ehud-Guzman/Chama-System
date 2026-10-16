@@ -12,6 +12,8 @@ const {
   startPreview,
 } = require('../controllers/accountControlController');
 const {
+  offsiteList,
+  offsiteDownload,
   setMaintenance,
   setLock,
   setSwitches,
@@ -80,6 +82,8 @@ router.post('/audit/:id/review', reviewEntry);
 router.get('/export/audit', exportAuditFull);
 
 // --- data and recovery -------------------------------------------------------------------------
+router.get('/offsite', offsiteList);
+router.get('/offsite/download', offsiteDownload);
 router.post('/restore/inspect', backupUpload, inspectBackup);
 router.post('/restore/apply', applyBackup);
 router.get('/danger/preview', resetPreview);

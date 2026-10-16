@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { writeBackupJson, filenameDate } = require('../utils/backup');
+const { offsiteEnabled, uploadBackupOffsite, pruneOffsite } = require('../utils/offsiteBackup');
 
 const DEFAULT_DIR = path.join(__dirname, '..', '..', 'data', 'backups');
 
@@ -114,7 +115,14 @@ async function runBackupJob({ trigger = 'schedule', prune = true } = {}) {
   // deletes older backups: several in an afternoon would push the last good nightly copy out.
   const removed = prune ? pruneBackups(dir, retentionCount()) : [];
 
+  // The copy that survives the host. After the local file, never instead of it, and never a reason
+  // for the backup itself to fail: its outcome is recorded in the job's summary where the Control
+  // Room reads it.
+  const offsite = await uploadBackupOffsite(target, fileName);
+  if (offsite.ok && prune) offsite.pruned = (await pruneOffsite()).length;
+
   return {
+    offsite,
     file: fileName,
     path: target,
     sizeBytes: size,

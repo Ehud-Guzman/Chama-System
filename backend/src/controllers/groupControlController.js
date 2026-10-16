@@ -363,7 +363,53 @@ async function exportAuditFull(req, res, next) {
   }
 }
 
+// GET /api/superadmin/offsite — the copies kept off the server, newest first.
+async function offsiteList(req, res, next) {
+  try {
+    const { offsiteEnabled, listOffsite, retention } = require('../utils/offsiteBackup');
+    if (!offsiteEnabled()) return res.json({ enabled: false, files: [], retention: retention() });
+    try {
+      res.json({ enabled: true, files: await listOffsite(), retention: retention() });
+    } catch (err) {
+      res.json({ enabled: true, files: [], retention: retention(), error: `Could not read the list: ${err.message}` });
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/superadmin/offsite/download?id= — one copy, handed over through the API.
+//
+// The file is private on the storage side, so there is no address to share or leak: the server
+// fetches it with a signed request and passes it on to the super admin. Recorded in the audit trail
+// like any other backup download.
+async function offsiteDownload(req, res, next) {
+  try {
+    const { isOurs, signedUrlFor } = require('../utils/offsiteBackup');
+    const id = String(req.query.id || '');
+    if (!isOurs(id)) return res.status(400).json({ message: 'That is not one of the group\u2019s off-server backups.' });
+    const upstream = await fetch(signedUrlFor(id));
+    if (!upstream.ok) return res.status(404).json({ message: 'That copy could not be fetched. It may have been removed.' });
+    const bytes = Buffer.from(await upstream.arrayBuffer());
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', `attachment; filename="${id.split('/').pop().replace(/[^A-Za-z0-9._-]/g, '_')}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(bytes);
+    await logAudit({
+      action: 'create',
+      entityType: 'System',
+      entityId: req.user._id,
+      performedBy: req.user._id,
+      after: { action: 'backup-download', via: 'off-server copy', file: id.split('/').pop() },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
+  offsiteList,
+  offsiteDownload,
   SWITCH_FIELDS,
   setMaintenance,
   setLock,

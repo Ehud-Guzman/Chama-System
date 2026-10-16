@@ -34,6 +34,7 @@ const AREAS = {
   '/api/audit': { label: 'Audit trail', note: 'Who changed what, and when. What each role may read is narrowed inside.' },
   '/api/backup': { label: 'Backup', note: 'Download a copy of everything.' },
   '/api/jobs': { label: 'Scheduled jobs', note: 'Nightly backup, audit check, reminder sweep.' },
+  '/api/cron': { label: 'Job pinger', note: 'One secret-protected address an outside timer calls to run the jobs a sleeping host missed.' },
   '/api/superadmin': { label: 'Control Room', note: 'The super admin’s oversight and override tools.' },
   '/api/public': { label: 'Members’ area (no account)', note: 'A member opens his own record with his ID (and phone number, when the group asks for it); he can write one thing — his verdict on a chapter.' },
 };

@@ -150,6 +150,17 @@ export default function ControlOverview({ overview, reload }) {
                   </>
                 )}
               </HealthRow>
+              <HealthRow label="Off-server copy">
+                {!health.backup.offsite?.enabled ? (
+                  <Pill tone="warn">Not set up</Pill>
+                ) : health.backup.offsite.lastTry && !health.backup.offsite.lastTry.ok ? (
+                  <Pill tone="bad">Last try failed</Pill>
+                ) : health.backup.offsite.lastGoodAt ? (
+                  <>Kept {timeAgo(health.backup.offsite.lastGoodAt)}</>
+                ) : (
+                  <span className="text-muted">Not made yet</span>
+                )}
+              </HealthRow>
               <HealthRow label="On the server">
                 {health.backup.onHost.count === 0
                   ? 'No files'

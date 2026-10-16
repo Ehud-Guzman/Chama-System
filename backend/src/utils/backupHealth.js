@@ -1,4 +1,6 @@
 const AuditLog = require('../models/AuditLog');
+const JobRun = require('../models/JobRun');
+const { offsiteEnabled } = require('./offsiteBackup');
 const { listBackups, backupDir, retentionCount } = require('../jobs/backupJob');
 
 // How old is the copy in somebody's hands?
@@ -73,6 +75,13 @@ async function computeBackupHealth({ now = Date.now() } = {}) {
 
   const newest = files.length ? files[files.length - 1] : null;
 
+  // The copy that is not on this machine's disk: tried every night, and every try is in the job's
+  // record, so "is it working?" is read from there rather than assumed.
+  const [lastTry, lastGood] = await Promise.all([
+    JobRun.findOne({ name: 'nightly-backup', 'summary.offsite': { $exists: true } }).sort({ startedAt: -1 }).lean(),
+    JobRun.findOne({ name: 'nightly-backup', 'summary.offsite.ok': true }).sort({ startedAt: -1 }).lean(),
+  ]);
+
   return {
     ...describeBackupAge({ lastDownloadAt: lastDownload?.createdAt || null, now }),
     lastDownload: lastDownload
@@ -84,6 +93,13 @@ async function computeBackupHealth({ now = Date.now() } = {}) {
           slim: Boolean(lastDownload.after?.slim),
         }
       : null,
+    offsite: {
+      enabled: offsiteEnabled(),
+      lastGoodAt: lastGood ? lastGood.startedAt : null,
+      lastTry: lastTry
+        ? { at: lastTry.startedAt, ok: Boolean(lastTry.summary?.offsite?.ok), error: lastTry.summary?.offsite?.error || null }
+        : null,
+    },
     onHost: {
       directory: backupDir(),
       // Whether somebody has pointed the job at a mounted volume. False means the files live on

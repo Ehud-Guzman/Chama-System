@@ -136,6 +136,41 @@ function nextRunAt(schedule, fromMs = Date.now()) {
   throw new Error(`"${schedule.text || JSON.stringify(schedule)}" has no next run`);
 }
 
+// The latest instant this schedule fired at or before `fromMs` — what a job that was asleep at the
+// time needs to know to ask "did I miss one?".
+function previousRunAt(schedule, fromMs = Date.now()) {
+  const now = eatParts(fromMs);
+
+  if (schedule.kind === 'daily') {
+    for (const offset of [0, -1]) {
+      const candidate = fromEatParts({ ...addDays(now, offset), hour: schedule.hour, minute: schedule.minute });
+      if (candidate <= fromMs) return candidate;
+    }
+  }
+
+  if (schedule.kind === 'weekly') {
+    for (let offset = 0; offset >= -7; offset -= 1) {
+      const day = addDays(now, offset);
+      if (day.weekday !== schedule.weekday) continue;
+      const candidate = fromEatParts({ ...day, hour: schedule.hour, minute: schedule.minute });
+      if (candidate <= fromMs) return candidate;
+    }
+  }
+
+  if (schedule.kind === 'monthly') {
+    for (const monthOffset of [0, -1, -2]) {
+      const anchor = new Date(Date.UTC(now.year, now.month + monthOffset, 1));
+      const year = anchor.getUTCFullYear();
+      const month = anchor.getUTCMonth();
+      const day = Math.min(schedule.day, daysInMonth(year, month));
+      const candidate = fromEatParts({ year, month, day, hour: schedule.hour, minute: schedule.minute });
+      if (candidate <= fromMs) return candidate;
+    }
+  }
+
+  throw new Error(`"${schedule.text || JSON.stringify(schedule)}" has no previous run`);
+}
+
 // "in 3h 20m", for a log line and the settings screen.
 function describeGap(ms) {
   const totalMinutes = Math.max(0, Math.round(ms / 60000));
@@ -154,6 +189,7 @@ module.exports = {
   WEEKDAY_NAMES,
   parseSchedule,
   nextRunAt,
+  previousRunAt,
   describeGap,
   eatParts,
   fromEatParts,

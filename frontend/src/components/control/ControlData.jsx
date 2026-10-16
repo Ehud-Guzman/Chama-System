@@ -121,6 +121,73 @@ function Jobs({ overview, reload }) {
   );
 }
 
+// The copies the nightly job keeps somewhere the host cannot wipe. Handed over through the API (the
+// storage is private), and they open in Restore below as they are: it reads the compressed file.
+function OffsiteCopies() {
+  const toast = useToast();
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState('');
+
+  useEffect(() => {
+    api.get('/api/superadmin/offsite').then((res) => setData(res.data), () => setData({ enabled: false, files: [] }));
+  }, []);
+
+  async function download(file) {
+    setBusy(file.id);
+    try {
+      const res = await api.get('/api/superadmin/offsite/download', {
+        params: { id: file.id },
+        responseType: 'blob',
+        timeout: 120000,
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast('Backup downloaded');
+    } catch (err) {
+      toast(apiMessage(err, 'Could not download that copy'), 'error');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  return (
+    <Panel
+      title="Copies kept off the server"
+      intro="Every night the backup is also compressed and stored in your Cloudinary account, where a redeploy cannot erase it. Download one and choose it under Restore below; the compressed file is read as it is."
+    >
+      {data === null ? (
+        <p className="text-sm text-muted">Loading…</p>
+      ) : !data.enabled ? (
+        <p className="rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-sm leading-6 text-accent">
+          Not set up. Set CLOUDINARY_URL (the same account as the photos) on the server and the next nightly backup is kept
+          there as well.
+        </p>
+      ) : data.error ? (
+        <p role="alert" className="text-sm text-alert">{data.error}</p>
+      ) : data.files.length === 0 ? (
+        <p className="text-sm text-muted">Nothing there yet. The first one is made by the next nightly backup, or press Run now on nightly-backup below.</p>
+      ) : (
+        <ul className="divide-y divide-rule rounded-lg border border-rule">
+          {data.files.map((file) => (
+            <li key={file.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
+              <span className="min-w-0 flex-1 break-all font-medium">{file.name}</span>
+              <span className="amount text-xs text-muted">{file.sizeMb} MB · {shortDateTime(file.at)}</span>
+              <button type="button" disabled={busy === file.id} onClick={() => download(file)} className={buttonClass}>
+                {busy === file.id ? 'Fetching…' : 'Download'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {data?.enabled && <p className="mt-2 text-xs text-muted">The newest {data.retention} are kept.</p>}
+    </Panel>
+  );
+}
+
 function RestoreFromBackup({ overview, reload }) {
   const toast = useToast();
   const { refreshMe } = useAuth();
@@ -197,7 +264,7 @@ function RestoreFromBackup({ overview, reload }) {
       <input
         ref={fileRef}
         type="file"
-        accept=".json,application/json"
+        accept=".json,.gz,application/json,application/gzip"
         onChange={(e) => inspect(e.target.files?.[0])}
         className="hidden"
         id="restore-file"
@@ -323,6 +390,7 @@ export default function ControlData({ overview, reload }) {
   return (
     <div id="data" className="scroll-mt-24 space-y-4">
       <BackupPanel />
+      <OffsiteCopies />
       <RestoreFromBackup overview={overview} reload={reload} />
       <Jobs overview={overview} reload={reload} />
     </div>

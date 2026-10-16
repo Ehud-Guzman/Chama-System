@@ -72,6 +72,7 @@ const backupRoutes = require('./routes/backupRoutes');
 const jobRoutes = require('./routes/jobRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const superAdminRoutes = require('./routes/superAdminRoutes');
+const { tick } = require('./controllers/jobController');
 const app = express();
 
 // -----------------------------------------------------------------------------
@@ -270,6 +271,10 @@ app.get(
 // Declared after the public routes so it never touches them — a matched public
 // route has already ended its chain by the time this is reached.
 app.use('/api', apiLimiter);
+
+// An outside pinger's way to run the jobs a sleeping host missed. Secret-protected, and absent
+// unless JOBS_CRON_TOKEN is set.
+app.get('/api/cron/tick', tick);
 
 // Maintenance mode: reads still work, writes stop for everyone but the super admin.
 app.use('/api', maintenanceGuard);
