@@ -124,7 +124,7 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl, 
         <MemberAvatar name={result.name} photoUrl={result.photoUrl} />
 
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg font-bold">{result.name}</h2>
+          <h2 className="break-words text-lg font-bold leading-snug">{result.name}</h2>
           <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-xs text-muted">
             {result.regNumber && (
               <span className="amount font-medium uppercase tracking-widest">

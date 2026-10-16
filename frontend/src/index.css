@@ -20,6 +20,14 @@
   --font-sans: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* A <fieldset> will not shrink below the width of its contents (the browser gives it
+   min-width: min-content), so a row inside one that is meant to scroll sideways — the week chooser on
+   a member's ledger — stretches the fieldset to its full length instead, and the whole page scrolls
+   sideways with it. Letting it shrink is what lets the row do its own scrolling. */
+fieldset {
+  min-width: 0;
+}
+
 body {
   background-color: var(--color-canvas);
   color: var(--color-ink);

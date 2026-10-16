@@ -513,7 +513,7 @@ export default function PublicLookup() {
           <div className="mt-2 flex items-center justify-center gap-3">
             <Link
               to="/admin/login"
-              className="underline-offset-2 hover:underline"
+              className="inline-flex min-h-11 items-center px-2 underline-offset-2 hover:underline"
             >
               Admin
             </Link>

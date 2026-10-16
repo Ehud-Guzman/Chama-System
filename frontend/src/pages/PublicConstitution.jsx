@@ -643,7 +643,7 @@ export default function PublicConstitution() {
             <button
               type="button"
               onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/"))}
-              className="mt-5 text-sm font-medium text-primary"
+              className="mt-5 inline-flex min-h-11 items-center text-sm font-medium text-primary"
             >
               ← Back
             </button>

@@ -47,7 +47,7 @@ export default function FinesSummaryCard() {
     <section className="rounded-xl border border-rule bg-surface p-4">
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">Fines owed</p>
-        <Link to="/admin/fines" className="text-sm font-medium text-primary">
+        <Link to="/admin/fines" className="inline-flex min-h-11 items-center text-sm font-medium text-primary">
           Work them →
         </Link>
       </div>
