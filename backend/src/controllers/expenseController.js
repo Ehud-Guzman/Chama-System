@@ -87,6 +87,62 @@ function readSource(value) {
   return value === 'group' ? 'group' : 'fund';
 }
 
+const ksh = (n) => `Ksh ${Number(n || 0).toLocaleString('en-KE')}`;
+
+// What the pot an expense is charged to holds right now, and whether this expense would take more
+// than that. A fund holds its own balance; a group purchase comes off the group's total money — the
+// same two figures the expenses screen shows beside the form.
+//
+// `current` is the expense being corrected, if any: its own amount is already off the pot, so it is
+// given back before the new one is compared, and a correction that does not take more than it did
+// (a reworded description, a smaller amount) is never held up for money that was already spent.
+async function overdrawn({ source, typeId, amount, current = null }) {
+  const position = await computeMoneyPosition();
+  let available;
+  let pot;
+  if (source === 'group') {
+    available = position.netBalance;
+    pot = "the group's total money";
+  } else {
+    const fund = (position.funds || []).find((f) => String(f.typeId) === String(typeId));
+    if (fund) {
+      available = fund.balance;
+      pot = fund.name;
+    } else {
+      const type = await ContributionType.findById(typeId).select('name openingBalance').lean();
+      available = (await fundBalance(typeId, { carriedIn: type?.openingBalance })).balance;
+      pot = type?.name || 'that fund';
+    }
+  }
+
+  let gives = 0;
+  let takesMore = true;
+  if (current) {
+    const samePot =
+      current.source === source && (source === 'group' || String(current.typeId) === String(typeId));
+    if (samePot) {
+      gives = Number(current.amount) || 0;
+      takesMore = amount > gives;
+    }
+  }
+  const room = Math.round((available + gives) * 100) / 100;
+  const shortfall = Math.round((amount - room) * 100) / 100;
+  return { overdraws: takesMore && shortfall > 0, shortfall, available: room, pot };
+}
+
+// The refusal sent when an expense would take more than its pot holds and the treasurer has not
+// ticked that they know. A 409 with a code, so the screen can tell it from any other refusal.
+function overdrawRefusal(check) {
+  return {
+    code: 'OVERDRAW',
+    message:
+      `That is ${ksh(check.shortfall)} more than ${check.pot} holds (${ksh(check.available)}). ` +
+      'Tick the box to record it anyway.',
+    available: check.available,
+    shortfall: check.shortfall,
+  };
+}
+
 // POST /api/expenses
 async function createExpense(req, res, next) {
   try {
@@ -118,6 +174,11 @@ async function createExpense(req, res, next) {
       return res.status(400).json({ message: 'Date cannot be in the future' });
     }
 
+    // More than the pot holds is allowed, but only when the treasurer has said they know.
+    const check = await overdrawn({ source: from, typeId: type?._id, amount: n });
+    const confirmed = req.body?.confirmOverdraw === true;
+    if (check.overdraws && !confirmed) return res.status(409).json(overdrawRefusal(check));
+
     const expense = await Expense.create({
       source: from,
       typeId: from === 'fund' ? type._id : null,
@@ -134,7 +195,11 @@ async function createExpense(req, res, next) {
       entityType: 'Expense',
       entityId: expense._id,
       performedBy: req.user._id,
-      after: snapshot(expense),
+      // A confirmed overdraw is written into the trail, so "who let it go past what the fund held?"
+      // has an answer.
+      after: check.overdraws
+        ? { ...snapshot(expense), overdrawConfirmed: { shortfall: check.shortfall, available: check.available } }
+        : snapshot(expense),
     });
 
     const populated = await Expense.findById(expense._id)
@@ -154,6 +219,8 @@ async function updateExpense(req, res, next) {
     const expense = await Expense.findById(req.params.id);
     if (!expense || expense.deleted) return res.status(404).json({ message: 'Expense not found' });
     const before = snapshot(expense);
+    // What it was charged to and for how much before this correction, for the overdraw check.
+    const current = { source: expense.source || 'fund', typeId: expense.typeId, amount: expense.amount };
 
     const { source, typeId, amount, date, description, reference, note } = req.body || {};
     // The pot can be corrected too: money recorded against a fund that was really the
@@ -200,6 +267,16 @@ async function updateExpense(req, res, next) {
       return res.status(400).json({ message: 'Say what the group bought with it' });
     }
 
+    const check = await overdrawn({
+      source: expense.source || 'fund',
+      typeId: expense.typeId,
+      amount: expense.amount,
+      current,
+    });
+    if (check.overdraws && req.body?.confirmOverdraw !== true) {
+      return res.status(409).json(overdrawRefusal(check));
+    }
+
     await expense.save();
     await logAudit({
       action: 'update',
@@ -207,7 +284,9 @@ async function updateExpense(req, res, next) {
       entityId: expense._id,
       performedBy: req.user._id,
       before,
-      after: snapshot(expense),
+      after: check.overdraws
+        ? { ...snapshot(expense), overdrawConfirmed: { shortfall: check.shortfall, available: check.available } }
+        : snapshot(expense),
     });
     const populated = await Expense.findById(expense._id)
       .populate('typeId', 'name')

@@ -62,6 +62,9 @@ export default function Expenses() {
   const [deleting, setDeleting] = useState(null);
   const [exporting, setExporting] = useState(null);
   const amountRef = useRef(null);
+  // The treasurer's "I know this is more than it holds". It belongs to one amount and one pot, so
+  // changing either takes the tick away.
+  const [confirmOverdraw, setConfirmOverdraw] = useState(false);
 
   const load = useCallback(async () => {
     setLoadError('');
@@ -111,10 +114,12 @@ export default function Expenses() {
   );
 
   function set(field, value) {
+    if (field === 'amount') setConfirmOverdraw(false);
     setForm((f) => ({ ...f, [field]: value }));
   }
 
   function startEdit(expense) {
+    setConfirmOverdraw(false);
     setEditingId(expense.id);
     setForm({
       source: expense.source === 'group' || expense.fromGroupTotal ? 'group' : 'fund',
@@ -134,6 +139,7 @@ export default function Expenses() {
   // the group's biggest purchases.
   function pickSource(event) {
     const value = event.target.value;
+    setConfirmOverdraw(false);
     if (value === 'group') {
       setForm((f) => ({ ...f, source: 'group' }));
       return;
@@ -142,6 +148,7 @@ export default function Expenses() {
   }
 
   function cancelEdit() {
+    setConfirmOverdraw(false);
     setEditingId('');
     setForm({ ...emptyForm(), typeId: selectedFund?.id || '' });
   }
@@ -163,7 +170,12 @@ export default function Expenses() {
       toast('Say what the group bought with it', 'error');
       return;
     }
+    if (overdraw && !confirmOverdraw) {
+      toast('Tick the box to confirm this is more than it holds', 'error');
+      return;
+    }
     const body = {
+      confirmOverdraw: Boolean(overdraw && confirmOverdraw),
       source: fromGroup ? 'group' : 'fund',
       typeId: fromGroup ? null : form.typeId,
       amount: n,
@@ -195,10 +207,13 @@ export default function Expenses() {
         }
       }
       setEditingId('');
+      setConfirmOverdraw(false);
       setForm({ ...emptyForm(body.date), source: form.source, typeId: form.typeId });
       await load();
     } catch (err) {
       toast(apiMessage(err), 'error');
+      // What the screen thought the pot held was out of date: reload, so the box appears.
+      if (err?.response?.data?.code === 'OVERDRAW') await load();
     } finally {
       setBusy(false);
     }
@@ -258,6 +273,27 @@ export default function Expenses() {
   }
 
   const holding = data?.money || { totalContributed: 0, totalExpenses: 0, netBalance: 0 };
+
+  // Whether this expense would take more than its pot holds — the same rule the server applies. A
+  // correction's own amount is already off the pot, so it is given back first, and one that does
+  // not take more than it did needs no tick.
+  const overdraw = (() => {
+    const n = Number(String(form.amount).replace(/,/g, ''));
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const fromGroup = form.source === 'group';
+    if (!fromGroup && !selectedFund) return null;
+    const pot = fromGroup ? "the group's total money" : selectedFund.name;
+    const current = editingId ? expenses.find((x) => x.id === editingId) : null;
+    const samePot =
+      current &&
+      (current.source === 'group' || current.fromGroupTotal ? 'group' : 'fund') === form.source &&
+      (fromGroup || String(current.fundId) === String(selectedFund.id));
+    const gives = samePot ? Number(current.amount) || 0 : 0;
+    const room = Math.round(((fromGroup ? Number(holding.netBalance) : Number(selectedFund.balance)) + gives) * 100) / 100;
+    const shortfall = Math.round((n - room) * 100) / 100;
+    if (shortfall <= 0 || (samePot && n <= gives)) return null;
+    return { pot, room, shortfall };
+  })();
   // The group's own funds added up, spending already off them. Named separately from
   // "the group holds now" (which also carries the members' own carried-in money): this
   // is the figure a meeting means by "what does the fund hold".
@@ -486,9 +522,29 @@ export default function Expenses() {
               />
             </div>
 
+            {overdraw && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-alert/40 bg-alert/5 px-3 py-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={confirmOverdraw}
+                  onChange={(e) => setConfirmOverdraw(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 shrink-0"
+                />
+                <span>
+                  <span className="block font-semibold text-alert">
+                    This is {money(overdraw.shortfall)} more than {overdraw.pot} holds
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted">
+                    It holds {money(Math.max(0, overdraw.room))}. Tick to confirm you know, and the expense will be
+                    recorded anyway and noted in the audit trail.
+                  </span>
+                </span>
+              </label>
+            )}
+
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || (Boolean(overdraw) && !confirmOverdraw)}
               className="min-h-12 w-full rounded-lg bg-primary text-sm font-semibold text-white disabled:opacity-60"
             >
               {busy ? 'Saving…' : editing ? 'Save the correction' : 'Record the expense'}

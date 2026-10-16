@@ -169,6 +169,7 @@ test('recording an expense moves the fund and the group total, and the money com
     await call(tokens.treasurer, 'POST', '/api/expenses', {
       typeId: chai._id,
       amount: 500,
+      confirmOverdraw: true, // the rehearsal fund holds nothing yet
       date: YESTERDAY,
       description: 'Tea and mandazi for the meeting',
       reference: 'VOUCHER 014',
@@ -243,6 +244,7 @@ test('a loan fund is listed but not deducted from the group total', { skip }, as
     await call(tokens.treasurer, 'POST', '/api/expenses', {
       typeId: loanFund._id,
       amount: 1000,
+      confirmOverdraw: true,
       date: YESTERDAY,
       description: 'Advance to a member',
     })
@@ -281,6 +283,7 @@ test('a purchase the group makes as a whole comes out of the group\u2019s total 
     await call(tokens.treasurer, 'POST', '/api/expenses', {
       source: 'group',
       amount: 200_000,
+      confirmOverdraw: true,
       date: YESTERDAY,
       description: 'Land at Ngong',
       reference: 'TITLE/4471',
@@ -334,6 +337,72 @@ test('a purchase the group makes as a whole comes out of the group\u2019s total 
   const restored = await json(await call(tokens.treasurer, 'GET', '/api/expenses/summary'));
   assert.equal(restored.body.money.netBalance, before.body.money.netBalance);
   assert.equal(restored.body.money.totalExpenses, before.body.money.totalExpenses);
+});
+
+test('spending more than a pot holds needs the treasurer to say they know', { skip }, async () => {
+  const summary = async () => json(await call(tokens.treasurer, 'GET', '/api/expenses/summary'));
+  const post = async (body) => json(await call(tokens.treasurer, 'POST', '/api/expenses', body));
+  const count = async () => (await summary()).body.expenses.length;
+
+  const start = await summary();
+  const fund = start.body.funds.find((f) => f.id === String(chai._id));
+  const over = Math.max(fund.balance, 0) + 50;
+  const shortBy = Math.round((over - fund.balance) * 100) / 100;
+  const rows = await count();
+
+  // Over what the fund holds: refused, with the shortfall named, and nothing recorded.
+  const refused = await post({ typeId: chai._id, amount: over, date: YESTERDAY, description: 'Too much' });
+  assert.equal(refused.status, 409, JSON.stringify(refused.body));
+  assert.equal(refused.body.code, 'OVERDRAW');
+  assert.equal(refused.body.shortfall, shortBy);
+  assert.match(refused.body.message, /Tick the box/);
+  assert.equal(await count(), rows);
+
+  // Only an explicit true counts as the tick.
+  assert.equal(
+    (await post({ typeId: chai._id, amount: over, date: YESTERDAY, description: 'Too much', confirmOverdraw: 'yes' })).status,
+    409
+  );
+
+  // Exactly what it holds needs no tick at all.
+  if (fund.balance > 0) {
+    const exact = await post({ typeId: chai._id, amount: fund.balance, date: YESTERDAY, description: 'All of it' });
+    assert.equal(exact.status, 201, JSON.stringify(exact.body));
+    await call(tokens.treasurer, 'DELETE', `/api/expenses/${exact.body.expense._id}`);
+  }
+
+  // Ticked: recorded, and the trail says it went past what the fund held.
+  const ticked = await post({
+    typeId: chai._id, amount: over, date: YESTERDAY, description: 'Too much', confirmOverdraw: true,
+  });
+  assert.equal(ticked.status, 201, JSON.stringify(ticked.body));
+  const id = ticked.body.expense._id;
+  const [entry] = await AuditLog.find({ entityType: 'Expense', entityId: id, action: 'create' }).lean();
+  assert.equal(entry.after.overdrawConfirmed.shortfall, shortBy);
+
+  // A correction that takes more than it did needs the tick again; one that takes less, or only
+  // rewords it, does not — the money was already spent.
+  const raise = await json(await call(tokens.treasurer, 'PATCH', `/api/expenses/${id}`, { amount: over + 100 }));
+  assert.equal(raise.status, 409);
+  assert.equal(raise.body.shortfall, shortBy + 100);
+  assert.equal(
+    (await json(await call(tokens.treasurer, 'PATCH', `/api/expenses/${id}`, { amount: over + 100, confirmOverdraw: true }))).status,
+    200
+  );
+  assert.equal((await json(await call(tokens.treasurer, 'PATCH', `/api/expenses/${id}`, { amount: over }))).status, 200);
+  assert.equal(
+    (await json(await call(tokens.treasurer, 'PATCH', `/api/expenses/${id}`, { description: 'Reworded' }))).status,
+    200
+  );
+
+  // The group's total money is held to the same rule.
+  const group = start.body.money.netBalance;
+  const big = await post({ source: 'group', amount: Math.max(group, 0) + 1_000_000, date: YESTERDAY, description: 'Land' });
+  assert.equal(big.status, 409);
+  assert.match(big.body.message, /the group's total money/);
+
+  // Taking it off the books leaves the rehearsal as it was found.
+  await call(tokens.treasurer, 'DELETE', `/api/expenses/${id}`);
 });
 
 test('a group purchase has to say what it bought', { skip }, async () => {
