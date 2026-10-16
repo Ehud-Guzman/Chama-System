@@ -59,18 +59,14 @@ export default function AttentionStrip() {
         api
           .get('/api/audit/attention')
           .then((res) => {
-            const {
-              seriousEntries = 0,
-              failedSignIns = 0,
-              failedLookups = 0,
-              passbookPhoneCheck = true,
-            } = res.data || {};
+            const { seriousEntries = 0, failedSignIns = 0, failedLookups = 0 } = res.data || {};
             if (seriousEntries > 0) {
               add({
                 id: 'audit-serious',
                 text: `${seriousEntries} serious ${seriousEntries === 1 ? 'entry' : 'entries'} by other people in the audit trail this week — amounts cut, money removed or moved, a role or phone number changed.`,
                 to: '/admin/audit',
                 action: 'Open the trail',
+                reviewable: true,
               });
             }
             if (failedLookups > 0) {
@@ -79,16 +75,7 @@ export default function AttentionStrip() {
                 text: `${failedLookups} failed ${failedLookups === 1 ? 'try' : 'tries'} at the members' passbook in the last day.`,
                 to: '/admin/audit',
                 action: 'See which',
-              });
-            }
-            // An ID is on a card and in other people's phones. Until the phone number is asked for as
-            // well, it is all a stranger needs to read a member's balance, fines and payments.
-            if (!passbookPhoneCheck) {
-              add({
-                id: 'passbook-phone',
-                text: 'Members’ passbooks open with the ID number alone. Asking for the registered phone number as well keeps a stranger holding an ID card out.',
-                to: '/admin/settings#passbook',
-                action: 'Switch it on',
+                reviewable: true,
               });
             }
             if (failedSignIns > 0) {
@@ -97,6 +84,7 @@ export default function AttentionStrip() {
                 text: `${failedSignIns} failed ${failedSignIns === 1 ? 'sign-in' : 'sign-ins'} in the last day.`,
                 to: '/admin/audit',
                 action: 'See who',
+                reviewable: true,
               });
             }
           })
@@ -127,6 +115,17 @@ export default function AttentionStrip() {
     };
   }, [user?.role]);
 
+  // "I have looked." The server stops counting everything before now; the three audit notices go
+  // together because they are one act of looking at the same screen.
+  async function markReviewed() {
+    try {
+      await api.post('/api/audit/attention/reviewed');
+      setItems((current) => current.filter((item) => !item.reviewable));
+    } catch {
+      // Quiet, like every check here: the notice simply stays until the next try.
+    }
+  }
+
   if (items.length === 0) return null;
 
   return (
@@ -142,6 +141,15 @@ export default function AttentionStrip() {
             >
               {item.action}
             </Link>
+            {item.reviewable && (
+              <button
+                type="button"
+                onClick={markReviewed}
+                className="inline-flex min-h-11 shrink-0 items-center text-sm font-medium text-muted underline"
+              >
+                Mark reviewed
+              </button>
+            )}
           </li>
         ))}
       </ul>

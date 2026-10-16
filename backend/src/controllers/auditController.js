@@ -267,30 +267,41 @@ async function oversight(req, res, next) {
 
 // GET /api/audit/attention — super admin only
 //
-// The one number the dashboard banner needs: serious entries by other people in the last week,
-// and failed sign-ins in the last day. Small and bounded, because it runs on every visit.
+// The numbers the dashboard banner needs: entries by other people that are the shape of money or
+// access moving (last week), and failed sign-ins and passbook tries (last day). Small and bounded,
+// because it runs on every visit. Only what happened after the super admin last pressed "Mark
+// reviewed" is counted, so looking at it can clear it.
 async function attention(req, res, next) {
   try {
-    const week = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const day = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [entries, failedSignIns, failedLookups, settings] = await Promise.all([
-      AuditLog.find({ createdAt: { $gte: week } })
+    const reviewed = req.user.auditReviewedAt ? new Date(req.user.auditReviewedAt) : new Date(0);
+    const later = (a, b) => (a > b ? a : b);
+    const week = later(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), reviewed);
+    const day = later(new Date(Date.now() - 24 * 60 * 60 * 1000), reviewed);
+    const [entries, failedSignIns, failedLookups] = await Promise.all([
+      AuditLog.find({ createdAt: { $gt: week } })
         .select('action entityType performedBy before after')
         .sort({ createdAt: -1 })
         .limit(1000)
         .populate('performedBy', 'role')
         .lean(),
-      SecurityEvent.countDocuments({ kind: 'login_failed', createdAt: { $gte: day } }),
-      SecurityEvent.countDocuments({ kind: 'gate_failed', createdAt: { $gte: day } }),
-      getOrCreateSettings(),
+      SecurityEvent.countDocuments({ kind: 'login_failed', createdAt: { $gt: day } }),
+      SecurityEvent.countDocuments({ kind: 'gate_failed', createdAt: { $gt: day } }),
     ]);
-    res.json({
-      seriousEntries: countAttention(entries),
-      failedSignIns,
-      failedLookups,
-      // Passbooks open with an ID alone until this is switched on.
-      passbookPhoneCheck: Boolean(settings.passbookPhoneCheck),
-    });
+    res.json({ seriousEntries: countAttention(entries), failedSignIns, failedLookups });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/audit/attention/reviewed — super admin only
+//
+// "I have looked at these." Nothing is deleted — the trail and the sign-in record are untouched — the
+// banner just stops counting what came before now.
+async function markReviewed(req, res, next) {
+  try {
+    const at = new Date();
+    await User.updateOne({ _id: req.user._id }, { $set: { auditReviewedAt: at } });
+    res.json({ reviewedAt: at });
   } catch (err) {
     next(err);
   }
@@ -326,5 +337,5 @@ async function verify(req, res, next) {
   }
 }
 
-module.exports = { list, exportList, oversight, attention, verify };
+module.exports = { list, exportList, oversight, attention, markReviewed, verify };
 

@@ -8,6 +8,7 @@
 //
 // Pure functions over what was read: no database and no clock of their own.
 const { readAuditEntry } = require('./auditFlags');
+const { alertableFlags } = require('./superAdminAlerts');
 const { PRIVILEGED_ROLES } = require('./auditVisibility');
 
 // Per person, over the entries given: how much they did and how much of it is the kind of
@@ -121,15 +122,16 @@ function summariseSignIns(events) {
   };
 }
 
-// What belongs on the super admin's front page: serious entries made by anyone else. The count
-// is the entries, not their severity, because a banner that says "3" and lands on a list of 3 is
-// believed, and one that says "high" is not.
+// What belongs on the super admin's front page: entries by anyone else that are the shape of money or
+// access moving — the same bar the alert emails use (superAdminAlerts.alertableFlags), so the banner
+// and the inbox never disagree. It used to count every "high" entry, which includes the weekly
+// collection and every ledger operation, and a banner that is always on is one nobody reads.
 function countAttention(entries, { isSelf = () => false } = {}) {
   let serious = 0;
   for (const entry of entries) {
     const actor = entry.performedBy;
     if (actor && (actor.role === 'super_admin' || isSelf(actor))) continue;
-    if (readAuditEntry(entry).severity === 'high') serious += 1;
+    if (alertableFlags(entry).length > 0) serious += 1;
   }
   return serious;
 }

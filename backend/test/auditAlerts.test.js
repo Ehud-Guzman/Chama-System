@@ -140,6 +140,9 @@ test('the dashboard count is serious entries by other people, and only those', (
     { ...cut, performedBy: { role: 'super_admin' } },
     // Ordinary work.
     { action: 'create', entityType: 'Contribution', before: null, after: { amount: 1400 }, performedBy: { role: 'admin' } },
+    // The weekly collection is "high" in the trail but is not news: it is the same bar as the emails,
+    // or the banner is on every week and nobody reads it.
+    { action: 'create', entityType: 'System', before: null, after: { action: 'collect-week' }, performedBy: { role: 'treasurer' } },
   ];
   assert.equal(countAttention(entries), 2);
   assert.equal(countAttention([]), 0);

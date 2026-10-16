@@ -326,5 +326,30 @@ test('failed tries are recorded without the number, and only the super admin can
 
   const attention = await call('GET', '/api/audit/attention', undefined, { auth: superToken });
   assert.ok(attention.body.failedLookups > 10);
-  assert.equal(attention.body.passbookPhoneCheck, false, 'the dashboard can nudge the super admin to switch it on');
+  assert.equal(attention.body.passbookPhoneCheck, undefined, 'the banner no longer nags about the phone check');
+});
+
+test('"Mark reviewed" clears the banner without deleting anything, and only for the super admin', { skip }, async () => {
+  const refused = await call('POST', '/api/audit/attention/reviewed', undefined, { auth: adminToken });
+  assert.equal(refused.status, 403);
+
+  const before = await call('GET', '/api/audit/attention', undefined, { auth: superToken });
+  assert.ok(before.body.failedLookups > 10);
+
+  const done = await call('POST', '/api/audit/attention/reviewed', undefined, { auth: superToken });
+  assert.equal(done.status, 200);
+
+  const after = await call('GET', '/api/audit/attention', undefined, { auth: superToken });
+  assert.equal(after.body.failedLookups, 0);
+  assert.equal(after.body.failedSignIns, 0);
+  assert.equal(after.body.seriousEntries, 0);
+
+  // The record itself is untouched: the oversight screen still lists every try.
+  const oversight = await call('GET', '/api/audit/oversight', undefined, { auth: superToken });
+  assert.ok(oversight.body.lookups.failed > 10);
+
+  // And what happens after the review is counted again.
+  await lookup('31999999', '198.51.100.99');
+  const again = await call('GET', '/api/audit/attention', undefined, { auth: superToken });
+  assert.equal(again.body.failedLookups, 1);
 });

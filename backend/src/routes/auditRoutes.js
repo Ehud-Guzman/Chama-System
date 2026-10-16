@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { list, exportList, oversight, attention, verify } = require('../controllers/auditController');
+const { list, exportList, oversight, attention, markReviewed, verify } = require('../controllers/auditController');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 // The audit trail is its own destination now, not a panel at the foot of the
@@ -18,6 +18,7 @@ router.get('/export', exportList);
 // watched is not the person who gets to run the watch.
 router.get('/oversight', requireRole('super_admin'), oversight);
 router.get('/attention', requireRole('super_admin'), attention);
+router.post('/attention/reviewed', requireRole('super_admin'), markReviewed);
 router.post('/verify', requireRole('super_admin'), verify);
 
 module.exports = router;
