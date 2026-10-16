@@ -20,6 +20,7 @@ const {
   FinePaymentError,
   readSource,
   recordFinePayment,
+  recordAllFinesPayment,
   reverseFinePayment,
   releaseFineDebits,
   listUnreviewedPayments,
@@ -290,8 +291,15 @@ async function afterPayment({ result, req, paidAt }) {
   if (result.replay) return;
   const { applied, source, heldBefore, heldAfter, totalApplied, member } = result;
 
+  // One payment can clear several fines, each taking its share off his balance in turn. Each
+  // fine's entry names the balance as it stood for that fine, so the entries read one after the
+  // other instead of every one claiming the whole payment's before and after.
+  let running = heldBefore;
   for (const { fine, before, applied: part } of applied) {
     const after = snapshot(fine);
+    const fineHeldBefore = running;
+    const fineHeldAfter = running === null ? null : Math.round((running - part) * 100) / 100;
+    running = fineHeldAfter;
     await logAudit({
       action: 'update',
       entityType: 'Fine',
@@ -302,7 +310,10 @@ async function afterPayment({ result, req, paidAt }) {
       // his money drop on that day?" without anybody re-deriving it.
       after:
         source === 'balance'
-          ? { ...after, paidFromBalance: { amount: part, heldBefore, heldAfter } }
+          ? {
+              ...after,
+              paidFromBalance: { amount: part, heldBefore: fineHeldBefore, heldAfter: fineHeldAfter },
+            }
           : { ...after, paidInCash: { amount: part } },
     });
   }
@@ -349,7 +360,8 @@ async function paymentResponse(result) {
     )
   );
   return {
-    fines: result.applied.map(({ fine }) => toFineJson(fine)),
+    // `paid` is what this payment took off each fine, so the screen can show every one as paid.
+    fines: result.applied.map(({ fine, applied }) => ({ ...toFineJson(fine), paid: applied })),
     // The first one, for callers that settled a single fine and read `fine`.
     fine: toFineJson(result.applied[0].fine),
     totalApplied: result.totalApplied,
@@ -395,9 +407,9 @@ async function settleFine(req, res, next) {
   }
 }
 
-// POST /api/fines/member/:memberId/pay — a payment from one member against one named fine. Each
-// payment is for a single fine; nothing is spread over several.
-// Body: { amount, source: 'balance' | 'cash', fineId, date? }
+// POST /api/fines/member/:memberId/pay — pays every fine the member owes at once, oldest first,
+// each fine recording its own payment. From his balance it takes no more than he holds.
+// Body: { source: 'balance' | 'cash', date?, clientRequestId? }
 async function payMemberFines(req, res, next) {
   try {
     const source = readSource(req.body?.source);
@@ -405,20 +417,11 @@ async function payMemberFines(req, res, next) {
     if (!mongoose.Types.ObjectId.isValid(req.params.memberId)) {
       return res.status(404).json({ message: 'Member not found' });
     }
-    const fineId = req.body?.fineId || null;
-    if (!fineId) return res.status(400).json({ message: 'Choose which fine is being paid' });
-    if (!mongoose.Types.ObjectId.isValid(fineId)) {
-      return res.status(404).json({ message: 'Fine not found' });
-    }
-    const read = readMoney(req.body?.amount, { min: 0.01, label: 'Amount' });
-    if (read.error) return res.status(400).json({ message: read.error });
     const when = readPaidAt(req.body?.date);
     if (when.error) return res.status(400).json({ message: when.error });
 
-    const result = await recordFinePayment({
+    const result = await recordAllFinesPayment({
       memberId: req.params.memberId,
-      fineId,
-      amount: read.value,
       source,
       paidAt: when.paidAt,
       userId: req.user._id,
@@ -433,7 +436,7 @@ async function payMemberFines(req, res, next) {
 
 // GET /api/fines/member/:memberId/position — what the payment screen needs about one member: what
 // the group holds for him (the most that can be taken from his balance), and the fines he still
-// owes, oldest first, so he can choose the one being paid.
+// owes, oldest first — the order Pay clears them in.
 async function memberFinePosition(req, res, next) {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.memberId)) {

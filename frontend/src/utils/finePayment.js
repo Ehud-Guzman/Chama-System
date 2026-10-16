@@ -13,66 +13,71 @@ import { money } from './format.js';
 // Two decimal places, as the server stores money.
 const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-// An amount typed into a field: "1,500", "1 500" and "1500" are the same figure. NaN when it is not
-// a number at all, so the caller can tell "empty" from "zero".
-export function parseAmount(text) {
-  const cleaned = String(text ?? '').replace(/[,\s]/g, '');
-  if (cleaned === '') return NaN;
-  return Number(cleaned);
+// Pay settles everything the member owes in one go, oldest fine first (the order the server uses),
+// and every fine keeps its own line. From his balance the money runs out where his balance does: the
+// fines before that point are cleared, the one it stops in is part paid, the rest stay owed. In
+// cash everything is cleared. Returns one row per fine, in the order given.
+//
+// `paidOn` is the day the money changed hands (YYYY-MM-DD). A fine issued after that day cannot have
+// been paid on it, so the server leaves it alone and so does this: its row says `later`.
+export function allocateFines(fines = [], { held = 0, source = null, paidOn = null } = {}) {
+  const payable = (f) => !(paidOn && f.date && eatDay(f.date) > paidOn);
+  const owedTotal = cents(
+    fines.filter(payable).reduce((sum, f) => sum + (Number(f.remaining) || 0), 0)
+  );
+  let budget = source === 'balance' ? Math.min(owedTotal, Math.max(0, cents(held))) : owedTotal;
+  return fines.map((f) => {
+    const remaining = cents(Number(f.remaining) || 0);
+    const later = !payable(f);
+    const paying = source && !later ? cents(Math.min(budget, remaining)) : 0;
+    budget = cents(budget - paying);
+    return { ...f, paying, later, remainingAfter: cents(remaining - paying) };
+  });
 }
 
-// What is owed on one fine: the most a payment against it can be. Nothing is spread over several
-// fines — each payment is for the single fine chosen.
-export function owedFor(fines = [], fineId = null) {
-  const one = fines.find((f) => String(f.id) === String(fineId));
-  return one ? cents(Number(one.remaining) || 0) : 0;
+// The calendar day of a moment on the group's own clock (East Africa Time, UTC+3, the day the server
+// compares fines and payments by), as YYYY-MM-DD.
+export function eatDay(value) {
+  const t = new Date(value).getTime();
+  return Number.isFinite(t) ? new Date(t + 3 * 3600 * 1000).toISOString().slice(0, 10) : '';
 }
 
-// Whether the balance can pay for it, and the sentence to show when it cannot.
-export function balanceChoice({ held, amount }) {
+// Everything the screen says about the payment before it is pressed: whether it can be recorded,
+// how much will be paid, what is left owing afterwards and, from his balance, what he holds.
+export function paymentPreview({ fines = [], held = 0, source = null, paidOn = null }) {
+  const owed = cents(fines.reduce((sum, f) => sum + (Number(f.remaining) || 0), 0));
   const have = Math.max(0, cents(held));
-  const want = cents(amount);
-  if (have <= 0) {
-    return { allowed: false, reason: 'The group is not holding any money for him, so there is nothing to take it from.' };
-  }
-  if (Number.isFinite(want) && want > have) {
-    return {
-      allowed: false,
-      reason: `He holds only ${money(have)}. Take that much, and record the rest as paid in cash.`,
-    };
-  }
-  return { allowed: true, reason: '' };
-}
+  const unpaid = allocateFines(fines, { paidOn });
 
-// Everything the screen says about the payment as typed: whether it can be recorded, what is left
-// to pay afterwards and, for a payment taken from his balance, what he holds afterwards.
-export function paymentPreview({ owed, held, amount, source }) {
-  const value = Number.isFinite(amount) ? cents(amount) : NaN;
-  const total = cents(owed);
-  const have = Math.max(0, cents(held));
-
-  if (!Number.isFinite(value) || value <= 0) {
-    return { valid: false, problem: 'Enter the amount paid', owedAfter: total, heldAfter: null };
+  if (fines.length === 0 || owed <= 0) {
+    return { valid: false, problem: 'He owes no fines', rows: [], total: 0, owedAfter: 0, heldAfter: null };
   }
-  if (value > total) {
+  if (unpaid.every((r) => r.later)) {
+    return { valid: false, problem: 'Every fine was issued after that date', rows: unpaid, total: 0, owedAfter: owed, heldAfter: null };
+  }
+  if (source !== 'balance' && source !== 'cash') {
+    return { valid: false, problem: 'Choose how it was paid', rows: unpaid, total: 0, owedAfter: owed, heldAfter: null };
+  }
+  if (source === 'balance' && have <= 0) {
     return {
       valid: false,
-      problem: `That is more than the ${money(total)} owed`,
-      owedAfter: total,
+      problem: 'The group is not holding any money for him, so there is nothing to take it from.',
+      rows: unpaid,
+      total: 0,
+      owedAfter: owed,
       heldAfter: null,
     };
   }
-  if (source === 'balance') {
-    const choice = balanceChoice({ held: have, amount: value });
-    if (!choice.allowed) {
-      return { valid: false, problem: choice.reason, owedAfter: cents(total - value), heldAfter: null };
-    }
-    return { valid: true, problem: '', owedAfter: cents(total - value), heldAfter: cents(have - value) };
-  }
-  if (source === 'cash') {
-    return { valid: true, problem: '', owedAfter: cents(total - value), heldAfter: null };
-  }
-  return { valid: false, problem: 'Choose how it was paid', owedAfter: cents(total - value), heldAfter: null };
+  const rows = allocateFines(fines, { held: have, source, paidOn });
+  const total = cents(rows.reduce((sum, r) => sum + r.paying, 0));
+  return {
+    valid: total > 0,
+    problem: '',
+    rows,
+    total,
+    owedAfter: cents(owed - total),
+    heldAfter: source === 'balance' ? cents(have - total) : null,
+  };
 }
 
 // How a payment reached the group, in the words the screen uses for it.
@@ -89,7 +94,7 @@ export function paymentMessage({ memberName, totalApplied, source, held, owedAft
   const first = String(memberName || '').split(' ')[0] || 'there';
   const paid =
     source === 'balance'
-      ? `We have taken ${money(totalApplied)} from your balance with the group to pay your fine.`
+      ? `We have taken ${money(totalApplied)} from your balance with the group to pay your fines.`
       : `We have received your fine payment of ${money(totalApplied)}.`;
   const balance = held ? ` The group now holds ${money(held.after)} for you.` : '';
   const left = owedAfter > 0 ? ` You still owe ${money(owedAfter)} in fines.` : ' You owe no more fines.';

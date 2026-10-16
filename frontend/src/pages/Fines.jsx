@@ -604,7 +604,6 @@ export default function Fines() {
       {paying && (
         <PayFinesModal
           memberId={paying.memberId}
-          fineId={paying.fineId}
           owingMembers={owingMembers}
           onClose={() => setPaying(null)}
           onPaid={refresh}

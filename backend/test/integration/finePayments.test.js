@@ -42,6 +42,7 @@ const app = require('../../src/app');
 const User = require('../../src/models/User');
 const Member = require('../../src/models/Member');
 const Fine = require('../../src/models/Fine');
+const AuditLog = require('../../src/models/AuditLog');
 const FineType = require('../../src/models/FineType');
 const { getOrCreateSettings, invalidateSettings } = require('../../src/utils/settings');
 const { seedLedgerTypes, seedGroupFunds } = require('../../src/utils/ledgerTypes');
@@ -152,8 +153,9 @@ test('a payment that does not say how it was made is refused, and nothing moves'
   assert.equal(bare.status, 400);
   assert.match(bare.body.message, /Say how this was paid/);
 
-  const unknown = await pay(m, { amount: 100, source: 'mpesa-magic', fineId: fines[0]._id });
+  const unknown = await pay(m, { source: 'mpesa-magic' });
   assert.equal(unknown.status, 400);
+  assert.equal((await pay(m, {})).status, 400);
 
   assert.equal((await Fine.findById(fines[0]._id).lean()).remaining, 500);
   assert.equal(await held(m), 5000);
@@ -205,51 +207,124 @@ test('a fine paid in cash on the side leaves his balance alone, and is new cash 
   assert.equal((await totalFinesCollected()) - before, 500);
 });
 
-test('nothing more than he holds can be taken from his balance', { skip }, async () => {
-  const { m, fines } = await member(200, [500]);
+test('from his balance it takes no more than he holds: the oldest fines first, the rest stay owed', { skip }, async () => {
+  const { m, fines } = await member(700, [500, 300, 100]);
 
-  const refused = await pay(m, { amount: 300, source: 'balance', fineId: fines[0]._id });
-  assert.equal(refused.status, 400);
-  assert.match(refused.body.message, /He holds only Ksh 200/);
-  assert.equal(await held(m), 200);
-  assert.equal((await Fine.findById(fines[0]._id).lean()).remaining, 500);
-
-  // What he does hold can be taken, and the rest paid in cash.
-  assert.equal((await pay(m, { amount: 200, source: 'balance', fineId: fines[0]._id })).status, 200);
-  assert.equal((await pay(m, { amount: 300, source: 'cash', fineId: fines[0]._id })).status, 200);
+  const paid = await pay(m, { source: 'balance' });
+  assert.equal(paid.status, 200, JSON.stringify(paid.body));
+  assert.equal(paid.body.totalApplied, 700);
+  assert.deepEqual(
+    paid.body.fines.map((f) => [f.paid, f.remaining]),
+    [
+      [500, 0],
+      [200, 100],
+    ],
+    'the oldest is cleared, the next is part paid, and the newest is not reached'
+  );
   assert.equal(await held(m), 0);
-  assert.equal((await Fine.findById(fines[0]._id).lean()).remaining, 0);
+  assert.equal((await Fine.findById(fines[2]._id).lean()).remaining, 100);
+
+  // Cash settles what is left.
+  const rest = await pay(m, { source: 'cash' });
+  assert.equal(rest.status, 200, JSON.stringify(rest.body));
+  assert.equal(rest.body.totalApplied, 200);
+  assert.equal(await held(m), 0);
 
   // And a member who holds nothing cannot have anything taken at all.
   const broke = await member(0, [100]);
-  const none = await pay(broke.m, { amount: 100, source: 'balance', fineId: broke.fines[0]._id });
+  const none = await pay(broke.m, { source: 'balance' });
   assert.equal(none.status, 400);
   assert.match(none.body.message, /holds nothing/);
+  assert.equal((await Fine.findById(broke.fines[0]._id).lean()).remaining, 100);
 });
 
-test('each payment is for one named fine, and cannot be more than that fine', { skip }, async () => {
+test('Pay clears every fine at once, and each fine records its own payment', { skip }, async () => {
   const { m, fines } = await member(5000, [300, 500, 100]);
 
-  // Nothing is spread over several fines: a payment that names none is refused.
-  const unnamed = await pay(m, { amount: 450, source: 'cash' });
-  assert.equal(unnamed.status, 400);
-  assert.match(unnamed.body.message, /Choose which fine/);
-  assert.equal(await held(m), 5000);
+  const paid = await pay(m, { source: 'balance' });
+  assert.equal(paid.status, 200, JSON.stringify(paid.body));
+  assert.equal(paid.body.totalApplied, 900);
+  assert.deepEqual(paid.body.held, { before: 5000, after: 4100 });
+  assert.deepEqual(
+    paid.body.fines.map((f) => [f.paid, f.remaining]),
+    [
+      [300, 0],
+      [500, 0],
+      [100, 0],
+    ],
+    'every fine is reported as paid, oldest first'
+  );
 
-  // More than that one fine is refused even though he owes more in total.
-  const tooBig = await pay(m, { amount: 400, source: 'cash', fineId: fines[0]._id });
-  assert.equal(tooBig.status, 400);
-  assert.match(tooBig.body.message, /more than the Ksh 300 still owed on this fine/);
+  for (const [i, expected] of [300, 500, 100].entries()) {
+    const stored = await Fine.findById(fines[i]._id).lean();
+    assert.equal(stored.remaining, 0);
+    assert.equal(stored.settlements.length, 1, 'one payment on each fine');
+    assert.equal(stored.settlements[0].amount, expected);
+    assert.equal(stored.settlements[0].source, 'balance');
+  }
+  const debits = (await Member.findById(m._id).lean()).fineDebits;
+  assert.deepEqual(debits.map((d) => d.amount).sort((a, b) => a - b), [100, 300, 500], 'one entry per fine');
+  assert.equal(await held(m), 4100);
 
-  // A part payment on the second fine touches that fine only.
-  const part = await pay(m, { amount: 150, source: 'balance', fineId: fines[1]._id });
-  assert.equal(part.status, 200, JSON.stringify(part.body));
-  assert.equal(part.body.fines.length, 1);
-  assert.equal(part.body.fines[0].remaining, 350);
-  assert.equal((await Fine.findById(fines[0]._id).lean()).remaining, 300, 'the oldest is untouched');
-  assert.equal((await Fine.findById(fines[2]._id).lean()).remaining, 100, 'so is the newest');
-  assert.equal(await held(m), 4850);
-  assert.equal((await Member.findById(m._id).lean()).fineDebits.length, 1);
+  const record = await call('GET', `/api/members/${m._id}`);
+  assert.equal(record.body.walk.balanced, true);
+  assert.equal(record.body.walk.totals.finesOff, 900);
+
+  // Nothing is left to pay.
+  const again = await pay(m, { source: 'balance' });
+  assert.equal(again.status, 400);
+  assert.match(again.body.message, /owes no fines/);
+
+  // One fine's payment can still be taken back on its own, returning just its share.
+  const undone = await call('POST', `/api/fines/${fines[1]._id}/payments/0/undo`, { amount: 500 });
+  assert.equal(undone.status, 200, JSON.stringify(undone.body));
+  assert.equal(undone.body.returnedToBalance, 500);
+  assert.equal(await held(m), 4600);
+  assert.equal((await Fine.findById(fines[0]._id).lean()).remaining, 0, 'the others stay paid');
+});
+
+test('a payment dated before a fine was issued leaves that fine owed', { skip }, async () => {
+  const { m, fines } = await member(5000, [300, 200, 100]); // issued 1 Jan, 1 Feb, 1 Mar 2026
+
+  const paid = await pay(m, { source: 'cash', date: '2026-02-10' });
+  assert.equal(paid.status, 200, JSON.stringify(paid.body));
+  assert.equal(paid.body.totalApplied, 500, 'only the two fines that existed on that day');
+  assert.equal((await Fine.findById(fines[2]._id).lean()).remaining, 100);
+
+  const tooEarly = await pay(m, { source: 'cash', date: '2025-12-01' });
+  assert.equal(tooEarly.status, 400);
+  assert.match(tooEarly.body.message, /before it was issued/);
+});
+
+test('the audit trail names the share of his balance each fine took', { skip }, async () => {
+  const { m, fines } = await member(1000, [300, 200]);
+  assert.equal((await pay(m, { source: 'balance' })).status, 200);
+
+  const entries = await AuditLog.find({ entityType: 'Fine', entityId: { $in: fines.map((f) => f._id) }, action: 'update' })
+    .sort({ createdAt: 1 })
+    .lean();
+  const trail = entries.map((e) => e.after.paidFromBalance).filter(Boolean);
+  assert.deepEqual(
+    trail.map((t) => [t.amount, t.heldBefore, t.heldAfter]),
+    [
+      [300, 1000, 700],
+      [200, 700, 500],
+    ]
+  );
+});
+
+test('Pay in cash clears every fine and leaves his balance alone', { skip }, async () => {
+  const before = await totalFinesCollected();
+  const { m, fines } = await member(100, [300, 200]);
+
+  const paid = await pay(m, { source: 'cash' });
+  assert.equal(paid.status, 200, JSON.stringify(paid.body));
+  assert.equal(paid.body.totalApplied, 500);
+  assert.equal(paid.body.held, null);
+  assert.equal(await held(m), 100);
+  assert.equal((await Member.findById(m._id).lean()).fineDebits.length, 0);
+  assert.equal((await totalFinesCollected()) - before, 500);
+  assert.equal((await Fine.findById(fines[1]._id).lean()).remaining, 0);
 });
 
 test('a payment keyed in by mistake can be taken back, and the money goes back to him', { skip }, async () => {
@@ -411,7 +486,7 @@ test('only the office takes payments: the disciplinary officer cannot', { skip }
   const officer = login.body.token;
   const { m, fines } = await member(5000, [500]);
 
-  assert.equal((await call('POST', `/api/fines/member/${m._id}/pay`, { amount: 100, source: 'cash' }, officer)).status, 403);
+  assert.equal((await call('POST', `/api/fines/member/${m._id}/pay`, { source: 'cash' }, officer)).status, 403);
   assert.equal((await call('POST', `/api/fines/${fines[0]._id}/settle`, { amount: 100, source: 'cash' }, officer)).status, 403);
   assert.equal((await call('GET', `/api/fines/member/${m._id}/position`, undefined, officer)).status, 403);
   assert.equal((await call('GET', '/api/fines/payments/to-check', undefined, officer)).status, 403);
@@ -443,36 +518,33 @@ test('searching the fines finds a member by a bit of his name', { skip }, async 
 });
 
 test('a payment sent twice with the same key is recorded once', { skip }, async () => {
-  const { m, fines } = await member(5000, [500]);
-  const body = { amount: 200, source: 'balance', fineId: fines[0]._id, clientRequestId: 'retry-key-1' };
+  const { m, fines } = await member(5000, [500, 300]);
+  const body = { source: 'balance', clientRequestId: 'retry-key-1' };
 
   const first = await pay(m, body);
   assert.equal(first.status, 200, JSON.stringify(first.body));
   assert.equal(first.body.replay, false);
 
-  // The same submit again — a dropped connection, a double tap.
+  // The same submit again — a dropped connection, a double tap. Every fine cleared the first time,
+  // so a retry must be told it is the payment, not "he owes no fines".
   const second = await pay(m, body);
   assert.equal(second.status, 200, JSON.stringify(second.body));
   assert.equal(second.body.replay, true);
-  assert.equal(second.body.totalApplied, 200);
-  assert.deepEqual(second.body.held, { before: 5000, after: 4800 });
+  assert.equal(second.body.totalApplied, 800);
+  assert.equal(second.body.fines.length, 2);
+  assert.deepEqual(second.body.held, { before: 5000, after: 4200 });
 
-  const stored = await Fine.findById(fines[0]._id).lean();
-  assert.equal(stored.remaining, 300, 'taken off once');
-  assert.equal(stored.settlements.length, 1);
-  assert.equal((await Member.findById(m._id).lean()).fineDebits.length, 1, 'and off his balance once');
-  assert.equal(await held(m), 4800);
+  for (const fine of fines) {
+    const stored = await Fine.findById(fine._id).lean();
+    assert.equal(stored.remaining, 0);
+    assert.equal(stored.settlements.length, 1, 'taken off once');
+  }
+  assert.equal((await Member.findById(m._id).lean()).fineDebits.length, 2, 'and off his balance once');
+  assert.equal(await held(m), 4200);
 
-  // A retry of a payment that cleared the fine is still the payment, not "already settled".
-  const whole = { amount: 300, source: 'cash', fineId: fines[0]._id, clientRequestId: 'retry-key-2' };
-  assert.equal((await pay(m, whole)).status, 200);
-  const again = await pay(m, whole);
-  assert.equal(again.status, 200);
-  assert.equal(again.body.replay, true);
-
-  // A different key is a different payment.
-  const other = await pay(m, { amount: 100, source: 'cash', fineId: fines[0]._id, clientRequestId: 'retry-key-3' });
-  assert.equal(other.status, 400, 'nothing left on the fine to pay');
+  // A different key is a different payment, and there is nothing left for it to pay.
+  const other = await pay(m, { source: 'cash', clientRequestId: 'retry-key-3' });
+  assert.equal(other.status, 400, 'nothing left to pay');
 });
 
 test('voiding a fine that was paid out of a logged payment puts the money back on that payment', { skip }, async () => {

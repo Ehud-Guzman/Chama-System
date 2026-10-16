@@ -155,6 +155,129 @@ async function recordFinePayment({ memberId, fineId, amount, source, paidAt, use
   });
 }
 
+// The prefix a payment's key is stored under on each fine it touched. One key covers several fines
+// here, but a settlement's `requestId` is capped at 100 characters, so the key is cut to leave room
+// for the fine's id after it.
+const KEY_STEM = 70;
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Pays everything the member owes in fines in one go, oldest fine first. This is what Pay does at
+// the office: one press, every fine settled, and each fine keeps its own payment on its own record
+// so the history under it, the audit trail and an undo all still work fine by fine.
+//
+//   balance  comes out of what the group holds for him. If that is less than he owes, the oldest
+//            fines are cleared first and the last one it reaches is part paid; the rest stay owed.
+//   cash     he handed it over separately: every fine is cleared and his balance is not touched.
+//
+// Fines issued after `paidAt` are left alone — a payment dated before a fine existed cannot be
+// for it.
+async function recordAllFinesPayment({ memberId, source, paidAt, userId, requestId = null }) {
+  if (!MANUAL_SOURCES.includes(source)) throw new FinePaymentError(400, SOURCE_PROMPT);
+  const stem = requestId ? requestId.slice(0, KEY_STEM) : null;
+
+  return withOptionalTransaction(async (session) => {
+    const member = await Member.findById(memberId).session(session || null).lean();
+    if (!member) throw new FinePaymentError(404, 'Member not found');
+
+    // Sent twice (a dropped connection, two taps): the answer is the payment already recorded.
+    if (stem) {
+      const prior = await Fine.find({
+        memberId,
+        'settlements.requestId': new RegExp(`^${escapeRegex(stem)}:`),
+      })
+        .sort({ date: 1, createdAt: 1 })
+        .session(session || null);
+      if (prior.length > 0) {
+        const applied = prior.map((fine) => {
+          const mine = fine.settlements.filter((s) => s.requestId && s.requestId.startsWith(`${stem}:`));
+          return { fine, before: null, applied: toMoney(mine.reduce((sum, s) => sum + s.amount, 0)) };
+        });
+        const totalApplied = toMoney(applied.reduce((sum, a) => sum + a.applied, 0));
+        const priorSource = prior[0].settlements.find((s) => s.requestId?.startsWith(`${stem}:`)).source;
+        let heldNow = null;
+        if (priorSource === 'balance') {
+          const ledger = await memberLedgerNow(memberId, { session });
+          heldNow = toMoney(ledger ? ledger.money : 0);
+        }
+        return {
+          member,
+          applied,
+          totalApplied,
+          source: priorSource,
+          heldBefore: heldNow === null ? null : toMoney(heldNow + totalApplied),
+          heldAfter: heldNow,
+          replay: true,
+        };
+      }
+    }
+
+    const owing = await Fine.find({ memberId, deleted: false, remaining: { $gt: 0 } })
+      .sort({ date: 1, createdAt: 1 })
+      .session(session || null);
+    if (owing.length === 0) throw new FinePaymentError(400, 'He owes no fines');
+
+    const payable = owing.filter((fine) => !issuedAfter(fine, paidAt));
+    if (payable.length === 0) {
+      throw new FinePaymentError(400, 'A fine cannot be paid before it was issued');
+    }
+    const owed = toMoney(payable.reduce((sum, fine) => sum + fine.remaining, 0));
+
+    // What can be spent: everything owed, or — from his balance — no more than he holds. Read
+    // inside the transaction so two payments landing together are each checked against the other.
+    let budget = owed;
+    let heldBefore = null;
+    if (source === 'balance') {
+      const ledger = await memberLedgerNow(memberId, { session });
+      heldBefore = toMoney(ledger ? ledger.money : 0);
+      if (heldBefore <= 0) {
+        throw new FinePaymentError(
+          400,
+          'He holds nothing the group could take this from. Record it as paid in cash instead.'
+        );
+      }
+      budget = Math.min(owed, heldBefore);
+    }
+
+    const applied = [];
+    const debits = [];
+    for (const fine of payable) {
+      const part = toMoney(Math.min(budget, fine.remaining));
+      if (part <= 0) break;
+
+      const before = JSON.parse(JSON.stringify(fine.toObject()));
+      fine.remaining = toMoney(fine.remaining - part);
+      fine.settlements.push({
+        contributionId: null,
+        amount: part,
+        date: paidAt,
+        source,
+        recordedBy: userId,
+        ...(stem ? { requestId: `${stem}:${fine._id}` } : {}),
+      });
+      await fine.save({ session });
+
+      budget = toMoney(budget - part);
+      applied.push({ fine, before, applied: part });
+      if (source === 'balance') debits.push({ fineId: fine._id, amount: part, date: paidAt });
+    }
+
+    // One entry per fine on his side, so taking one fine's payment back returns exactly its share.
+    if (debits.length > 0) {
+      await Member.updateOne({ _id: memberId }, { $push: { fineDebits: { $each: debits } } }, { session });
+    }
+
+    const totalApplied = toMoney(applied.reduce((sum, a) => sum + a.applied, 0));
+    return {
+      member,
+      applied,
+      totalApplied,
+      source,
+      heldBefore,
+      heldAfter: heldBefore === null ? null : toMoney(heldBefore - totalApplied),
+    };
+  });
+}
+
 // Takes back a manual payment that was recorded by mistake: the fine is owed again by that
 // amount and, if it had come out of his balance, the money goes back to him. Payments taken out
 // of a contribution are not undone here (delete the contribution, which gives the fine back),
@@ -350,6 +473,7 @@ module.exports = {
   FinePaymentError,
   readSource,
   recordFinePayment,
+  recordAllFinesPayment,
   reverseFinePayment,
   releaseFineDebits,
   isUnreviewed,

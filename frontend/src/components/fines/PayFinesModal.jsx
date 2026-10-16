@@ -4,35 +4,26 @@ import { useToast } from '../shared/Toast';
 import Modal from '../shared/Modal';
 import { useModal } from '../../hooks/useModal';
 import { money, shortDate, todayISO } from '../../utils/format';
-import {
-  balanceChoice,
-  owedFor,
-  parseAmount,
-  paymentPreview,
-  paymentSummary,
-  paymentMessage,
-} from '../../utils/finePayment';
+import { paymentPreview, paymentSummary, paymentMessage } from '../../utils/finePayment';
 import { searchOwed } from '../../utils/finesOwed';
 import { whatsappLink } from '../../utils/whatsapp';
 
 // Recording a fine payment, start to finish, in one place.
 //
-// The old screen put a form at the top of a long page, however far down the Pay button was, and it
-// never asked how the money had arrived — so a fine marked paid did nothing to the member's money.
-// This one opens over whatever the office is looking at and walks the way a meeting does:
+// Pay clears everything the member owes in fines in one go, oldest fine first, out of the money the
+// group holds for him — and each fine is still listed with its own line, so the office and the member
+// can see every one was paid. The dialog opens over whatever the office is looking at and walks the
+// way a meeting does:
 //
-//   1. who is paying (skipped when it was opened from a member or a fine),
-//   2. which fine — one at a time, because each payment is for a single fine,
-//   3. how much,
-//   4. how it was paid: taken out of his balance, or handed over separately. This is the one
-//      question that decides whether his balance moves, so it is asked in plain words, with what
-//      each answer will do to his figures beside it, and there is no default to slide past.
+//   1. who is paying (skipped when it was opened from a member),
+//   2. how it was paid: taken out of his balance, or handed over separately. This is the one
+//      question that decides whether his balance moves, so it is asked in plain words. It starts on
+//      his balance when that covers every fine, and is left for the office to choose when it does not.
 //
-// Nothing is recorded until the summary line under the buttons reads right, and when it is recorded
-// the dialog says what happened in a sentence the office can read out.
+// Nothing is recorded until the summary under the form reads right, and when it is recorded the
+// dialog lists each fine with what was paid on it.
 export default function PayFinesModal({
   memberId: initialMemberId = null,
-  fineId: initialFineId = null,
   owingMembers = [],
   onClose,
   onPaid,
@@ -45,14 +36,14 @@ export default function PayFinesModal({
   closeRef.current = onClose;
   const close = useCallback(() => closeRef.current?.(), []);
   const containerRef = useModal(true, close);
-  const amountRef = useRef(null);
+  // One key per payment being recorded, so a submit sent twice (a dropped connection, two taps) is
+  // recorded once. A new one is made when the dialog moves on to another payment.
+  const requestKey = useRef(newRequestKey());
 
   const [memberId, setMemberId] = useState(initialMemberId);
   const [term, setTerm] = useState('');
   const [position, setPosition] = useState(null);
   const [loadError, setLoadError] = useState('');
-  const [fineId, setFineId] = useState(initialFineId);
-  const [amountText, setAmountText] = useState('');
   const [source, setSource] = useState(null);
   const [date, setDate] = useState(todayISO());
   const [busy, setBusy] = useState(false);
@@ -69,11 +60,9 @@ export default function PayFinesModal({
       .then((res) => {
         if (cancelled) return;
         setPosition(res.data);
-        // The fine he was opened on, or the only one there is; otherwise the office chooses.
-        const stillOwed = res.data.fines.some((f) => String(f.id) === String(initialFineId));
-        setFineId(
-          stillOwed ? initialFineId : res.data.fines.length === 1 ? res.data.fines[0].id : null
-        );
+        // His balance is the way fines are normally paid, so it is ready when it covers them all.
+        // Short of that, how to make up the difference is the office's call.
+        setSource(res.data.held >= res.data.owed && res.data.owed > 0 ? 'balance' : null);
       })
       .catch((err) => {
         if (!cancelled) setLoadError(apiMessage(err, 'Could not load this member'));
@@ -81,24 +70,15 @@ export default function PayFinesModal({
     return () => {
       cancelled = true;
     };
-  }, [memberId, initialFineId]);
+  }, [memberId]);
 
   const fines = position?.fines || [];
-  const owed = useMemo(() => owedFor(fines, fineId), [fines, fineId]);
   const held = position?.held || 0;
 
-  // The amount follows what is being paid: all of it by default, because paying in full is the
-  // usual case, and a part payment is one edit away.
-  useEffect(() => {
-    if (position) setAmountText(owed > 0 ? String(owed) : '');
-    // `owed` is 0 until a fine is chosen, which clears the field.
-  }, [position, owed]);
-
-  const amount = parseAmount(amountText);
-  const preview = fineId
-    ? paymentPreview({ owed, held, amount, source })
-    : { valid: false, problem: 'Choose which fine is being paid', owedAfter: owed, heldAfter: null };
-  const balance = balanceChoice({ held, amount: Number.isFinite(amount) ? amount : 0 });
+  const preview = useMemo(
+    () => paymentPreview({ fines, held, source, paidOn: date }),
+    [fines, held, source, date]
+  );
   const candidates = useMemo(() => searchOwed(owingMembers, term, 'name').slice(0, 40), [owingMembers, term]);
 
   async function submit(e) {
@@ -107,10 +87,9 @@ export default function PayFinesModal({
     setBusy(true);
     try {
       const res = await api.post(`/api/fines/member/${memberId}/pay`, {
-        amount,
         source,
         date,
-        fineId,
+        clientRequestId: requestKey.current,
       });
       const owedAfter = Math.max(0, Math.round((position.owed - res.data.totalApplied) * 100) / 100);
       setResult({ ...res.data, owedAfter });
@@ -227,9 +206,15 @@ export default function PayFinesModal({
               <ul className="divide-y divide-rule rounded-xl border border-rule">
                 {result.fines.map((f) => (
                   <li key={f.id} className="flex items-baseline justify-between gap-3 px-4 py-2.5 text-sm">
-                    <span className="min-w-0 truncate">{f.reason || f.type || 'Fine'}</span>
-                    <span className="amount shrink-0 text-xs text-muted">
-                      {f.remaining > 0 ? `${money(f.remaining)} still owed` : 'cleared'}
+                    <span className="min-w-0">
+                      <span className="block truncate">{f.reason || f.type || 'Fine'}</span>
+                      <span className="block text-xs text-muted">{shortDate(f.date)}</span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="amount block font-semibold text-primary">{money(f.paid)} paid</span>
+                      <span className="amount block text-xs text-muted">
+                        {f.remaining > 0 ? `${money(f.remaining)} still owed` : 'cleared'}
+                      </span>
                     </span>
                   </li>
                 ))}
@@ -290,62 +275,26 @@ export default function PayFinesModal({
                     </div>
                   </div>
 
-                  {/* Which fine: one at a time, each payment is for a single fine. */}
-                  {fines.length > 1 ? (
-                    <fieldset>
-                      <legend className="mb-2 text-sm font-semibold">Which fine is he paying?</legend>
-                      <div role="radiogroup" aria-label="Which fine" className="space-y-2">
-                        {fines.map((f) => (
-                          <Choice
-                            key={f.id}
-                            checked={String(fineId) === String(f.id)}
-                            onSelect={() => setFineId(f.id)}
-                            title={f.reason || f.type || 'Fine'}
-                            detail={`${f.type || 'Fine'} · ${shortDate(f.date)} · ${money(f.remaining)} owed`}
-                          />
-                        ))}
-                      </div>
-                    </fieldset>
-                  ) : (
-                    <p className="rounded-xl border border-rule px-4 py-3 text-sm">
-                      <span className="font-medium">{fines[0].reason || fines[0].type || 'Fine'}</span>
-                      <span className="text-muted">
-                        {' '}
-                        · {fines[0].type || 'Fine'} · {shortDate(fines[0].date)}
-                      </span>
-                    </p>
-                  )}
-
-                  {/* How much */}
+                  {/* Every fine he owes, oldest first, with what this payment will do to each. */}
                   <div>
-                    <label htmlFor="pay-amount" className="mb-2 block text-sm font-semibold">
-                      How much is he paying?
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        id="pay-amount"
-                        ref={amountRef}
-                        type="text"
-                        inputMode="decimal"
-                        value={amountText}
-                        onChange={(e) => setAmountText(e.target.value)}
-                        className="amount h-12 min-w-0 flex-1 rounded-xl border border-rule px-4 text-base"
-                        aria-describedby="pay-amount-hint"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setAmountText(String(owed))}
-                        disabled={!fineId}
-                        className="min-h-12 shrink-0 rounded-xl border border-rule px-3 text-sm font-medium disabled:opacity-50"
-                      >
-                        Pay all {money(owed)}
-                      </button>
-                    </div>
-                    <p id="pay-amount-hint" className="mt-1.5 text-xs text-muted">
-                      {fineId
-                        ? 'A smaller amount is a part payment — the rest of this fine stays owed.'
-                        : 'Choose the fine first.'}
+                    <p className="mb-2 text-sm font-semibold">
+                      {fines.length === 1 ? 'The fine he owes' : `All ${fines.length} fines he owes`}
                     </p>
+                    <ul className="divide-y divide-rule rounded-xl border border-rule">
+                      {preview.rows.length > 0
+                        ? preview.rows.map((f) => (
+                            <FineLine
+                              key={f.id}
+                              fine={f}
+                              paying={f.paying}
+                              remainingAfter={f.remainingAfter}
+                              later={f.later}
+                            />
+                          ))
+                        : fines.map((f) => (
+                            <FineLine key={f.id} fine={f} paying={0} remainingAfter={f.remaining} />
+                          ))}
+                    </ul>
                   </div>
 
                   {/* How it was paid */}
@@ -357,21 +306,23 @@ export default function PayFinesModal({
                     <div role="radiogroup" aria-label="How it was paid" className="space-y-2">
                       <Choice
                         checked={source === 'balance'}
-                        disabled={!balance.allowed || !fineId}
+                        disabled={held <= 0}
                         onSelect={() => setSource('balance')}
                         title="Take it from his balance"
                         detail={
-                          balance.allowed
-                            ? `The group already holds ${money(held)} for him. His balance goes down by what he pays.`
-                            : balance.reason
+                          held <= 0
+                            ? 'The group is not holding any money for him, so there is nothing to take it from.'
+                            : held >= position.owed
+                              ? `The group already holds ${money(held)} for him. His balance goes down by what he pays.`
+                              : `The group holds only ${money(held)} for him. The oldest fines are cleared with that, and the rest stay owed.`
                         }
-                        tone={balance.allowed ? undefined : 'muted'}
+                        tone={held <= 0 ? 'muted' : undefined}
                       />
                       <Choice
                         checked={source === 'cash'}
                         onSelect={() => setSource('cash')}
                         title="He paid in cash or M-Pesa"
-                        detail="He handed the money over separately. His balance stays exactly as it is."
+                        detail="He handed the money over separately. Every fine is cleared and his balance stays exactly as it is."
                       />
                     </div>
                   </fieldset>
@@ -405,8 +356,18 @@ export default function PayFinesModal({
                     {preview.valid ? (
                       <>
                         <p>
-                          He will owe <span className="amount font-semibold">{money(preview.owedAfter)}</span> on this fine
-                          after this.
+                          <span className="amount font-semibold">{money(preview.total)}</span> will be paid across{' '}
+                          {preview.rows.filter((r) => r.paying > 0).length === 1
+                            ? '1 fine'
+                            : `${preview.rows.filter((r) => r.paying > 0).length} fines`}
+                          .{' '}
+                          {preview.owedAfter > 0 ? (
+                            <>
+                              He will still owe <span className="amount font-semibold">{money(preview.owedAfter)}</span>.
+                            </>
+                          ) : (
+                            'He will owe no more fines.'
+                          )}
                         </p>
                         {preview.heldAfter !== null && (
                           <p className="mt-0.5">
@@ -433,6 +394,7 @@ export default function PayFinesModal({
                 <button
                   type="button"
                   onClick={() => {
+                    requestKey.current = newRequestKey();
                     setResult(null);
                     setSource(null);
                     setMemberId(null);
@@ -468,7 +430,7 @@ export default function PayFinesModal({
                   disabled={!preview.valid || busy}
                   className="min-h-12 flex-[2] rounded-xl bg-primary text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  {busy ? 'Recording…' : 'Record payment'}
+                  {busy ? 'Recording…' : preview.valid ? `Pay ${money(preview.total)}` : 'Pay'}
                 </button>
               )}
             </>
@@ -476,6 +438,36 @@ export default function PayFinesModal({
         </footer>
       </div>
     </Modal>
+  );
+}
+
+// A new random key for one payment. `crypto.randomUUID` is missing on plain-http pages, so there is a
+// fallback; the key only has to be different from the last payment's.
+function newRequestKey() {
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `pay-${id}`;
+}
+
+// One fine in the list: what it is, and what this payment will take off it.
+function FineLine({ fine, paying, remainingAfter, later = false }) {
+  return (
+    <li className="flex items-baseline justify-between gap-3 px-4 py-2.5 text-sm">
+      <span className="min-w-0">
+        <span className="block truncate font-medium">{fine.reason || fine.type || 'Fine'}</span>
+        <span className="block text-xs text-muted">
+          {fine.type || 'Fine'} · {shortDate(fine.date)}
+        </span>
+      </span>
+      <span className="shrink-0 text-right">
+        <span className="amount block font-semibold">{money(fine.remaining)}</span>
+        {later && <span className="block text-xs text-muted">issued after the date paid</span>}
+        {paying > 0 && (
+          <span className="amount block text-xs text-primary">
+            {remainingAfter > 0 ? `${money(paying)} paid, ${money(remainingAfter)} left` : 'paid in full'}
+          </span>
+        )}
+      </span>
+    </li>
   );
 }
 

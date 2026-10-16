@@ -6,78 +6,96 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  parseAmount,
-  owedFor,
-  balanceChoice,
-  paymentPreview,
-  paymentSummary,
-  sourceLabel,
-} from '../src/utils/finePayment.js';
+import { allocateFines, eatDay, paymentPreview, paymentSummary, sourceLabel } from '../src/utils/finePayment.js';
 
+// Oldest first, the order the server hands them over in and clears them in.
 const fines = [
-  { id: 'a', remaining: 300, date: '2026-03-01', type: 'Late arrival', reason: '' },
   { id: 'b', remaining: 500, date: '2026-01-10', type: 'Absent', reason: 'Missed the AGM' },
   { id: 'c', remaining: 100, date: '2026-02-05', type: 'Phone', reason: '' },
+  { id: 'a', remaining: 300, date: '2026-03-01', type: 'Late arrival', reason: '' },
 ];
 
-test('an amount typed with commas or spaces reads the same, and nothing at all is not zero', () => {
-  assert.equal(parseAmount('1,500'), 1500);
-  assert.equal(parseAmount(' 1 500 '), 1500);
-  assert.equal(parseAmount('250.50'), 250.5);
-  assert.ok(Number.isNaN(parseAmount('')));
-  assert.ok(Number.isNaN(parseAmount('abc')));
-  assert.equal(parseAmount('0'), 0);
+test('paying from his balance clears every fine when he holds enough, each on its own line', () => {
+  const rows = allocateFines(fines, { held: 2000, source: 'balance' });
+  assert.deepEqual(rows.map((r) => [r.id, r.paying, r.remainingAfter]), [
+    ['b', 500, 0],
+    ['c', 100, 0],
+    ['a', 300, 0],
+  ]);
 });
 
-test('what can be paid is what is owed on the chosen fine, and nothing without one', () => {
-  assert.equal(owedFor(fines, 'b'), 500);
-  assert.equal(owedFor(fines, 'a'), 300);
-  assert.equal(owedFor(fines, 'missing'), 0);
-  assert.equal(owedFor(fines, null), 0, 'a payment is never spread over every fine');
+test('when his balance runs short the oldest fines are cleared first and the rest stay owed', () => {
+  const rows = allocateFines(fines, { held: 650, source: 'balance' });
+  assert.deepEqual(rows.map((r) => [r.id, r.paying, r.remainingAfter]), [
+    ['b', 500, 0],
+    ['c', 100, 0],
+    ['a', 50, 250],
+  ]);
 });
 
-test('the balance can pay only what the group holds for him', () => {
-  assert.equal(balanceChoice({ held: 1000, amount: 400 }).allowed, true);
-  assert.equal(balanceChoice({ held: 400, amount: 400 }).allowed, true);
-
-  const short = balanceChoice({ held: 300, amount: 400 });
-  assert.equal(short.allowed, false);
-  assert.match(short.reason, /He holds only Ksh 300/);
-  assert.match(short.reason, /paid in cash/);
-
-  const none = balanceChoice({ held: 0, amount: 100 });
-  assert.equal(none.allowed, false);
-  assert.match(none.reason, /not holding any money/);
+test('paid in cash clears every fine whatever he holds', () => {
+  const rows = allocateFines(fines, { held: 0, source: 'cash' });
+  assert.deepEqual(rows.map((r) => r.paying), [500, 100, 300]);
 });
 
 test('a payment taken from his balance shows what he holds afterwards; cash does not touch it', () => {
-  const fromBalance = paymentPreview({ owed: 900, held: 2000, amount: 400, source: 'balance' });
+  const fromBalance = paymentPreview({ fines, held: 2000, source: 'balance' });
   assert.equal(fromBalance.valid, true);
-  assert.equal(fromBalance.owedAfter, 500);
-  assert.equal(fromBalance.heldAfter, 1600);
+  assert.equal(fromBalance.total, 900);
+  assert.equal(fromBalance.owedAfter, 0);
+  assert.equal(fromBalance.heldAfter, 1100);
 
-  const cash = paymentPreview({ owed: 900, held: 2000, amount: 400, source: 'cash' });
+  const cash = paymentPreview({ fines, held: 2000, source: 'cash' });
   assert.equal(cash.valid, true);
-  assert.equal(cash.owedAfter, 500);
+  assert.equal(cash.total, 900);
   assert.equal(cash.heldAfter, null, 'his balance never held cash he paid on the side');
 });
 
+test('a balance that does not cover everything pays what it can and says what stays owed', () => {
+  const part = paymentPreview({ fines, held: 650, source: 'balance' });
+  assert.equal(part.valid, true);
+  assert.equal(part.total, 650);
+  assert.equal(part.owedAfter, 250);
+  assert.equal(part.heldAfter, 0);
+});
+
+test('a payment dated before a fine was issued leaves that fine alone, as the server does', () => {
+  // 'a' was issued on 1 March; the money changed hands on 15 February.
+  const preview = paymentPreview({ fines, held: 5000, source: 'balance', paidOn: '2026-02-15' });
+  assert.equal(preview.valid, true);
+  assert.deepEqual(preview.rows.map((r) => [r.id, r.paying, r.later]), [
+    ['b', 500, false],
+    ['c', 100, false],
+    ['a', 0, true],
+  ]);
+  assert.equal(preview.total, 600);
+  assert.equal(preview.owedAfter, 300);
+
+  const none = paymentPreview({ fines, held: 5000, source: 'cash', paidOn: '2025-12-31' });
+  assert.equal(none.valid, false);
+  assert.match(none.problem, /issued after that date/);
+});
+
+test('a fine is dated by the day on the group clock, East Africa Time', () => {
+  // 22:00 UTC on the 14th is 01:00 on the 15th in Nairobi.
+  assert.equal(eatDay('2026-02-14T22:00:00Z'), '2026-02-15');
+  assert.equal(eatDay('2026-02-14T20:59:00Z'), '2026-02-14');
+  assert.equal(eatDay('nonsense'), '');
+});
+
 test('the preview refuses what the server would refuse, in words', () => {
-  assert.equal(paymentPreview({ owed: 900, held: 100, amount: NaN, source: 'cash' }).valid, false);
-  assert.equal(paymentPreview({ owed: 900, held: 100, amount: 0, source: 'cash' }).valid, false);
+  const nothing = paymentPreview({ fines: [], held: 500, source: 'cash' });
+  assert.equal(nothing.valid, false);
+  assert.equal(nothing.problem, 'He owes no fines');
 
-  const over = paymentPreview({ owed: 900, held: 5000, amount: 1000, source: 'cash' });
-  assert.equal(over.valid, false);
-  assert.match(over.problem, /more than the Ksh 900 owed/);
+  const broke = paymentPreview({ fines, held: 0, source: 'balance' });
+  assert.equal(broke.valid, false);
+  assert.match(broke.problem, /not holding any money/);
 
-  const poor = paymentPreview({ owed: 900, held: 200, amount: 400, source: 'balance' });
-  assert.equal(poor.valid, false);
-  assert.match(poor.problem, /He holds only Ksh 200/);
-
-  const unchosen = paymentPreview({ owed: 900, held: 5000, amount: 400, source: null });
+  const unchosen = paymentPreview({ fines, held: 5000, source: null });
   assert.equal(unchosen.valid, false);
   assert.equal(unchosen.problem, 'Choose how it was paid');
+  assert.deepEqual(unchosen.rows.map((r) => r.paying), [0, 0, 0], 'nothing is promised before a choice');
 });
 
 test('a payment is summarised in the words the office reads out', () => {
@@ -114,7 +132,7 @@ test('the message for a member email cannot reach reads as a message to him', as
       held: { before: 2000, after: 1600 },
       owedAfter: 500,
     }),
-    'Hello Jane, We have taken Ksh 400 from your balance with the group to pay your fine. The group now holds Ksh 1,600 for you. You still owe Ksh 500 in fines. Thank you.'
+    'Hello Jane, We have taken Ksh 400 from your balance with the group to pay your fines. The group now holds Ksh 1,600 for you. You still owe Ksh 500 in fines. Thank you.'
   );
   assert.equal(
     paymentMessage({ memberName: 'Jane Wanjiru', totalApplied: 900, source: 'cash', held: null, owedAfter: 0 }),

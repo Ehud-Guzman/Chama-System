@@ -906,14 +906,12 @@ async function exportStatementExcel() {
         onConfirm={resignMember}
         onCancel={() => setConfirmingResign(false)}
       />
-      {/* Paying one of his fines opens the same dialog as the fines desk, over this page: it asks
-          how the money was paid (out of his balance, or handed over separately), which is what
-          decides whether his balance moves, and says what each answer will do before it is
-          recorded. */}
+      {/* Pay opens the same dialog as the fines desk, over this page. It clears every fine he owes,
+          and asks how the money was paid (out of his balance, or handed over separately), which is
+          what decides whether his balance moves. */}
       {settlingFine && (
         <PayFinesModal
           memberId={member._id}
-          fineId={settlingFine._id}
           onClose={() => setSettlingFine(null)}
           onPaid={load}
         />
