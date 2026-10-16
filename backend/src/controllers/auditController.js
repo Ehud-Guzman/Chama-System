@@ -2,6 +2,10 @@ const AuditLog = require('../models/AuditLog');
 const User = require('../models/User');
 const { CATEGORIES, readAuditEntry } = require('../utils/auditFlags');
 const { buildFilters, ACTIONS } = require('../utils/auditFilters');
+const { restrictToRole, hiddenEntityTypes } = require('../utils/auditVisibility');
+const { summariseActors, accountPosture, summariseSignIns, countAttention } = require('../utils/auditOversight');
+const SecurityEvent = require('../models/SecurityEvent');
+const { verifyStoredTrail } = require('../utils/auditVerify');
 const { aboutSheet } = require('../utils/aboutSheet');
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
@@ -92,7 +96,11 @@ function eatStamp(value) {
 //   ?unusual=1                                ?page=&limit=
 async function list(req, res, next) {
   try {
-    const { match, unusual } = buildFilters(req.query);
+    const built = buildFilters(req.query);
+    const { unusual } = built;
+    // What this role may read, applied to what was asked for — so the page, the total, the
+    // counts and the dropdowns all describe the same, narrower trail.
+    const match = restrictToRole(req.user.role, built.match);
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_LIMIT));
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
 
@@ -142,7 +150,7 @@ async function list(req, res, next) {
       categories: CATEGORIES,
       options: {
         actions: ACTIONS,
-        entities: entities.sort(),
+        entities: entities.filter((t) => !hiddenEntityTypes(req.user.role).includes(t)).sort(),
         users: users.map((u) => ({ id: u._id, name: u.name })),
       },
     });
@@ -155,7 +163,9 @@ async function list(req, res, next) {
 // the flagged entries on their own sheet so the odd ones can be read first.
 async function exportList(req, res, next) {
   try {
-    const { match, unusual } = buildFilters(req.query);
+    const built = buildFilters(req.query);
+    const { unusual } = built;
+    const match = restrictToRole(req.user.role, built.match);
     const read = (await entryQuery(match, EXPORT_MAX)).map(present);
     const shown = unusual ? read.filter((e) => e.flags.length > 0) : read;
     const counts = countRead(read);
@@ -197,5 +207,102 @@ async function exportList(req, res, next) {
   }
 }
 
-module.exports = { list, exportList };
+// How far back the officers' table looks. A month is the rhythm the committee meets on, and a
+// longer window dilutes a recent change in behaviour into last year's average.
+const OVERSIGHT_DAYS = 30;
+const OVERSIGHT_SCAN = 5000;
+
+// GET /api/audit/oversight — super admin only
+//
+// Who is doing what among the people who hold authority, and how well their accounts are
+// protected. Derived from the trail and the user list; nothing is stored for it.
+async function oversight(req, res, next) {
+  try {
+    const since = new Date(Date.now() - OVERSIGHT_DAYS * 24 * 60 * 60 * 1000);
+    const [entries, users, settings, signIns] = await Promise.all([
+      AuditLog.find({ createdAt: { $gte: since } })
+        .select('action entityType entityId performedBy createdAt before after')
+        .sort({ createdAt: -1 })
+        .limit(OVERSIGHT_SCAN)
+        .populate('performedBy', 'name role')
+        .lean(),
+      User.find().select('name role active passwordChangedAt twoFactor.enabled').lean(),
+      getOrCreateSettings(),
+      SecurityEvent.find({ createdAt: { $gte: since } })
+        .select('reason email userId role ip createdAt')
+        .sort({ createdAt: -1 })
+        .limit(OVERSIGHT_SCAN)
+        .lean(),
+    ]);
+
+    res.json({
+      days: OVERSIGHT_DAYS,
+      signIns: summariseSignIns(signIns),
+      scanned: entries.length,
+      // True when the window held more than was read, so the table says so rather than
+      // implying it counted everything.
+      limited: entries.length >= OVERSIGHT_SCAN,
+      officers: summariseActors(entries),
+      accounts: accountPosture(users, { twoFactorGroupOn: Boolean(settings.twoFactorAuthEnabled) }),
+      twoFactorGroupOn: Boolean(settings.twoFactorAuthEnabled),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/audit/attention — super admin only
+//
+// The one number the dashboard banner needs: serious entries by other people in the last week,
+// and failed sign-ins in the last day. Small and bounded, because it runs on every visit.
+async function attention(req, res, next) {
+  try {
+    const week = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const day = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [entries, failedSignIns] = await Promise.all([
+      AuditLog.find({ createdAt: { $gte: week } })
+        .select('action entityType performedBy before after')
+        .sort({ createdAt: -1 })
+        .limit(1000)
+        .populate('performedBy', 'role')
+        .lean(),
+      SecurityEvent.countDocuments({ createdAt: { $gte: day } }),
+    ]);
+    res.json({ seriousEntries: countAttention(entries), failedSignIns });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/audit/verify — super admin only
+//
+// Walks the whole chain and says whether it still adds up. A POST, not a GET: it reads the
+// entire trail, and a link that does that should not be something a browser prefetches.
+async function verify(req, res, next) {
+  try {
+    const result = await verifyStoredTrail();
+    res.json(
+      result.ok
+        ? {
+            ok: true,
+            checked: result.checked,
+            unchecked: result.unchained,
+            head: result.head,
+            firstSequence: result.firstSequence,
+          }
+        : {
+            ok: false,
+            checked: result.checked,
+            unchecked: result.unchained,
+            message: result.broken.message,
+            problem: result.broken.reason,
+            chainSequence: result.broken.chainSequence ?? null,
+          }
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, exportList, oversight, attention, verify };
 

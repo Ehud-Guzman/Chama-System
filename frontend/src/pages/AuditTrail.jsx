@@ -6,6 +6,8 @@ import { shortDateTime } from "../utils/format";
 import BackLink from "../components/shared/BackLink";
 import Loader from "../components/shared/Loader";
 import ErrorState from "../components/shared/ErrorState";
+import AuditOversightPanel from "../components/shared/AuditOversightPanel";
+import { useAuth } from "../context/AuthContext";
 
 // The audit trail, on its own screen.
 //
@@ -136,6 +138,7 @@ function Tile({ label, value, hint, alert, accent }) {
 
 export default function AuditTrail() {
   const toast = useToast();
+  const { user } = useAuth();
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [unusual, setUnusual] = useState(false);
   const [perPage, setPerPage] = useState(50);
@@ -244,6 +247,10 @@ export default function AuditTrail() {
           Export this view
         </button>
       </header>
+
+      {/* The super admin's own read on the officers and on the trail itself. The API
+          refuses anyone else; not rendering it is just tidiness. */}
+      {user?.role === "super_admin" && <AuditOversightPanel />}
 
       {/* The read on the window: what is in it, and how much of it is out of the
           ordinary. Counted over a bounded number of the newest matching entries, and

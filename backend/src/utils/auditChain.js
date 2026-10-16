@@ -66,7 +66,11 @@ function chainHash(prevHash, entry) {
 // and calling those older entries tampered with would be a lie. The caller may pass the
 // expected head to prove the trail has not been truncated from the end, which is the one
 // attack a chain alone cannot catch.
-function verifyChain(entries, { expectedHead = null } = {}) {
+//
+// `continueFrom` ({ hash, chainSequence }) is the last entry of the batch before this one.
+// A trail read in batches must carry it across the join: without it each batch trusts its
+// own first `prevHash`, and an entry swapped exactly on a batch boundary would pass.
+function verifyChain(entries, { expectedHead = null, continueFrom = null } = {}) {
   const chained = entries
     .filter((entry) => entry && entry.chainSequence != null)
     .sort((a, b) => a.chainSequence - b.chainSequence);
@@ -75,8 +79,8 @@ function verifyChain(entries, { expectedHead = null } = {}) {
     return { ok: true, verified: 0, note: 'No chained entries yet.' };
   }
 
-  let prevHash = chained[0].prevHash;
-  let expectedSequence = chained[0].chainSequence;
+  let prevHash = continueFrom ? continueFrom.hash : chained[0].prevHash;
+  let expectedSequence = continueFrom ? continueFrom.chainSequence + 1 : chained[0].chainSequence;
 
   for (const entry of chained) {
     if (entry.chainSequence !== expectedSequence) {

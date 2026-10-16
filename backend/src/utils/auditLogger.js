@@ -1,6 +1,7 @@
 const AuditLog = require('../models/AuditLog');
 const { chainedEntry } = require('./auditChain');
 const { logEvent } = require('../middleware/requestLogger');
+const { alertOnAuditEntry } = require('./superAdminAlerts');
 
 // How many times a writer will re-read the head and try again when two entries race for
 // the same place in the chain. Losing the race means being overtaken between reading the
@@ -34,6 +35,9 @@ async function logAudit({ action, entityType, entityId, performedBy, before = nu
       const previous = await chainHead();
       const document = chainedEntry({ previous, entry });
       const created = await AuditLog.create(document);
+      // Not awaited: telling the super admin is never a reason for the write to be slower, and
+      // it catches its own errors.
+      void alertOnAuditEntry(created.toObject());
       return created;
     } catch (err) {
       // 11000 is a duplicate key. With `chainSequence` unique and sparse, that means

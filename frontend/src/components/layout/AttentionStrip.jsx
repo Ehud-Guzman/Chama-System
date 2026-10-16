@@ -52,6 +52,35 @@ export default function AttentionStrip() {
       );
     }
 
+    if (isSuper) {
+      // Serious entries by other people in the last week, and failed sign-ins in the last day.
+      // The audit screen is the place to look at either, so that is where the link goes.
+      checks.push(
+        api
+          .get('/api/audit/attention')
+          .then((res) => {
+            const { seriousEntries = 0, failedSignIns = 0 } = res.data || {};
+            if (seriousEntries > 0) {
+              add({
+                id: 'audit-serious',
+                text: `${seriousEntries} serious ${seriousEntries === 1 ? 'entry' : 'entries'} by other people in the audit trail this week — amounts cut, money removed or moved, a role or phone number changed.`,
+                to: '/admin/audit',
+                action: 'Open the trail',
+              });
+            }
+            if (failedSignIns > 0) {
+              add({
+                id: 'failed-signins',
+                text: `${failedSignIns} failed ${failedSignIns === 1 ? 'sign-in' : 'sign-ins'} in the last day.`,
+                to: '/admin/audit',
+                action: 'See who',
+              });
+            }
+          })
+          .catch(() => {})
+      );
+    }
+
     checks.push(
       api
         .get('/api/fines/payments/to-check')

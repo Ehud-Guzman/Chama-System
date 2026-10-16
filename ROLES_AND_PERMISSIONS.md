@@ -30,7 +30,18 @@ thing — his verdict on a chapter of the constitution.
 - ✅ Create & manage contribution types and fine types
 - ✅ Access backup/restore functions, and see and run the scheduled jobs
 - ✅ Upload, publish and remove chama documents (title deeds, certificates)
-- ✅ View the complete audit trail and export it
+- ✅ View the complete audit trail and export it — including what no other role can read: entries
+  about admin, treasurer and super-admin accounts, and about backups, restores and scheduled jobs
+- ✅ **Oversight** (top of the audit screen, `GET /api/audit/oversight`): each officer's entries, serious
+  entries, amounts cut, money removed and money moved over the last 30 days, and which accounts that
+  hold authority lack a second factor or still have their first password
+- ✅ **Failed sign-ins** (Oversight, kept 90 days): which accounts and addresses are being tried
+- ✅ **Alerts**: an email when someone else cuts an amount, removes money, moves a payment to another
+  member, changes a phone number or a role, or when one account or address hits 5 failed sign-ins in
+  15 minutes (max 6 an hour; `SECURITY_ALERTS=off` silences them), and a "needs attention" line on the
+  dashboard
+- ✅ **Verify the trail** (`POST /api/audit/verify`): re-checks the whole hash chain and names the first
+  entry that does not add up
 - ❌ Cannot deactivate the super admin account itself, and cannot reset its own password from the
   accounts list (that is Settings → My password)
 - ❌ Cannot change the week cycle or opening balances from Settings — those live on
@@ -63,7 +74,8 @@ thing — his verdict on a chapter of the constitution.
 - ✅ Upload, publish and remove chama documents; write, publish and delete minutes
 - ✅ View reports (summary, performance, monthly, weekly, fines) and export them
 - ✅ Modify system settings (chama name, logo, vision and mission)
-- ✅ View the complete audit trail and export it
+- ✅ View the audit trail and export it — except entries about admin, treasurer and super-admin
+  accounts, and about backups, restores and scheduled jobs, which are the super admin's alone
 - ✅ Create and manage **Secretary** and **Disciplinary Officer** accounts, including deactivating
   them, resetting their passwords and resetting a lost second factor
 - ❌ Cannot create or manage another **Admin** account, or a **Treasurer** account — only the super

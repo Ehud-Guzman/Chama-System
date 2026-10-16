@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { list, exportList } = require('../controllers/auditController');
+const { list, exportList, oversight, attention, verify } = require('../controllers/auditController');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 // The audit trail is its own destination now, not a panel at the foot of the
@@ -12,5 +12,12 @@ router.get('/', list);
 // The same trail, filtered the same way, as a workbook — the sheet a committee
 // meeting can hold and an external audit can be handed.
 router.get('/export', exportList);
+
+// What only the super admin may see: how the officers behave, how well their accounts are
+// protected, and whether the trail itself has been tampered with. The admin who is being
+// watched is not the person who gets to run the watch.
+router.get('/oversight', requireRole('super_admin'), oversight);
+router.get('/attention', requireRole('super_admin'), attention);
+router.post('/verify', requireRole('super_admin'), verify);
 
 module.exports = router;

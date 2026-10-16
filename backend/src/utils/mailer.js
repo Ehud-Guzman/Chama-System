@@ -853,7 +853,23 @@ function buildPasswordResetEmail({ chamaName, name, link, minutes = 30 }) {
   return { subject: `${group}: reset your password`, text, html };
 }
 
+// A short note to the super admin that something in the trail or at the sign-in page is worth a
+// look. Plain on purpose, like the password-reset message: what happened, then where to look.
+// The lines are built from names and figures the system wrote, but the sign-in ones contain text a
+// stranger typed, so everything is escaped.
+function buildSecurityAlertEmail({ chamaName, subject, lines = [] }) {
+  const group = chamaName || CHAMA_NAME;
+  const text = [...lines, '', group].join('\n');
+  const html = `
+  <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.6;color:#1b2b24">
+    ${lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('\n    ')}
+    <p style="font-size:12px;color:#5c6b62">${escapeHtml(group)} · sent because you are the super admin. SECURITY_ALERTS=off switches these off.</p>
+  </div>`;
+  return { subject: `${group}: ${subject}`, text, html };
+}
+
 module.exports = {
+  buildSecurityAlertEmail,
   cleanEmail,
   isValidEmail,
   isMailConfigured,

@@ -20,10 +20,7 @@
 require('dotenv').config();
 
 const mongoose = require('mongoose');
-const AuditLog = require('../models/AuditLog');
-const { verifyChain } = require('../utils/auditChain');
-
-const BATCH = 2000;
+const { verifyStoredTrail } = require('../utils/auditVerify');
 
 function readArg(name, fallback = null) {
   const prefix = `--${name}=`;
@@ -47,11 +44,10 @@ async function main() {
 
   await mongoose.connect(process.env.MONGO_URI);
 
-  const filter = { chainSequence: { $ne: null } };
-  if (sinceDate) filter.createdAt = { $gte: sinceDate };
-
-  const total = await AuditLog.countDocuments(filter);
-  const unchained = await AuditLog.countDocuments({ chainSequence: null });
+  const { ok, checked, total, unchained, head, firstSequence, broken } = await verifyStoredTrail({
+    since: sinceDate,
+    onProgress: (done, all) => process.stdout.write(`\r  Checked ${done}/${all}…`),
+  });
 
   console.log(`\n  Audit chain: ${total} chained entr${total === 1 ? 'y' : 'ies'} to check.`);
   if (unchained > 0) {
@@ -66,47 +62,10 @@ async function main() {
     process.exit(0);
   }
 
-  // Paged by sequence rather than skipped: the collection only grows, and a skip over a
-  // million documents is a scan for every page.
-  let cursor = null;
-  let checked = 0;
-  let broken = null;
-  let head = null;
-  let firstSequence = null;
-
-  for (;;) {
-    const query = filter;
-    if (cursor !== null) query.chainSequence = { $ne: null, $gt: cursor };
-    const batch = await AuditLog.find(query)
-      .sort({ chainSequence: 1 })
-      .limit(BATCH)
-      .select('_id action entityType entityId performedBy before after createdAt prevHash hash chainSequence')
-      .lean();
-
-    if (batch.length === 0) break;
-
-    const result = verifyChain(batch, {
-      // Only the final batch is compared against the recorded head; the intermediate ones
-      // are being checked for internal consistency.
-      expectedHead: null,
-    });
-    if (!result.ok) {
-      broken = result;
-      break;
-    }
-
-    checked += batch.length;
-    head = result.head;
-    if (firstSequence === null) firstSequence = result.firstSequence;
-    cursor = batch[batch.length - 1].chainSequence;
-    process.stdout.write(`\r  Checked ${checked}/${total}…`);
-    if (batch.length < BATCH) break;
-  }
-
   process.stdout.write('\r');
   console.log(`  Checked ${checked} chained entr${checked === 1 ? 'y' : 'ies'}.`);
 
-  if (broken) {
+  if (!ok && broken) {
     console.log('\n  ✗ THE AUDIT TRAIL HAS BEEN TAMPERED WITH.\n');
     console.log(`    ${broken.message}`);
     console.log(`    Entry:     ${broken.id}`);

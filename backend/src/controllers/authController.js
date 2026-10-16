@@ -6,6 +6,7 @@ const Settings = require('../models/Settings');
 const { getOrCreateSettings } = require('../utils/settings');
 const { logAudit } = require('../utils/auditLogger');
 const { logEvent, logLoginFailure } = require('../middleware/requestLogger');
+const { recordLoginFailure } = require('../utils/securityEvents');
 const { isMailConfigured, sendMail, describeMailError, buildPasswordResetEmail } = require('../utils/mailer');
 const {
   generateSecret,
@@ -106,16 +107,17 @@ async function login(req, res, next) {
     const matches = await bcrypt.compare(String(password), user?.password || DUMMY_PASSWORD_HASH);
 
     if (!user || !matches) {
-      logLoginFailure({
+      void recordLoginFailure({
         email: address,
         ip: req.ip,
         rid: req.id,
         reason: user ? 'wrong_password' : 'no_such_account',
+        user,
       });
       return res.status(401).json({ message: 'Invalid email or password' });
     }
     if (!user.active) {
-      logLoginFailure({ email: address, ip: req.ip, rid: req.id, reason: 'deactivated' });
+      void recordLoginFailure({ email: address, ip: req.ip, rid: req.id, reason: 'deactivated', user });
       return res.status(401).json({ message: 'This account has been deactivated' });
     }
 
@@ -212,7 +214,7 @@ async function verifyTwoFactor(req, res, next) {
     if (!result.ok) {
       user.twoFactor.lastFailedAt = new Date();
       await user.save();
-      logLoginFailure({ email: user.email, ip: req.ip, rid: req.id, reason: 'wrong_2fa_code' });
+      void recordLoginFailure({ email: user.email, ip: req.ip, rid: req.id, reason: 'wrong_2fa_code', user });
       return res.status(401).json({
         message:
           result.reason === 'format'
