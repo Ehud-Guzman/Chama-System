@@ -34,7 +34,10 @@ export function AuthProvider({ children }) {
         // out. A network error or a cold-starting free-tier backend (Render
         // spins down when idle) must not silently boot them to the login
         // screen — the interceptor already handles genuine 401s elsewhere.
-        if (err.response?.status === 401) localStorage.removeItem(TOKEN_KEY);
+        if (err.response?.status === 401) {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(REAL_TOKEN_KEY);
+        }
       })
       .finally(() => setLoading(false));
   }, [applyMe]);
@@ -56,6 +59,8 @@ export function AuthProvider({ children }) {
       };
     }
     localStorage.setItem(TOKEN_KEY, res.data.token);
+    // A fresh sign-in is a fresh start: a session parked by an earlier preview is not this person's.
+    localStorage.removeItem(REAL_TOKEN_KEY);
     setUser(res.data.user);
     return { user: res.data.user };
   }, []);
@@ -64,6 +69,7 @@ export function AuthProvider({ children }) {
   const completeTwoFactor = useCallback(async (challenge, code) => {
     const res = await api.post('/api/auth/2fa/verify', { challenge, code });
     localStorage.setItem(TOKEN_KEY, res.data.token);
+    localStorage.removeItem(REAL_TOKEN_KEY);
     setUser(res.data.user);
     return {
       user: res.data.user,

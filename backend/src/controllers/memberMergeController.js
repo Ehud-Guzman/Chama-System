@@ -132,6 +132,45 @@ async function mergeMembers(req, res, next) {
     const beforeSource = snapshot(source);
     const beforeTarget = snapshot(target);
 
+    // Worked out once, from the records as they are now, and only ever ASSIGNED below. A transaction
+    // that is retried runs its callback again; adding to the in-memory documents there would apply
+    // the balance and the note twice.
+    const note = `Merged from ${source.name}${source.regNumber ? ` (${source.regNumber})` : ''}: ${reason}`;
+    const keepNext = {
+      openingBalance: (Number(target.openingBalance) || 0) + (Number(source.openingBalance) || 0),
+      openingBalanceNote: [
+        target.openingBalanceNote,
+        Number(source.openingBalance) ? `+${source.openingBalance} carried in from ${source.name}` : '',
+      ]
+        .filter(Boolean)
+        .join('; '),
+      fineDebits: [...(target.fineDebits || []), ...(source.fineDebits || [])],
+      notes: [target.notes, note].filter(Boolean).join('\n').slice(0, 2000),
+    };
+    const retiredNext = {
+      openingBalance: 0,
+      fineDebits: [],
+      active: false,
+      deactivatedAt: new Date(),
+      resignedAt: source.resignedAt || new Date(),
+      resignationReason: `Duplicate record — merged into ${target.name}${target.regNumber ? ` (${target.regNumber})` : ''}`,
+      resignationSettlement: 'Everything he held and owed was moved onto the record that was kept.',
+      notes: [source.notes, `Merged into ${target.name}: ${reason}`].filter(Boolean).join('\n').slice(0, 2000),
+    };
+
+    // Where there is no transaction (a standalone MongoDB) the money moves first and the two
+    // records are saved after it, so a record that would not save must be found out BEFORE anything
+    // moves, not after the contributions already belong to somebody else.
+    target.set(keepNext);
+    source.set(retiredNext);
+    try {
+      await Promise.all([target.validate(), source.validate()]);
+    } catch (err) {
+      return res.status(400).json({
+        message: `Nothing was moved: one of the records would not save (${err.message}). Correct it from the register first.`,
+      });
+    }
+
     await maybeTransaction(async (session) => {
       const opts = session ? { session } : {};
 
@@ -147,25 +186,9 @@ async function mergeMembers(req, res, next) {
         opts
       );
 
-      // The money held on the member himself.
-      const note = `Merged from ${source.name}${source.regNumber ? ` (${source.regNumber})` : ''}: ${reason}`;
-      target.openingBalance = (Number(target.openingBalance) || 0) + (Number(source.openingBalance) || 0);
-      target.openingBalanceNote = [target.openingBalanceNote, Number(source.openingBalance) ? `+${source.openingBalance} carried in from ${source.name}` : '']
-        .filter(Boolean)
-        .join('; ');
-      target.fineDebits = [...(target.fineDebits || []), ...(source.fineDebits || [])];
-      target.notes = [target.notes, note].filter(Boolean).join('\n').slice(0, 2000);
+      // The money held on the member himself, and the duplicate retired with a note saying where it
+      // went. (The values were set on the documents above; saving is all that is left.)
       await target.save(opts);
-
-      // The duplicate stays on file, retired, saying where it went.
-      source.openingBalance = 0;
-      source.fineDebits = [];
-      source.active = false;
-      source.deactivatedAt = new Date();
-      source.resignedAt = source.resignedAt || new Date();
-      source.resignationReason = `Duplicate record — merged into ${target.name}${target.regNumber ? ` (${target.regNumber})` : ''}`;
-      source.resignationSettlement = 'Everything he held and owed was moved onto the record that was kept.';
-      source.notes = [source.notes, `Merged into ${target.name}: ${reason}`].filter(Boolean).join('\n').slice(0, 2000);
       await source.save(opts);
     });
 

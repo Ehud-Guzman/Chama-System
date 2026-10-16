@@ -162,7 +162,7 @@ async function applyBackup(req, res, next) {
     // The way back, before anything is changed.
     let safety;
     try {
-      safety = await runBackupJob({ trigger: 'pre-restore' });
+      safety = await runBackupJob({ trigger: 'pre-restore', prune: false });
     } catch (err) {
       return res.status(500).json({
         message: `Nothing was restored: the safety copy could not be written first (${err.message}).`,
@@ -276,7 +276,7 @@ async function resetMoney(req, res, next) {
 
     let safety;
     try {
-      safety = await runBackupJob({ trigger: 'pre-reset' });
+      safety = await runBackupJob({ trigger: 'pre-reset', prune: false });
     } catch (err) {
       return res.status(500).json({
         message: `Nothing was cleared: the safety copy could not be written first (${err.message}).`,

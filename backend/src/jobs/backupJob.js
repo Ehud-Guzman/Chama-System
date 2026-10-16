@@ -79,7 +79,7 @@ function pruneBackups(dir, retention) {
   return doomed.map((file) => file.name);
 }
 
-async function runBackupJob({ trigger = 'schedule' } = {}) {
+async function runBackupJob({ trigger = 'schedule', prune = true } = {}) {
   const dir = backupDir();
   fs.mkdirSync(dir, { recursive: true });
 
@@ -110,7 +110,9 @@ async function runBackupJob({ trigger = 'schedule' } = {}) {
   }
 
   const size = fs.statSync(target).size;
-  const removed = pruneBackups(dir, retentionCount());
+  // A safety copy written before a restore or a reset (prune: false) must never be the thing that
+  // deletes older backups: several in an afternoon would push the last good nightly copy out.
+  const removed = prune ? pruneBackups(dir, retentionCount()) : [];
 
   return {
     file: fileName,

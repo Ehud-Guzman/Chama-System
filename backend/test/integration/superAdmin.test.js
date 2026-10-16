@@ -507,6 +507,52 @@ test('the lock holds for spending, voided fines and ledger logs too — and not 
 
 // --- switches ------------------------------------------------------------------------------------
 
+test('the lock holds for paying a fine and taking a payment back, by the date of the payment', { skip }, async () => {
+  const member = await Member.create({ name: 'Paying Pat', phone: '0700000106', regNumber: 'P/1', nationalId: '50000006' });
+  const type = await FineType.create({ name: 'Payment lock fine', defaultAmount: 300 });
+  const fine = await Fine.create({
+    memberId: member._id,
+    typeId: type._id,
+    amount: 300,
+    remaining: 200,
+    date: new Date(Date.now() - 15 * 86400000),
+    settlements: [{ amount: 100, date: new Date(Date.now() - 12 * 86400000), source: 'cash' }],
+    issuedBy: superId,
+  });
+  await call('PUT', '/api/superadmin/lock', { token: tokens.super, body: { lockedThrough: daysAgo(3), reason: 'September agreed' } });
+
+  const backdated = await call('POST', `/api/fines/${fine._id}/settle`, {
+    token: tokens.admin,
+    body: { amount: 50, source: 'cash', date: daysAgo(10) },
+  });
+  assert.equal(backdated.status, 423);
+  assert.equal(backdated.body.code, 'period_locked');
+  const undo = await call('POST', `/api/fines/${fine._id}/payments/0/undo`, { token: tokens.admin, body: {} });
+  assert.equal(undo.status, 423, 'a payment made in a closed period cannot be taken back by the office');
+  assert.equal((await Fine.findById(fine._id)).settlements.length, 1, 'nothing changed behind the refusals');
+
+  // Today's payment is not in the closed period.
+  const today_ = await call('POST', `/api/fines/${fine._id}/settle`, { token: tokens.admin, body: { amount: 50, source: 'cash' } });
+  assert.notEqual(today_.status, 423);
+  await call('PUT', '/api/superadmin/lock', { token: tokens.super, body: { lockedThrough: null } });
+});
+
+test('a merge that cannot save one of the records moves nothing', { skip }, async () => {
+  const keep = await Member.create({ name: 'Safe Sam', phone: '0700000107', regNumber: 'S/1', nationalId: '50000007' });
+  const dupe = await Member.create({ name: 'Safe  Sam', phone: '0700000108', regNumber: 'S/2', nationalId: '50000008', openingBalance: 100 });
+  await Contribution.create({ memberId: dupe._id, typeId: weekly._id, amount: 111, method: 'cash', loggedBy: superId });
+  // An old record the schema would now refuse: a negative opening balance below the floor, written behind its back.
+  await mongoose.connection.collection('members').updateOne({ _id: keep._id }, { $set: { name: '' } });
+  const res = await call('POST', '/api/superadmin/members/merge', {
+    token: tokens.super,
+    body: { sourceId: dupe._id, targetId: keep._id, reason: 'Same person, two sheets', password: PASSWORD },
+  });
+  assert.equal(res.status, 400);
+  assert.match(res.body.message, /Nothing was moved/);
+  assert.equal(await Contribution.countDocuments({ memberId: dupe._id }), 1, 'the money stayed where it was');
+  assert.equal((await Member.findById(dupe._id)).active, true);
+});
+
 test('closing the members’ area stops members and leaves the front page and the office alone', { skip }, async () => {
   const bad = await call('PUT', '/api/superadmin/switches', { token: tokens.super, body: { membersAreaEnabled: 'no' } });
   assert.equal(bad.status, 400);

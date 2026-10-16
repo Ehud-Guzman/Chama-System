@@ -48,6 +48,12 @@ const SOURCES = {
     validDate(req.body?.date),
   ],
   fine: async (req) => [(await Fine.findById(req.params.id).select('date').lean())?.date],
+  // Taking back a fine payment changes money on the day that payment was made.
+  finePayment: async (req) => {
+    const fine = await Fine.findById(req.params.id).select('settlements').lean();
+    const index = Number.parseInt(req.params.index, 10);
+    return [Number.isInteger(index) ? fine?.settlements?.[index]?.date : null];
+  },
   // A whole week at once: the ledger dates a week's rows on the day it closed.
   week: async (req, settings) => {
     if (req.body?.dryRun) return [];

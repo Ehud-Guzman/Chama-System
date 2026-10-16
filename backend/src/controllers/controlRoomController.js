@@ -133,6 +133,7 @@ async function overview(req, res, next) {
         const entries = await AuditLog.find({ createdAt: { $gte: new Date(now - 7 * DAY_MS) } })
           .select('action entityType before after performedBy')
           .populate('performedBy', 'role')
+          .sort({ createdAt: -1 })
           .limit(2000)
           .lean();
         const read = entries.map(readAuditEntry);

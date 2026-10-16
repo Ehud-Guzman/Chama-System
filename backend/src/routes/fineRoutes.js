@@ -36,11 +36,11 @@ router.post('/', requireRole('super_admin', 'admin', 'disciplinary'), createFine
 // Every one of these moves money, so every one is the office's alone: a payment can come off a
 // member's balance, which the disciplinary officer has no part in.
 router.get('/member/:memberId/position', requireRole('super_admin', 'admin'), memberFinePosition);
-router.post('/member/:memberId/pay', requireRole('super_admin', 'admin'), payMemberFines);
+router.post('/member/:memberId/pay', requireRole('super_admin', 'admin'), periodLock('body'), payMemberFines);
 router.get('/payments/to-check', requireRole('super_admin', 'admin'), paymentsToCheck);
 router.post('/payments/check', requireRole('super_admin', 'admin'), checkPayments);
-router.post('/:id/settle', requireRole('super_admin', 'admin'), settleFine);
-router.post('/:id/payments/:index/undo', requireRole('super_admin', 'admin'), undoFinePayment);
+router.post('/:id/settle', requireRole('super_admin', 'admin'), periodLock('body'), settleFine);
+router.post('/:id/payments/:index/undo', requireRole('super_admin', 'admin'), periodLock('finePayment'), undoFinePayment);
 router.delete('/:id', requireRole('super_admin', 'admin'), periodLock('fine'), voidFine);
 
 module.exports = router;

@@ -204,9 +204,8 @@ async function changeRole(req, res, next) {
 // stray tap can never change anything while wearing someone else's permissions.
 async function startPreview(req, res, next) {
   try {
-    if (req.previewing) {
-      return res.status(403).json({ message: 'Exit the preview before starting another.' });
-    }
+    // (A preview session carries the borrowed role, so requireRole('super_admin') already refuses
+    // it before this runs: nobody can start a preview from inside one.)
     const role = String(req.body?.role || '');
     if (!ROLES.includes(role) || role === 'super_admin') {
       return res.status(400).json({ message: 'Choose admin, treasurer, secretary or disciplinary.' });

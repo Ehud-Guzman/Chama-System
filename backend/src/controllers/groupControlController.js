@@ -24,7 +24,14 @@ const SWITCH_FIELDS = [
 
 async function saveAndAudit(settings, before, req) {
   settings.updatedBy = req.user._id;
-  await settings.save();
+  try {
+    await settings.save();
+  } catch (err) {
+    // `settings` is the process-wide cached document, already changed in memory. Left there, every
+    // guard would act on a value that was never saved until the cache expired.
+    invalidateSettings();
+    throw err;
+  }
   invalidateSettings();
   await logAudit({
     action: 'update',
@@ -325,7 +332,19 @@ async function exportAuditFull(req, res, next) {
     res.write('  "entries": [\n');
     const cursor = AuditLog.find().sort({ createdAt: 1, _id: 1 }).lean().cursor();
     for await (const entry of cursor) {
-      res.write(`${count ? ',\n' : ''}    ${JSON.stringify(entry)}`);
+      // Honour the socket: a slow connection must slow the read, not fill the process's memory.
+      if (!res.write(`${count ? ',\n' : ''}    ${JSON.stringify(entry)}`)) {
+        await new Promise((resolve) => {
+          const done = () => {
+            res.off('drain', done);
+            res.off('close', done);
+            resolve();
+          };
+          res.once('drain', done);
+          res.once('close', done);
+        });
+        if (res.destroyed) return;
+      }
       count += 1;
     }
     res.write(`\n  ],\n  "count": ${count}\n}\n`);
