@@ -41,6 +41,9 @@ const ExpenseSchema = new Schema(
     // M-Pesa/bank message or receipt line a cashless payment came with, so the
     // evidence lives on the entry it belongs to instead of in a side file.
     note: { type: String, default: '', maxlength: 2000 },
+    // Which minute or resolution approved spending above the group's limit (Settings -> Spending
+    // limit, utils/expenseApproval). Blank on anything under the limit.
+    approvalRef: { type: String, default: '', trim: true, maxlength: 120 },
     loggedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     deleted: { type: Boolean, default: false },
   },

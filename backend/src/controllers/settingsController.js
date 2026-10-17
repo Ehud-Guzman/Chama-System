@@ -47,6 +47,7 @@ async function updateSettings(req, res, next) {
       passbookPhoneCheck,
       twoFactorAuthEnabled,
       reminderMaxPerWeek,
+      expenseApprovalLimit,
       reminderMoneyLimit,
       reminderMoneyLimitWeek,
     } = req.body || {};
@@ -167,6 +168,16 @@ async function updateSettings(req, res, next) {
         return res.status(400).json({ message: 'twoFactorAuthEnabled must be true or false' });
       }
       settings.twoFactorAuthEnabled = twoFactorAuthEnabled;
+    }
+    // The spending limit: above it, an expense needs the minute that approved it. A policy figure, so
+    // out of range is refused rather than quietly changed; 0 switches it off.
+    if (expenseApprovalLimit !== undefined && expenseApprovalLimit !== null && expenseApprovalLimit !== '') {
+      const text = String(expenseApprovalLimit).trim().replace(/^ksh/i, '').replace(/[\s,\u00a0]/g, '');
+      const value = Number(text);
+      if (text === '' || !Number.isFinite(value) || value < 0 || value > 100000000) {
+        return res.status(400).json({ message: 'The spending limit must be an amount of 0 or more (0 means no limit).', field: 'expenseApprovalLimit' });
+      }
+      settings.expenseApprovalLimit = value;
     }
     // How many reminder emails one member may be sent in a contribution week; 0 is no limit.
     // Any admin can set this one: it is how the group talks to its members, not a rule about

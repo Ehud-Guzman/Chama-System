@@ -561,3 +561,53 @@ test('the screen\'s own list endpoint offers the funds that can be spent from', 
   assert.equal(typeof loan.balance, 'number');
 });
 
+
+test('spending above the group’s limit needs the approving minute, and only above it', { skip }, async () => {
+  const Settings = require('../../src/models/Settings');
+  const post = async (body) => json(await call(tokens.treasurer, 'POST', '/api/expenses', body));
+  const patch = async (id, body) => json(await call(tokens.treasurer, 'PATCH', `/api/expenses/${id}`, body));
+  // From the group's total money with the tick, so only the approval rule is under test here.
+  const base = { source: 'group', date: YESTERDAY, confirmOverdraw: true };
+
+  // No limit set: nothing is asked of anybody.
+  const free = await post({ ...base, amount: 9000, description: 'Before any limit' });
+  assert.equal(free.status, 201, JSON.stringify(free.body));
+
+  await Settings.updateOne({ key: 'main' }, { $set: { expenseApprovalLimit: 1000 } });
+  invalidateSettings();
+  try {
+    const small = await post({ ...base, amount: 500, description: 'Small' });
+    assert.equal(small.status, 201);
+    const smallId = small.body.expense._id;
+
+    const refused = await post({ ...base, amount: 1500, description: 'Hall' });
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.needsApproval, true);
+    assert.equal(refused.body.limit, 1000);
+    assert.match(refused.body.message, /Approved in/);
+
+    const approved = await post({ ...base, amount: 1500, description: 'Hall', approvalRef: 'Minutes of 12 Oct, item 4' });
+    assert.equal(approved.status, 201, JSON.stringify(approved.body));
+    assert.equal(approved.body.expense.approvalRef, 'Minutes of 12 Oct, item 4');
+
+    // The screen is told the limit, and each row carries its approval.
+    const summary = await json(await call(tokens.treasurer, 'GET', '/api/expenses/summary'));
+    assert.equal(summary.body.approvalLimit, 1000);
+    assert.equal(summary.body.expenses.find((x) => x.id === approved.body.expense._id).approvalRef, 'Minutes of 12 Oct, item 4');
+
+    // Raising a small one past the limit needs the approval; rewording the approved one does not.
+    assert.equal((await patch(smallId, { amount: 1200, confirmOverdraw: true })).status, 400);
+    assert.equal((await patch(smallId, { amount: 1200, approvalRef: 'Minutes of 19 Oct', confirmOverdraw: true })).status, 200);
+    assert.equal((await patch(approved.body.expense._id, { description: 'Hall hire' })).status, 200);
+    // An old entry that was over the limit before the rule existed can still be reworded, and a
+    // correction that does not raise it is never held up.
+    assert.equal((await patch(free.body.expense._id, { description: 'Reworded, older than the rule' })).status, 200);
+    assert.equal((await patch(free.body.expense._id, { amount: 8000 })).status, 200, 'lowering it is not held up');
+  } finally {
+    await Settings.updateOne({ key: 'main' }, { $set: { expenseApprovalLimit: 0 } });
+    invalidateSettings();
+  }
+
+  // Only the roles that may change settings can set the limit.
+  assert.equal((await json(await call(tokens.treasurer, 'PATCH', '/api/settings', { expenseApprovalLimit: 5000 }))).status, 403);
+});

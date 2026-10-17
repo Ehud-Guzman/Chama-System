@@ -363,3 +363,19 @@ test('money spent out of the group\u2019s total money is not a fund gone overdra
   assert.equal(rows[0].Fund, "The group's total money", 'newest first, and named as such');
 });
 
+
+test('the spending limit asks for the approving minute above it, and only above it', () => {
+  const { approvalProblem } = require('../src/utils/expenseApproval');
+  // Off until a figure is set.
+  assert.equal(approvalProblem({ amount: 9_000_000, approvalRef: '', limit: 0 }), null);
+  // At or under the limit: nothing to ask.
+  assert.equal(approvalProblem({ amount: 50000, approvalRef: '', limit: 50000 }), null);
+  // Over it with nothing written: refused, with words a treasurer can act on.
+  const refused = approvalProblem({ amount: 50001, approvalRef: '  ', limit: 50000 });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.body.needsApproval, true);
+  assert.match(refused.body.message, /Ksh 50,000/);
+  assert.match(refused.body.message, /Approved in/);
+  // Over it with the minute written: fine.
+  assert.equal(approvalProblem({ amount: 80000, approvalRef: 'Minutes of 12 Oct, item 4', limit: 50000 }), null);
+});

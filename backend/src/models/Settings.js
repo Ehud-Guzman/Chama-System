@@ -112,6 +112,9 @@ const SettingsSchema = new Schema(
     // mean off, or the switch is decoration. Their enrolment is kept, not deleted, so turning it
     // back on restores exactly the state it was in - the panel says how many accounts that affects
     // before anybody flips it.
+    // Spending above this needs the minute that approved it written on the expense. 0 = off (the
+    // default: nobody is stopped until the group has chosen a figure).
+    expenseApprovalLimit: { type: Number, default: 0, min: 0 },
     twoFactorAuthEnabled: { type: Boolean, default: false },
     // --- Super-admin controls (the Control Room, controllers/groupControlController) ------------
     // Maintenance mode: while on, every account except the super admin can read but not write,

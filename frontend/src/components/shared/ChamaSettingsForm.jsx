@@ -19,6 +19,7 @@ export default function ChamaSettingsForm() {
   const [logoUrl, setLogoUrl] = useState('');
   const [constitution, setConstitution] = useState('');
   const [weeklyTrackingStartDate, setWeeklyTrackingStartDate] = useState('');
+  const [expenseApprovalLimit, setExpenseApprovalLimit] = useState('');
   const [busy, setBusy] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState('');
@@ -37,6 +38,7 @@ export default function ChamaSettingsForm() {
         setMission(res.data.settings.mission || '');
         setLogoUrl(res.data.settings.logoUrl || '');
         setConstitution(res.data.settings.constitution || '');
+        setExpenseApprovalLimit(String(res.data.settings.expenseApprovalLimit || ''));
         setWeeklyTrackingStartDate(
           res.data.settings.weeklyTrackingStartDate
             ? res.data.settings.weeklyTrackingStartDate.slice(0, 10)
@@ -62,6 +64,7 @@ export default function ChamaSettingsForm() {
         mission,
         constitution,
         weeklyTrackingStartDate: weeklyTrackingStartDate || null,
+        expenseApprovalLimit: expenseApprovalLimit === '' ? 0 : expenseApprovalLimit,
       });
       toast('Settings updated');
     } catch (err) {
@@ -273,6 +276,25 @@ export default function ChamaSettingsForm() {
             type="date"
             value={weeklyTrackingStartDate}
             onChange={(e) => setWeeklyTrackingStartDate(e.target.value)}
+            className="mt-2 h-12 w-full rounded-xl border border-rule px-4 text-sm"
+          />
+        </div>
+
+        <div className="border-t border-rule pt-3">
+          <label htmlFor="expenseApprovalLimit" className="text-sm font-medium">
+            Spending limit (Ksh)
+          </label>
+          <p className="mt-1 text-xs text-muted">
+            Spending above this needs the minute that approved it written on the expense, so the
+            members&rsquo; agreement can be found afterwards. Leave blank, or 0, for no limit.
+          </p>
+          <input
+            id="expenseApprovalLimit"
+            type="text"
+            inputMode="numeric"
+            value={expenseApprovalLimit}
+            onChange={(e) => setExpenseApprovalLimit(e.target.value)}
+            placeholder="e.g. 50,000"
             className="mt-2 h-12 w-full rounded-xl border border-rule px-4 text-sm"
           />
         </div>
