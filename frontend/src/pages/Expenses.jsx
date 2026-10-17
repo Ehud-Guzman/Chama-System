@@ -35,6 +35,7 @@ function emptyForm(date = todayISO()) {
     date,
     description: '',
     reference: '',
+    approvalRef: '',
     note: '',
   };
 }
@@ -128,6 +129,7 @@ export default function Expenses() {
       date: expense.date ? isoDateOf(expense.date) : todayISO(),
       description: expense.description || '',
       reference: expense.reference || '',
+      approvalRef: expense.approvalRef || '',
       note: expense.note || '',
     });
     amountRef.current?.focus();
@@ -182,6 +184,7 @@ export default function Expenses() {
       date: form.date || todayISO(),
       description: form.description.trim(),
       reference: form.reference.trim(),
+      approvalRef: form.approvalRef.trim(),
       note: form.note.trim(),
     };
 
@@ -505,6 +508,26 @@ export default function Expenses() {
               </div>
             </div>
 
+            {/* Only asked for above the group's spending limit, so nobody types an approval for the tea. */}
+            {Number(data?.approvalLimit) > 0 && Number(form.amount) > Number(data.approvalLimit) && (
+              <div className="rounded-lg border border-accent/40 bg-accent/10 p-3">
+                <label htmlFor="expense-approval" className="mb-1 block text-xs font-medium">
+                  Approved in{' '}
+                  <span className="font-normal text-muted">
+                    — above {money(data.approvalLimit)} the members must have agreed it. Which minute or meeting?
+                  </span>
+                </label>
+                <input
+                  id="expense-approval"
+                  type="text"
+                  value={form.approvalRef}
+                  onChange={(e) => set('approvalRef', e.target.value)}
+                  placeholder="e.g. Minutes of 12 Oct, item 4"
+                  className="h-12 w-full rounded-lg border border-rule bg-surface px-3 text-sm"
+                />
+              </div>
+            )}
+
             <div>
               <label htmlFor="expense-note" className="mb-1 block text-xs font-medium">
                 Note{' '}
@@ -655,6 +678,9 @@ export default function Expenses() {
                       {x.reference ? ` · ${x.reference}` : ''}
                     </span>
                   </p>
+                  {x.approvalRef && (
+                    <p className="mt-0.5 text-xs text-muted">Approved in: {x.approvalRef}</p>
+                  )}
                   {x.note && (
                     <p className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-canvas px-3 py-2 text-xs leading-5 text-muted">
                       {x.note}

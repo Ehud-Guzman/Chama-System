@@ -3,6 +3,9 @@ import api, { TOKEN_KEY, REAL_TOKEN_KEY } from '../services/api';
 
 const AuthContext = createContext(null);
 
+// Ends every session this browser holds: the live one and any parked by a preview (services/preview).
+const forgetSessions = () => [TOKEN_KEY, REAL_TOKEN_KEY].forEach((key) => localStorage.removeItem(key));
+
 // While the super admin is looking at the app as another role, the real session is parked under
 // REAL_TOKEN_KEY (services/api) and the preview token takes its place under TOKEN_KEY — see
 // services/preview. Kept in localStorage (not memory) so a refresh in the middle of a preview can
@@ -35,8 +38,7 @@ export function AuthProvider({ children }) {
         // spins down when idle) must not silently boot them to the login
         // screen — the interceptor already handles genuine 401s elsewhere.
         if (err.response?.status === 401) {
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(REAL_TOKEN_KEY);
+          forgetSessions();
         }
       })
       .finally(() => setLoading(false));
@@ -81,8 +83,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REAL_TOKEN_KEY);
+    forgetSessions();
     setUser(null);
     setMaintenance(null);
     setPreview(null);

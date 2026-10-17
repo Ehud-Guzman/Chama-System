@@ -113,6 +113,13 @@ function uploadGroupLogo(buffer) {
   });
 }
 
+// The configured SDK, for the one other thing the group keeps there: its off-server backups
+// (utils/offsiteBackup).
+function cloudinaryClient() {
+  ensureConfigured();
+  return cloudinary;
+}
+
 // Best-effort cleanup — a failed delete must never fail the request that
 // triggered it, it only ever leaves one orphaned image behind.
 async function destroyImage(publicId) {
@@ -128,6 +135,7 @@ async function destroyImage(publicId) {
 
 module.exports = {
   isCloudinaryConfigured,
+  cloudinaryClient,
   uploadMemberPhoto,
   uploadGroupLogo,
   destroyImage,

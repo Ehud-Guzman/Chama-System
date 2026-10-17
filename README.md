@@ -272,6 +272,8 @@ set it to the deployed API URL.
   address, the full export); backups, restore and the scheduled jobs; a permission table generated
   from the real routes; and the danger zone. Every action is in the audit trail, and every one that
   cannot be undone with a tap asks for the password again. See *The Control Room* under Key behaviors.
+- `/admin/loans` — **Loans** (admin, treasurer and super admin): lend to a member out of the loan fund,
+  record repayments, take the last one back, see who is behind. See *Loans* under Key behaviors.
 - `/admin/account` — **My account**, reachable by every signed-in role: change your own password and
   enrol your own second factor. It exists because those two panels otherwise live on the dashboard
   (money roles only) and on `/admin/settings` (admins only), which left the treasurer, secretary and
@@ -783,6 +785,84 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
 - **CSV export:** members and full contribution register, UTF-8 with BOM so Excel opens them
   correctly.
 
+### Loans
+
+Simple loans to members: one amount lent, one **flat** interest rate charged once on it (not per month),
+repaid in equal monthly instalments from the day it was lent (`utils/loanMath`, pure and tested to the
+cent). There are no guarantors.
+
+- **A loan does not have a ledger of its own.** The books already know how to hold money that is out on
+  loan: a fund flagged `isRecoverable` has its payouts counted as *owed back*, not *spent*. So lending
+  records an ordinary expense from that fund (`Loan.expenseId`), and each repayment gives principal back
+  by **reducing that expense** and records only the **interest** as income (a contribution into the loan
+  fund from the borrower). Every figure the group already reads — the fund's balance, what is out on loan,
+  what the group holds — stays right without knowing loans exist. (Booking a repayment as a contribution
+  would count the principal twice in what the group holds; `test/integration/loans.test.js` checks the
+  figures at every step.)
+- **A repayment is split in the proportion the loan was priced in**, worked from the running total paid, so
+  however the borrower pays — in full instalments, odd amounts, all at once — principal and interest add up
+  to exactly what was lent and exactly what was charged. Each repayment records its split. Paying more
+  than is owed is refused with the figure.
+- **Instalments are counted off in order from what has been paid in total.** A loan is *behind* when an
+  instalment has fallen due (East African time) and the total paid does not cover it; the screen, the
+  member's page and the Control Room say by how much and for how many days.
+- **The loan fund is a decision about the books, so it is the admin's.** Flagging a fund as a loan fund
+  changes how money *already* paid out of it is counted (spent → owed back), which raises what the group
+  is shown as holding. The screen shows how much that is and asks for confirmation; nothing changes
+  without it, and the change is in the audit trail.
+- **A loan's expense is the loan's to change.** Editing or deleting it from Expenses is refused (`LOAN_EXPENSE`);
+  record a repayment, take the last one back, or cancel the loan instead. Only the *latest* repayment can
+  be taken back (each split is worked from the total before it); a loan with no repayments can be
+  cancelled, with a reason, and the books forget it.
+- **The same rules as other money.** Lending and repaying go through the closed-books lock and the overdraw
+  check (lending more than the fund holds needs the tick), the spending limit applies to the amount lent
+  (needs the approving minute above it), every step is in the audit trail, and a member with a loan out
+  cannot be resigned without writing down what became of it.
+
+### Spending limit
+
+Settings → *Spending limit* (0 = off, the default). Above it, an expense — and a loan — must say which
+minute approved it, in its own **Approved in** box (separate from the voucher number). Asked for only
+above the limit, on create and when a correction raises an amount past it; shown on the list and in the
+workbook. It does not decide whether the approval was real; it makes sure somebody wrote down which one
+it was, so it can be found in the minutes.
+
+### Emailed statements
+
+*Email statement* on a member's page sends **his own copy** of his statement (the one his passbook
+downloads) as a PDF attachment, for the period chosen beside it, to the address on his record. It is held
+back when there is no usable address or he has switched emails off, capped at three a day per member, and
+every send is in the audit trail. The same renderer as the download makes the PDF, so what is mailed is what
+the office would hand over. Attachments work on SMTP and on all three mail APIs.
+
+### Server errors
+
+Every 5xx and every crash is recorded (`ServerError`, kept 30 days), grouped by what it was and where
+(`/api/members/:id/ledger` is one route, whichever member), counted, and the super admin is **emailed once
+per distinct error per six hours** (inside the existing alert budget; `SECURITY_ALERTS=off` silences it).
+The Control Room lists them. No third-party service and no new dependency. It cannot see a server that is
+down or asleep; for that, point an uptime monitor at `GET /api/health`.
+
+### Running on Render's free tier
+
+A free instance has two properties that matter here: its disk is **wiped on every deploy and restart**,
+and it **sleeps when idle**, so nothing inside the app can promise a 02:00 job. Both are covered:
+
+1. **Off-server backups.** With the Cloudinary variables set (they already are, for photos), each nightly
+   backup is also gzipped and stored privately in Cloudinary (`BACKUP_OFFSITE`, default on), the newest 14
+   kept. The Control Room lists them, downloads one (through the API; the storage is private) and restores
+   from it (the compressed file is read as it is). It says so loudly when the copy is missing, failed, or
+   older than three days. The free plan limits one file to about 10 MB compressed; when the database
+   outgrows that the Control Room names it.
+2. **Waking the server and catching up.** Set `JOBS_CRON_TOKEN` to a long random string, then in
+   [cron-job.org](https://cron-job.org) (free) create two jobs: `GET https://<your-api>/api/health` every
+   10 minutes (keeps the instance awake, which also keeps the in-app timers running), and
+   `GET https://<your-api>/api/cron/tick` with the header `X-Cron-Token: <the secret>` every hour (runs any
+   job that was due in the last day and a half and did not run, once; a paused job is skipped). UptimeRobot
+   on `/api/health` also emails you when the server is down, which nothing inside it can.
+3. A free MongoDB Atlas cluster has no backups of its own, so the off-server copy above is the group's only
+   protection against losing the database. Download one now and then too (Control Room → Backups).
+
 ### The Control Room
 
 The super admin's one screen for seeing the whole system and putting it right (`/admin/control`,
@@ -1007,6 +1087,8 @@ bundle as a foreign-looking URL).
 | `REMINDER_SWEEP_SEND` | `true` lets the weekly sweep actually email members who are behind. Off by default |
 | `REMINDER_SWEEP_MAX` | Most members one sweep will email, default 200 |
 | `FINE_EMAILS` | `off` stops the emails a fine sends on its own — the one that tells a member a fine has been recorded and the one that acknowledges his payment. On by default, because both are triggered by somebody recording or settling a fine, not by a schedule. Needs a mail configuration either way; a member with no address or with email reminders switched off is skipped |
+| `BACKUP_OFFSITE` · `CLOUDINARY_BACKUP_FOLDER` · `OFFSITE_BACKUP_MAX_MB` · `OFFSITE_BACKUP_RETENTION` | Off-server copies of the nightly backup, in the same Cloudinary account as the photos. On whenever Cloudinary is configured (`off` to stop); folder default `chama-system/backups`; largest compressed file default 10 MB (the free plan's limit); newest 14 kept |
+| `JOBS_CRON_TOKEN` | Secret for `GET /api/cron/tick` (header `X-Cron-Token`), the address an outside timer calls to run jobs a sleeping host missed. Unset means the address does not exist. See *Running on Render's free tier* |
 | `RESTORE_MAX_MB` | Largest backup file the Control Room's restore screen will take, default 50. A bigger one is restored from the command line (`npm run restore:backup`) |
 | `SYSTEM_ACTOR_EMAIL` | Which account automatic writes are credited to in the audit trail. Defaults to the earliest super admin |
 

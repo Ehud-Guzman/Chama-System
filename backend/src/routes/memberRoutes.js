@@ -11,6 +11,7 @@ const {
   exportMembers,
   memberStatement,
   memberStatementExcel,
+  emailMemberStatement,
 } = require('../controllers/memberController');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
@@ -25,6 +26,7 @@ router.get('/import-template', importTemplate);
 router.get('/:id', getMember);
 router.get('/:id/statement/excel', memberStatementExcel);
 router.get('/:id/statement', memberStatement);
+router.post('/:id/statement/email', emailMemberStatement);
 
 router.post('/', createMember);
 router.post('/import', importMembers);

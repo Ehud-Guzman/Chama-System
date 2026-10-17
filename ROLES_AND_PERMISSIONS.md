@@ -42,6 +42,7 @@ thing — his verdict on a chapter of the constitution.
   dashboard
 - ✅ **Verify the trail** (`POST /api/audit/verify`): re-checks the whole hash chain and names the first
   entry that does not add up
+- ✅ **Server errors and off-server backups**: every server fault is emailed to the super admin once and listed in the Control Room, and each nightly backup is also kept off the server (see the README)
 - ✅ **The Control Room** (`/admin/control`, super admin only on every route behind it —
   `/api/superadmin/*`):
   - **Overview:** system health (database, email, backups, jobs, the audit chain), a worst-first list of
@@ -84,6 +85,8 @@ thing — his verdict on a chapter of the constitution.
 **Key Permissions:**
 - ✅ Everything the treasurer can do, and everything the secretary can do
 - ✅ Record contributions; create, edit and delete expenses
+- ✅ **Loans** (`/admin/loans`): lend to a member from the loan fund, record repayments, take the last one back, cancel a loan made in error; **choose which fund is the loan fund** (the treasurer cannot: it changes how money already paid out of it is counted); set the **spending limit** in Settings
+- ✅ **Email a member his statement** as a PDF (his own copy, for the period chosen)
 - ✅ Create, settle and void fines (both categories) — all of it in one place, **Fines**
   (a payment is recorded as taken from the member's balance or paid in cash, and only these two
   roles can record one: it can lower what the group holds for a member)
@@ -121,6 +124,8 @@ thing — his verdict on a chapter of the constitution.
 and reports on all of it
 
 **Key Permissions:**
+- ✅ **Loans** (`/admin/loans`): lend, record repayments, take the last one back, cancel a loan made in error, and see who is behind. Cannot choose which fund is the loan fund
+- ✅ **Email a member his statement** as a PDF, for the period chosen
 - ✅ **The finance ledger** (`/admin/finance`): the member list, each member's page, and one
   "Add a log" panel that records weekly contributions, extra payments, tea (Chai) and expenses —
   each with a free-text note for pasting an M-Pesa or bank message
@@ -284,6 +289,10 @@ phone numbers are no longer accepted anywhere on the public side.
 | **Own two-factor** (My account) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Two-factor reset** (another account) | ✅ | C (secretary/disciplinary) | ❌ | ❌ | ❌ |
 | **Group 2FA switch** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Loans** (`/admin/loans`: lend, record repayments, take back, cancel) | R/W | R/W | R/W | ❌ | ❌ |
+| **Choose which fund is the loan fund** | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Spending limit** (Settings) | R/W | R/W | ❌ | ❌ | ❌ |
+| **Email a member his statement** | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Control Room** (health, accounts, locks, restore, preview) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Money in a closed period** | R/W with a reason | R | R | R | ❌ |
 | **Read an audit entry raw / its source address** | ✅ | ❌ | ❌ | ❌ | ❌ |

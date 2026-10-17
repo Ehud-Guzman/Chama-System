@@ -18,6 +18,7 @@ const CATEGORY_BY_ENTITY = {
   Expense: 'money',
   Fine: 'money',
   FineType: 'money',
+  Loan: 'money',
   Member: 'people',
   User: 'people',
   Minute: 'records',
@@ -50,6 +51,7 @@ const WATCHED_FIELDS = {
     'weekAnchorDate',
     'constitution',
     'reminderMaxPerWeek',
+    'expenseApprovalLimit',
     // The super admin's levers (Control Room): each is named when it moves.
     'maintenanceMode',
     'maintenanceMessage',
@@ -85,6 +87,7 @@ const FIELD_LABELS = {
   weekAnchorDate: 'week start',
   chamaName: 'chama name',
   reminderMaxPerWeek: 'reminders per member per week',
+  expenseApprovalLimit: 'spending limit',
   maintenanceMode: 'maintenance mode',
   maintenanceMessage: 'maintenance message',
   lockedThrough: 'books closed through',

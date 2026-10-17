@@ -20,7 +20,7 @@
 //   kills the API is worse than a job that did not run.
 const JobRun = require('../models/JobRun');
 const JobLock = require('../models/JobLock');
-const { parseSchedule, nextRunAt, describeGap } = require('../utils/jobSchedule');
+const { parseSchedule, nextRunAt, previousRunAt, describeGap } = require('../utils/jobSchedule');
 const { logEvent } = require('../middleware/requestLogger');
 const { getOrCreateSettings } = require('../utils/settings');
 
@@ -163,6 +163,53 @@ async function executeJob(definition, { trigger = 'schedule', holder = 'unknown'
   }
 }
 
+// How late a missed run may still be made up. A nightly backup missed at 02:00 is worth taking at
+// 09:00; a weekly reminder sweep missed on Sunday evening is not worth sending on Wednesday.
+const CATCH_UP_WITHIN_MS = 36 * 60 * 60 * 1000;
+
+// Runs whatever should have run and did not.
+//
+// On a host that puts the app to sleep when nobody is using it (Render's free instances), the timer
+// that would have fired at 02:00 never did: the process was not running. Something outside pings the
+// app (controllers/jobController tick), and every ping asks this: for each job, was there a scheduled
+// time in the last day and a half with no run recorded since it? If so, run it now. A job that ran
+// on time, or by hand, since its last scheduled time is left alone, and a paused one is skipped.
+async function runMissedJobs({ now = Date.now() } = {}) {
+  const report = [];
+  for (const definition of DEFINITIONS) {
+    const entry = { job: definition.name, ran: false };
+    try {
+      if (await isPaused(definition.name)) {
+        entry.skipped = 'paused';
+        report.push(entry);
+        continue;
+      }
+      const due = previousRunAt(parseSchedule(definition.schedule()), now);
+      entry.due = new Date(due).toISOString();
+      if (now - due > CATCH_UP_WITHIN_MS) {
+        entry.skipped = 'too long ago to make up';
+        report.push(entry);
+        continue;
+      }
+      const last = await JobRun.findOne({ name: definition.name }).sort({ startedAt: -1 }).lean();
+      if (last && new Date(last.startedAt).getTime() >= due) {
+        entry.skipped = 'already ran since it was due';
+        report.push(entry);
+        continue;
+      }
+      const result = await executeJob(definition, { trigger: 'catch-up', holder: 'catch-up' });
+      entry.ran = !result.skipped;
+      entry.ok = result.ok;
+      if (result.skipped) entry.skipped = result.reason;
+      if (result.error) entry.error = result.error;
+    } catch (err) {
+      entry.error = err.message;
+    }
+    report.push(entry);
+  }
+  return report;
+}
+
 function findDefinition(name) {
   return DEFINITIONS.find((definition) => definition.name === name) || null;
 }
@@ -259,6 +306,7 @@ module.exports = {
   startJobs,
   stopJobs,
   executeJob,
+  runMissedJobs,
   findDefinition,
   listDefinitions,
   acquireLease,

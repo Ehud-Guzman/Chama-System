@@ -321,4 +321,27 @@ function renderMemberStatementPdf(res, profile, chamaName) {
   doc.end();
 }
 
-module.exports = { renderMemberStatementPdf };
+// The same statement as bytes, for attaching to an email. Drives the renderer with a stand-in for the
+// response, so the page that is mailed is the page that is downloaded, not a second implementation.
+function memberStatementPdfBuffer(profile, chamaName) {
+  const { Writable } = require('stream');
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const sink = new Writable({
+      write(chunk, _enc, done) {
+        chunks.push(chunk);
+        done();
+      },
+    });
+    sink.setHeader = () => {};
+    sink.on('finish', () => resolve(Buffer.concat(chunks)));
+    sink.on('error', reject);
+    try {
+      renderMemberStatementPdf(sink, profile, chamaName);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+module.exports = { renderMemberStatementPdf, memberStatementPdfBuffer };

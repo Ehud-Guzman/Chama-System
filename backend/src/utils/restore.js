@@ -67,8 +67,23 @@ function parseBackup(text) {
   return backup;
 }
 
+// A backup file as text, whether it is the plain .json the Backup button downloads or the .json.gz the
+// off-server copy is stored as (utils/offsiteBackup). Told by what is inside, not by the name: a
+// gzip file begins with the bytes 1f 8b, and a file renamed by a download manager is still one.
+function backupText(buffer) {
+  const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  if (bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    try {
+      return require('zlib').gunzipSync(bytes).toString('utf8');
+    } catch (err) {
+      throw new Error(`That file looks compressed but could not be unpacked: ${err.message}`);
+    }
+  }
+  return bytes.toString('utf8');
+}
+
 function readBackupFile(filePath) {
-  return parseBackup(fs.readFileSync(filePath, 'utf8'));
+  return parseBackup(backupText(fs.readFileSync(filePath)));
 }
 
 // What a restore would do, without doing it: for each collection in the file, how many documents
@@ -225,6 +240,7 @@ module.exports = {
   reviveBuffers,
   modelByCollection,
   parseBackup,
+  backupText,
   readBackupFile,
   planRestore,
   applyRestore,

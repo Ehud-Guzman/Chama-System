@@ -22,6 +22,7 @@ const AREAS = {
   '/api/contributions': { label: 'Contributions', note: 'Money members pay in.' },
   '/api/ledger': { label: 'Finance ledger', note: 'Per-member logs, week collection, the week cycle and opening balances.' },
   '/api/expenses': { label: 'Expenses', note: 'Money spent out of the funds.' },
+  '/api/loans': { label: 'Loans', note: 'Lend to a member out of a loan fund, record repayments, see who is behind.' },
   '/api/fines': { label: 'Fines', note: 'Issue, settle, void, export.' },
   '/api/fine-types': { label: 'Fine types', note: 'What each infraction costs.' },
   '/api/types': { label: 'Contribution types', note: 'The funds money is paid into.' },
@@ -34,6 +35,7 @@ const AREAS = {
   '/api/audit': { label: 'Audit trail', note: 'Who changed what, and when. What each role may read is narrowed inside.' },
   '/api/backup': { label: 'Backup', note: 'Download a copy of everything.' },
   '/api/jobs': { label: 'Scheduled jobs', note: 'Nightly backup, audit check, reminder sweep.' },
+  '/api/cron': { label: 'Job pinger', note: 'One secret-protected address an outside timer calls to run the jobs a sleeping host missed.' },
   '/api/superadmin': { label: 'Control Room', note: 'The super admin’s oversight and override tools.' },
   '/api/public': { label: 'Members’ area (no account)', note: 'A member opens his own record with his ID (and phone number, when the group asks for it); he can write one thing — his verdict on a chapter.' },
 };

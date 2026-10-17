@@ -18,6 +18,8 @@ const { logAudit } = require('../utils/auditLogger');
 const { listDefinitions, jobsEnabled } = require('../jobs');
 const { walkChain } = require('../jobs/auditJob');
 const { toEatDateString } = require('../utils/weekCycle');
+const { recentServerErrors } = require('../utils/serverErrors');
+const { loansSnapshot } = require('./loanController');
 
 // The Control Room's first screen: is the system healthy, what needs the super admin's attention,
 // and where do the group's figures stand — in one call, so the page opens on an answer rather than
@@ -80,7 +82,7 @@ async function overview(req, res, next) {
     const settings = await getOrCreateSettings();
     const definitions = listDefinitions();
 
-    const [health, glance, accounts, auditWeek, jobRuns, openReviews, signIns] = await Promise.all([
+    const [health, glance, accounts, auditWeek, jobRuns, openReviews, serverErrors, loans, signIns] = await Promise.all([
       section('Health', async () => {
         const backup = await computeBackupHealth();
         return {
@@ -147,6 +149,8 @@ async function overview(req, res, next) {
       }),
       section('Scheduled jobs', () => latestJobRuns(definitions)),
       section('Reviews', openReviewCount),
+      section('Server errors', () => recentServerErrors()),
+      section('Loans', () => loansSnapshot()),
       section('Sign-ins', async () => {
         const since = new Date(now - DAY_MS);
         const [failedSignIns, failedLookups] = await Promise.all([
@@ -170,6 +174,20 @@ async function overview(req, res, next) {
         flag('high', 'backup-never', 'The books have never been downloaded', health.backup.note, 'data');
       } else if (health.backup?.stale) {
         flag('medium', 'backup-stale', `The last downloaded copy is ${health.backup.daysAgo} days old`, health.backup.note, 'data');
+      }
+      const off = health.backup?.offsite;
+      if (off && !off.enabled) {
+        flag(
+          'medium',
+          'offsite-off',
+          'Backups exist only on this server',
+          'The server\u2019s disk is wiped on every deploy on a free host, so those files are not a safe copy. Set up Cloudinary (the same account as the photos) and each night\u2019s backup is also kept there.',
+          'data'
+        );
+      } else if (off?.lastTry && !off.lastTry.ok) {
+        flag('high', 'offsite-failed', 'The last off-server backup failed', off.lastTry.error || 'See Backups, restore and jobs.', 'data');
+      } else if (off?.enabled && off.lastGoodAt && now - new Date(off.lastGoodAt).getTime() > 3 * DAY_MS) {
+        flag('medium', 'offsite-old', 'The newest off-server backup is more than 3 days old', 'The nightly job may not be running. If the host sleeps, an outside pinger has to call /api/cron/tick (see the README).', 'data');
       }
       if (!health.mail.configured) {
         flag('info', 'mail-off', 'Email is not set up', 'Reminders, fine emails and password-reset links cannot be sent.');
@@ -208,7 +226,21 @@ async function overview(req, res, next) {
       for (const u of staff.filter((x) => x.frozenAt)) {
         flag('info', `frozen-${u._id}`, `${u.name} is frozen`, 'They cannot sign in until you lift it.', 'accounts');
       }
-      const stale = staff.filter((u) => !u.lastLoginAt && now - new Date(u.createdAt).getTime() > 7 * DAY_MS);
+      // Sign-ins are only recorded from when tracking began, which is the earliest time anybody has
+      // on file. An account made before then may have been used for months, so only accounts made
+      // after tracking began can honestly be called unused.
+      const seen = accounts.flatMap((u) => [u.lastLoginAt, u.lastActiveAt]).filter(Boolean).map((d) => new Date(d).getTime());
+      const trackingSince = seen.length ? Math.min(...seen) : null;
+      const stale =
+        trackingSince === null
+          ? []
+          : staff.filter(
+              (u) =>
+                !u.lastLoginAt &&
+                !u.lastActiveAt &&
+                new Date(u.createdAt).getTime() > trackingSince &&
+                now - new Date(u.createdAt).getTime() > 7 * DAY_MS
+            );
       if (stale.length) {
         flag('info', 'never-signed-in', `${stale.length} account${stale.length === 1 ? '' : 's'} created over a week ago, never used`, stale.map((u) => u.name).join(', '), 'accounts');
       }
@@ -233,6 +265,27 @@ async function overview(req, res, next) {
       if (signIns.failedLookups > 0) {
         flag('info', 'failed-lookups', `${signIns.failedLookups} failed passbook ${signIns.failedLookups === 1 ? 'try' : 'tries'} in the last day`, 'Somebody typed an ID or phone number that did not open a record. Audit → Oversight lists them.', '/admin/audit');
       }
+    }
+
+    if (loans && !loans.error && loans.overdueCount > 0) {
+      flag(
+        'medium',
+        'loans-overdue',
+        `${loans.overdueCount} loan${loans.overdueCount === 1 ? ' is' : 's are'} behind on repayments`,
+        `Ksh ${Number(loans.overdueAmount).toLocaleString('en-KE')} is overdue. ` +
+          loans.overdue.map((l) => `${l.member} (${l.daysOverdue} days)`).join(', '),
+        '/admin/loans'
+      );
+    }
+
+    if (serverErrors && !serverErrors.error && serverErrors.distinct > 0) {
+      flag(
+        'medium',
+        'server-errors',
+        `${serverErrors.total} server error${serverErrors.total === 1 ? '' : 's'} in the last ${serverErrors.days} days (${serverErrors.distinct} different)`,
+        'Something failed on the server. Each distinct error was emailed to you once; the list is on this page.',
+        'errors'
+      );
     }
 
     if (settings.maintenanceMode) {
@@ -304,6 +357,8 @@ async function overview(req, res, next) {
               failedLookups: signIns && !signIns.error ? signIns.failedLookups : null,
             }
           : auditWeek,
+      serverErrors,
+      loans,
       controls: controlsOf(settings),
     });
   } catch (err) {

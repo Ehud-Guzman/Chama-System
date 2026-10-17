@@ -12,7 +12,7 @@ const { getOrCreateSettings, invalidateSettings } = require('../utils/settings')
 const { logAudit } = require('../utils/auditLogger');
 const { logEvent } = require('../middleware/requestLogger');
 const { checkPassword, refuseUnlessConfirmed, phraseMatches } = require('../utils/reauth');
-const { parseBackup, planRestore, applyRestore, loadAllModels } = require('../utils/restore');
+const { parseBackup, backupText, planRestore, applyRestore, loadAllModels } = require('../utils/restore');
 const { runBackupJob } = require('../jobs/backupJob');
 
 // Putting data back, and taking it away — the two operations that deserve the most ceremony.
@@ -69,8 +69,10 @@ async function inspectBackup(req, res, next) {
     sweepOldUploads();
 
     let backup;
+    let text;
     try {
-      backup = parseBackup(req.file.buffer.toString('utf8'));
+      text = backupText(req.file.buffer);
+      backup = parseBackup(text);
     } catch (err) {
       return res.status(400).json({ message: err.message });
     }
@@ -79,7 +81,8 @@ async function inspectBackup(req, res, next) {
     const plan = await planRestore({ backup, db });
 
     const uploadId = crypto.randomBytes(12).toString('hex');
-    fs.writeFileSync(uploadPath(uploadId), req.file.buffer);
+    // The unpacked text, so the second step reads the same thing the first one showed.
+    fs.writeFileSync(uploadPath(uploadId), text);
 
     const settings = await getOrCreateSettings();
     const warnings = [];

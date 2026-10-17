@@ -13,6 +13,7 @@ const {
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { withOptionalTransaction } = require('../utils/fineAllocation');
+const { approvalProblem } = require('../utils/expenseApproval');
 
 // Every expense on the books, newest first, with the fund and the person who logged
 // it resolved. One loader, so the list, the report and the export can never be
@@ -190,10 +191,17 @@ function overdrawRefusal(check) {
   };
 }
 
+// A loan's disbursement is the loan's: its amount falls as the member repays, so editing or deleting it
+// here would quietly break the loan. The way to change it is on the Loans screen.
+const LOAN_OWNED = {
+  code: 'LOAN_EXPENSE',
+  message: 'This is the money lent out on a member loan, so it is changed from the Loans screen (record a repayment, or cancel the loan), not here.',
+};
+
 // POST /api/expenses
 async function createExpense(req, res, next) {
   try {
-    const { source, typeId, amount, date, description, reference, note } = req.body || {};
+    const { source, typeId, amount, date, description, reference, note, approvalRef } = req.body || {};
     const from = readSource(source);
 
     let type = null;
@@ -221,6 +229,13 @@ async function createExpense(req, res, next) {
       return res.status(400).json({ message: 'Date cannot be in the future' });
     }
 
+    const approval = approvalProblem({
+      amount: n,
+      approvalRef,
+      limit: (await getOrCreateSettings()).expenseApprovalLimit,
+    });
+    if (approval) return res.status(approval.status).json(approval.body);
+
     // More than the pot holds is allowed, but only when the treasurer has said they know. The
     // check and the save happen together, so another expense cannot land between them.
     const confirmed = req.body?.confirmOverdraw === true;
@@ -237,6 +252,7 @@ async function createExpense(req, res, next) {
             date: when,
             description: String(description || '').trim(),
             reference: String(reference || '').trim(),
+            approvalRef: String(approvalRef || '').trim(),
             note: String(note || '').trim(),
             loggedBy: req.user._id,
           },
@@ -275,11 +291,12 @@ async function updateExpense(req, res, next) {
   try {
     const expense = await Expense.findById(req.params.id);
     if (!expense || expense.deleted) return res.status(404).json({ message: 'Expense not found' });
+    if (expense.loanId) return res.status(409).json(LOAN_OWNED);
     const before = snapshot(expense);
     // What it was charged to and for how much before this correction, for the overdraw check.
     const current = { source: expense.source || 'fund', typeId: expense.typeId, amount: expense.amount };
 
-    const { source, typeId, amount, date, description, reference, note } = req.body || {};
+    const { source, typeId, amount, date, description, reference, note, approvalRef } = req.body || {};
     // The pot can be corrected too: money recorded against a fund that was really the
     // group's own, or the other way round, is the other mistake this form exists to fix.
     if (source !== undefined || typeId !== undefined) {
@@ -314,6 +331,18 @@ async function updateExpense(req, res, next) {
     }
     if (description !== undefined) expense.description = String(description).trim();
     if (reference !== undefined) expense.reference = String(reference).trim();
+    if (approvalRef !== undefined) expense.approvalRef = String(approvalRef).trim();
+    // Raising an expense past the limit needs the approval, whether it arrives with the correction or
+    // is already on it. A correction that does not raise the amount is never held up for an approval
+    // the entry never had: it may be older than the rule.
+    if (amount !== undefined && Number(expense.amount) > Number(current.amount)) {
+      const approval = approvalProblem({
+        amount: expense.amount,
+        approvalRef: expense.approvalRef,
+        limit: (await getOrCreateSettings()).expenseApprovalLimit,
+      });
+      if (approval) return res.status(approval.status).json(approval.body);
+    }
     if (note !== undefined) expense.note = String(note).trim();
 
     // A group purchase names no fund, so what it was for is the only thing that says what
@@ -363,6 +392,7 @@ async function deleteExpense(req, res, next) {
   try {
     const expense = await Expense.findById(req.params.id);
     if (!expense || expense.deleted) return res.status(404).json({ message: 'Expense not found' });
+    if (expense.loanId) return res.status(409).json(LOAN_OWNED);
     const before = snapshot(expense);
 
     expense.deleted = true;
@@ -399,6 +429,8 @@ async function expenseSummary(req, res, next) {
       // meeting means by "the fund". Sent on its own as well as inside `money` so a
       // screen does not have to know its way around the report.
       groupFund: report.money.groupFund,
+      // So the form knows when to ask which minute approved a spend (0 = no limit set).
+      approvalLimit: (await getOrCreateSettings()).expenseApprovalLimit || 0,
       summary: report.summary,
       byFund: report.byFund,
       byMonth: report.byMonth,
@@ -431,6 +463,11 @@ async function exportExpenses(req, res, next) {
 }
 
 module.exports = {
+  // The overdraw check and the lock around it, shared with the loan that lends from a fund.
+  overdrawn,
+  overdrawRefusal,
+  withExpenseLock,
+  ensureLock,
   listExpenses,
   createExpense,
   updateExpense,

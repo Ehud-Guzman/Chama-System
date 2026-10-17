@@ -19,7 +19,7 @@ const JobRunSchema = new Schema(
     // Why it ran. `schedule` is the timer; `manual` is somebody running the npm script or
     // the endpoint, which is the case worth being able to tell apart when a job's effect
     // needs explaining.
-    trigger: { type: String, enum: ['schedule', 'manual', 'startup'], default: 'schedule' },
+    trigger: { type: String, enum: ['schedule', 'manual', 'startup', 'catch-up'], default: 'schedule' },
     ok: { type: Boolean, required: true },
     startedAt: { type: Date, required: true },
     finishedAt: { type: Date, required: true },

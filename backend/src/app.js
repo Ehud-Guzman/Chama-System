@@ -14,6 +14,8 @@ const { seedDisciplinaryFineTypes } = require('./utils/seedDisciplinaryFineTypes
 const { seedLedgerTypes, seedGroupFunds } = require('./utils/ledgerTypes');
 const { ensureDocumentCategories } = require('./utils/documentCategories');
 const { backfillDeactivatedAt } = require('./utils/backfillDeactivatedAt');
+const { backfillLastActive } = require('./utils/backfillLastActive');
+const { recordServerError } = require('./utils/serverErrors');
 const { maintenanceGuard } = require('./middleware/maintenance');
 const { membersAreaOpen } = require('./middleware/membersArea');
 
@@ -70,6 +72,8 @@ const backupRoutes = require('./routes/backupRoutes');
 const jobRoutes = require('./routes/jobRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const superAdminRoutes = require('./routes/superAdminRoutes');
+const loanRoutes = require('./routes/loanRoutes');
+const { tick } = require('./controllers/jobController');
 const app = express();
 
 // -----------------------------------------------------------------------------
@@ -269,6 +273,10 @@ app.get(
 // route has already ended its chain by the time this is reached.
 app.use('/api', apiLimiter);
 
+// An outside pinger's way to run the jobs a sleeping host missed. Secret-protected, and absent
+// unless JOBS_CRON_TOKEN is set.
+app.get('/api/cron/tick', tick);
+
 // Maintenance mode: reads still work, writes stop for everyone but the super admin.
 app.use('/api', maintenanceGuard);
 
@@ -292,6 +300,9 @@ app.use('/api/fine-types', fineTypeRoutes);
 app.use('/api/fines', fineRoutes);
 
 app.use('/api/expenses', expenseRoutes);
+
+// Loans to members, out of a loan fund.
+app.use('/api/loans', loanRoutes);
 
 app.use('/api/minutes', minuteRoutes);
 
@@ -353,6 +364,15 @@ if (require.main === module) {
           if (result.filled.length > 0) logEvent('deactivated_at_backfilled', { count: result.filled.length });
         })
         .catch((err) => logEvent('deactivated_at_backfill_failed', { error: err.message }, 'error'))
+    )
+    // Accounts in use before sign-ins were recorded get a "last seen" from the audit trail, so the
+    // Control Room does not call a daily user "no sign-in recorded". Idempotent, never fatal.
+    .then(() =>
+      backfillLastActive()
+        .then((result) => {
+          if (result.filled.length > 0) logEvent('last_active_backfilled', { count: result.filled.length });
+        })
+        .catch((err) => logEvent('last_active_backfill_failed', { error: err.message }, 'error'))
     )
     // The scheduled work: the nightly backup, the weekly audit check and the reminder sweep.
     // Started last, after the seeds, so a job can never run against a half-initialised database.
@@ -422,13 +442,20 @@ if (require.main === module) {
   // A promise that rejects outside a route (a timer, a fire-and-forget write) has
   // nowhere to return its error. Log it with enough context to act on, then let
   // the platform restart a clean process.
+  // Recorded (and the super admin emailed) before the process goes, but never for longer than three
+  // seconds: a crash that waits on a database that is the thing that failed would never exit.
+  const recordThenExit = (err, kind) =>
+    Promise.race([recordServerError({ err, kind }), new Promise((resolve) => setTimeout(resolve, 3000))]).finally(() =>
+      process.exit(1)
+    );
+
   process.on('unhandledRejection', (reason) => {
     logEvent(
       'unhandled_rejection',
       { error: reason instanceof Error ? reason.message : String(reason) },
       'error'
     );
-    process.exit(1);
+    recordThenExit(reason instanceof Error ? reason : new Error(String(reason)), 'unhandled_rejection');
   });
   process.on('uncaughtException', (err) => {
     logEvent(
@@ -436,7 +463,7 @@ if (require.main === module) {
       { error: err.message, stack: String(err.stack || '').split('\n').slice(0, 4).join(' | ') },
       'error'
     );
-    process.exit(1);
+    recordThenExit(err, 'uncaught_exception');
   });
 
   boot.catch((err) => {

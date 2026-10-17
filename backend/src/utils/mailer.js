@@ -95,13 +95,16 @@ function secureForPort(port) {
 //
 // The builders are pure functions taking everything they need as arguments, which is what lets
 // every shape be tested without an account, a key or a network.
+// The providers take a file as base64 text inside the JSON.
+const toBase64 = (content) => (Buffer.isBuffer(content) ? content : Buffer.from(String(content))).toString('base64');
+
 const API_PROVIDERS = {
   brevo: {
     label: 'Brevo',
     // A cheap authenticated call that answers "is this key real?" without sending anything.
     // This is what verifyMail asks on this road, before a batch trusts it.
     verify: (key) => ({ url: 'https://api.brevo.com/v3/account', headers: { 'api-key': key } }),
-    send: ({ key, from, to, subject, text, html }) => ({
+    send: ({ key, from, to, subject, text, html, attachments }) => ({
       url: 'https://api.brevo.com/v3/smtp/email',
       headers: { 'api-key': key },
       body: {
@@ -110,6 +113,9 @@ const API_PROVIDERS = {
         subject,
         htmlContent: html,
         textContent: text,
+        ...(attachments?.length
+          ? { attachment: attachments.map((a) => ({ name: a.filename, content: toBase64(a.content) })) }
+          : {}),
       },
     }),
   },
@@ -120,11 +126,20 @@ const API_PROVIDERS = {
       url: 'https://api.resend.com/domains',
       headers: { Authorization: `Bearer ${key}` },
     }),
-    send: ({ key, rawFrom, to, subject, text, html }) => ({
+    send: ({ key, rawFrom, to, subject, text, html, attachments }) => ({
       url: 'https://api.resend.com/emails',
       headers: { Authorization: `Bearer ${key}` },
       // Resend takes the whole From header as one string, which is what MAIL_FROM already is.
-      body: { from: rawFrom, to: [to], subject, html, text },
+      body: {
+        from: rawFrom,
+        to: [to],
+        subject,
+        html,
+        text,
+        ...(attachments?.length
+          ? { attachments: attachments.map((a) => ({ filename: a.filename, content: toBase64(a.content) })) }
+          : {}),
+      },
     }),
   },
 
@@ -134,7 +149,7 @@ const API_PROVIDERS = {
       url: 'https://api.sendgrid.com/v3/scopes',
       headers: { Authorization: `Bearer ${key}` },
     }),
-    send: ({ key, from, to, subject, text, html }) => ({
+    send: ({ key, from, to, subject, text, html, attachments }) => ({
       url: 'https://api.sendgrid.com/v3/mail/send',
       headers: { Authorization: `Bearer ${key}` },
       body: {
@@ -145,6 +160,16 @@ const API_PROVIDERS = {
           { type: 'text/plain', value: text },
           { type: 'text/html', value: html },
         ],
+        ...(attachments?.length
+          ? {
+              attachments: attachments.map((a) => ({
+                content: toBase64(a.content),
+                filename: a.filename,
+                type: a.contentType || 'application/octet-stream',
+                disposition: 'attachment',
+              })),
+            }
+          : {}),
       },
     }),
   },
@@ -309,7 +334,7 @@ async function apiCall({ url, headers, body, label }) {
 
 // One message, posted to the provider. Returns the same shape the SMTP road returns, so that
 // nothing downstream can tell the two apart — which is the point of having two.
-async function sendViaApi(provider, { to, subject, html, text }) {
+async function sendViaApi(provider, { to, subject, html, text, attachments }) {
   const request = provider.send({
     key: process.env.MAIL_API_KEY,
     from: mailFrom(),
@@ -318,6 +343,7 @@ async function sendViaApi(provider, { to, subject, html, text }) {
     subject,
     text,
     html,
+    attachments,
   });
 
   const { payload } = await apiCall({ ...request, label: provider.label });
@@ -428,7 +454,8 @@ async function getTransporter() {
 
 // `to` is deliberately the only caller-supplied recipient — every send in this
 // app is triggered by an admin from the reminders page, never by member input.
-async function sendMail({ to, subject, html, text }) {
+// `attachments` is [{ filename, content: Buffer, contentType }] and goes out on every road.
+async function sendMail({ to, subject, html, text, attachments }) {
   // Which road is decided here, and only here: everything above this line — the reminders
   // screen and the weekly sweep — asks "send this message" and gets told what happened,
   // without knowing whether it left over SMTP or HTTPS.
@@ -439,7 +466,7 @@ async function sendMail({ to, subject, html, text }) {
   mailFrom();
 
   if (transport.kind === 'api') {
-    return sendViaApi(transport.provider, { to, subject, html, text });
+    return sendViaApi(transport.provider, { to, subject, html, text, attachments });
   }
 
   // getTransporter refuses with the not-configured 503 itself, so every sender says
@@ -452,6 +479,7 @@ async function sendMail({ to, subject, html, text }) {
     subject,
     text,
     html,
+    attachments,
   });
 }
 
@@ -857,6 +885,35 @@ function buildPasswordResetEmail({ chamaName, name, link, minutes = 30 }) {
 // look. Plain on purpose, like the password-reset message: what happened, then where to look.
 // The lines are built from names and figures the system wrote, but the sign-in ones contain text a
 // stranger typed, so everything is escaped.
+// A member's own statement, with the PDF attached. Written for the member: no figures in the body
+// (they are in the attachment, which is the document that can be checked), and a plain line saying
+// who to speak to if it looks wrong.
+function buildStatementEmail({ chamaName, member, periodLabel }) {
+  const group = chamaName || CHAMA_NAME;
+  const firstName = String(member?.name || '').split(' ')[0] || 'member';
+  const covers = periodLabel ? `It covers: ${periodLabel}.` : 'It covers everything up to today.';
+  const lines = [
+    `Hi ${firstName},`,
+    '',
+    `Your statement from ${group} is attached as a PDF.`,
+    covers,
+    '',
+    'If anything on it does not match your own record, please speak to the office before',
+    'the next meeting so it can be put right.',
+    '',
+    'Thank you,',
+    group,
+  ];
+  const html = `
+  <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.6;color:#1b2b24">
+    <p>Hi ${escapeHtml(firstName)},</p>
+    <p>Your statement from <strong>${escapeHtml(group)}</strong> is attached as a PDF.<br>${escapeHtml(covers)}</p>
+    <p>If anything on it does not match your own record, please speak to the office before the next meeting so it can be put right.</p>
+    <p>Thank you,<br>${escapeHtml(group)}</p>
+  </div>`;
+  return { subject: `${group}: your statement`, text: lines.join('\n'), html };
+}
+
 function buildSecurityAlertEmail({ chamaName, subject, lines = [] }) {
   const group = chamaName || CHAMA_NAME;
   const text = [...lines, '', group].join('\n');
@@ -869,6 +926,9 @@ function buildSecurityAlertEmail({ chamaName, subject, lines = [] }) {
 }
 
 module.exports = {
+  // The providers' payload builders, for the test: every shape is checked with no account or network.
+  __apiProviders: API_PROVIDERS,
+  buildStatementEmail,
   buildSecurityAlertEmail,
   cleanEmail,
   isValidEmail,

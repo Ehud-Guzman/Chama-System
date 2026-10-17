@@ -14,6 +14,7 @@ import IssueFineForm from '../components/members/IssueFineForm';
 import PayFinesModal from '../components/fines/PayFinesModal';
 import MessageMemberPanel from '../components/members/MessageMemberPanel';
 import FinesPanel from '../components/shared/FinesPanel';
+import MemberLoans from '../components/members/MemberLoans';
 import LedgerWalk from '../components/shared/LedgerWalk';
 import WeeklyScheduleTable from '../components/shared/WeeklyScheduleTable';
 import Loader from '../components/shared/Loader';
@@ -119,6 +120,19 @@ export default function MemberDetail() {
       toast(apiMessage(err), 'error');
     } finally {
       setBusy(false);
+    }
+  }
+
+  const [emailing, setEmailing] = useState(false);
+  async function emailStatement() {
+    setEmailing(true);
+    try {
+      const res = await api.post(`/api/members/${id}/statement/email${statementPeriod.query}`, {}, { timeout: 60000 });
+      toast(`Statement sent to ${res.data.to}`);
+    } catch (err) {
+      toast(apiMessage(err, 'Could not send the statement'), 'error');
+    } finally {
+      setEmailing(false);
     }
   }
 
@@ -648,6 +662,17 @@ async function exportStatementExcel() {
             Statement Excel
           </button>
 
+          {/* His own copy, as a PDF, to the address on his record, for the period chosen below. */}
+          <button
+            type="button"
+            onClick={emailStatement}
+            disabled={emailing || !member.email}
+            title={member.email ? `Send to ${member.email}` : 'There is no email address on his record'}
+            className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium disabled:opacity-50"
+          >
+            {emailing ? 'Sending…' : 'Email statement'}
+          </button>
+
           {/* Both statement buttons download whatever period is chosen here. The picker sits in the
               action row rather than under the figures because it is an argument to those two
               buttons, not a fact about the member. Its width is the grid column's: a minimum
@@ -764,6 +789,8 @@ async function exportStatementExcel() {
               <FinesPanel fines={fines} onVoid={setVoidingFine} onSettle={setSettlingFine} />
             )}
           </div>
+
+          <MemberLoans memberId={member._id} />
 
           <MessageMemberPanel member={member} pendingFinesTotal={fines?.totalOwed || 0} />
         </section>

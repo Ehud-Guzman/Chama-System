@@ -81,7 +81,7 @@ export default function ControlOverview({ overview, reload }) {
     }
   }
 
-  const { health, attention, glance, audit } = overview;
+  const { health, attention, glance, audit, serverErrors } = overview;
 
   return (
     <div className="space-y-4">
@@ -148,6 +148,17 @@ export default function ControlOverview({ overview, reload }) {
                     {timeAgo(health.backup.lastDownload?.at)}
                     {health.backup.stale && <Pill tone="warn">Old</Pill>}
                   </>
+                )}
+              </HealthRow>
+              <HealthRow label="Off-server copy">
+                {!health.backup.offsite?.enabled ? (
+                  <Pill tone="warn">Not set up</Pill>
+                ) : health.backup.offsite.lastTry && !health.backup.offsite.lastTry.ok ? (
+                  <Pill tone="bad">Last try failed</Pill>
+                ) : health.backup.offsite.lastGoodAt ? (
+                  <>Kept {timeAgo(health.backup.offsite.lastGoodAt)}</>
+                ) : (
+                  <span className="text-muted">Not made yet</span>
                 )}
               </HealthRow>
               <HealthRow label="On the server">
@@ -246,6 +257,36 @@ export default function ControlOverview({ overview, reload }) {
           )}
         </Panel>
       </div>
+
+      <Panel
+        id="errors"
+        title="Server errors"
+        intro="When the server itself fails (not a mistyped form: a fault). Each distinct error is emailed to you once, then counted here."
+      >
+        {!serverErrors || serverErrors.error ? (
+          <Unreadable part={serverErrors || { error: 'Server errors could not be read.' }} />
+        ) : serverErrors.distinct === 0 ? (
+          <p className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-medium text-primary">
+            No server errors in the last {serverErrors.days} days.
+          </p>
+        ) : (
+          <ul className="divide-y divide-rule rounded-lg border border-rule">
+            {serverErrors.recent.map((item) => (
+              <li key={item.id} className="px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="min-w-0 flex-1 text-sm font-semibold">{item.message}</p>
+                  <Pill tone="bad">{item.count}×</Pill>
+                </div>
+                <p className="mt-0.5 break-all text-xs leading-5 text-muted">
+                  {item.kind === 'request' ? `${item.method} ${item.route}` : item.kind.replace('_', ' ')} · last{' '}
+                  {timeAgo(item.lastAt)}
+                  {item.requestId ? ` · request ${item.requestId}` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
 
       <Panel title="The group at a glance" intro="Read straight off the books, with no role filters.">
         {glance.error ? (

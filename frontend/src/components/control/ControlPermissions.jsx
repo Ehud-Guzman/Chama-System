@@ -73,7 +73,7 @@ export default function ControlPermissions() {
       title="Who can do what"
       intro="Generated from the server's own rules, so it cannot drift from what is actually enforced. Tap an area to see every endpoint behind it."
     >
-      <div className="scroll-x -mx-1 rounded-lg border border-rule">
+      <div className="overflow-x-auto -mx-1 rounded-lg border border-rule">
         <table className="w-full min-w-[34rem] text-left text-sm">
           <thead>
             <tr className="border-b border-rule bg-canvas text-xs uppercase tracking-wider text-muted">

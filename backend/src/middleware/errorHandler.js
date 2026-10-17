@@ -1,4 +1,5 @@
 const { logEvent } = require('./requestLogger');
+const { recordServerError } = require('../utils/serverErrors');
 
 function notFound(req, res) {
   res.status(404).json({ message: 'Not found' });
@@ -50,6 +51,9 @@ function errorHandler(err, req, res, next) {
       },
       'error'
     );
+    // Grouped, counted and emailed to the super admin (utils/serverErrors). Not awaited: it can
+    // never slow down or fail the answer that is already on its way.
+    void recordServerError({ err, req, kind: 'request', status });
   }
 
   // `err.expose` marks a message written for a person to read (a rejected upload,

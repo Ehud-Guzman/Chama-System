@@ -553,6 +553,211 @@ test('a merge that cannot save one of the records moves nothing', { skip }, asyn
   assert.equal((await Member.findById(dupe._id)).active, true);
 });
 
+test('an account used before sign-ins were recorded gets a last-seen from the audit trail, and no more', { skip }, async () => {
+  const { backfillLastActive } = require('../../src/utils/backfillLastActive');
+  const old = await User.create({ name: 'Old Hand', email: 'oldhand@example.com', password: 'x', role: 'treasurer' });
+  const idle = await User.create({ name: 'Idle Ivy', email: 'idle@example.com', password: 'x', role: 'secretary' });
+  const entry = await AuditLog.create({
+    action: 'update', entityType: 'Member', entityId: old._id, performedBy: old._id, createdAt: new Date('2026-09-01T10:00:00Z'),
+  });
+  await AuditLog.updateOne({ _id: entry._id }, { $set: { createdAt: new Date('2026-09-01T10:00:00Z') } }, { timestamps: false });
+
+  const result = await backfillLastActive();
+  assert.ok(result.filled.some((f) => String(f.id) === String(old._id)));
+  assert.equal((await User.findById(old._id)).lastActiveAt.toISOString(), '2026-09-01T10:00:00.000Z');
+  assert.equal((await User.findById(idle._id)).lastActiveAt, null, 'nothing is invented for an account that never did anything');
+  // Running it again moves nothing.
+  const again = await backfillLastActive();
+  assert.ok(!again.filled.some((f) => String(f.id) === String(old._id)));
+});
+
+test('a server fault is recorded once per kind of fault, counted, and shown in the Control Room', { skip }, async () => {
+  const { recordServerError } = require('../../src/utils/serverErrors');
+  const ServerError = require('../../src/models/ServerError');
+  const { errorHandler } = require('../../src/middleware/errorHandler');
+  const mk = (id) => ({ id: 'req-' + id, method: 'GET', originalUrl: '/api/members/66f0c2a1b3d4e5f607182930/ledger?x=1' });
+
+  // The same fault on two different members is one fault.
+  await recordServerError({ err: new Error('boom: ledger could not be built'), req: mk(1) });
+  await recordServerError({
+    err: new Error('boom: ledger could not be built'),
+    req: { ...mk(2), originalUrl: '/api/members/77a1d2e3f4a5b6c7d8e9f001/ledger' },
+  });
+  await recordServerError({ err: new Error('a different failure'), req: mk(3) });
+  const rows = await ServerError.find().sort({ count: -1 });
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].count, 2);
+  assert.equal(rows[0].route, '/api/members/:id/ledger');
+  assert.ok(rows[0].notifiedAt, 'the super admin is told once (an email that cannot be sent is still the one attempt)');
+  const before = rows[0].notifiedAt.getTime();
+  await recordServerError({ err: new Error('boom: ledger could not be built'), req: mk(4) });
+  assert.equal((await ServerError.findById(rows[0]._id)).notifiedAt.getTime(), before, 'and not again for six hours');
+
+  // The error handler records a 5xx and does not record a 4xx.
+  const res = { status() { return this; }, json() { return this; } };
+  errorHandler(Object.assign(new Error('handler boom'), { status: 500 }), { ...mk(5), path: '/x' }, res, () => {});
+  errorHandler(Object.assign(new Error('not found'), { status: 404 }), { ...mk(6), path: '/y' }, res, () => {});
+  await sleep(300);
+  assert.ok(await ServerError.findOne({ message: 'handler boom' }));
+  assert.equal(await ServerError.countDocuments({ message: 'not found' }), 0);
+
+  const overview = await call('GET', '/api/superadmin/overview', { token: tokens.super });
+  assert.ok(overview.body.serverErrors.distinct >= 3, JSON.stringify(overview.body.serverErrors));
+  assert.ok(overview.body.attention.some((a) => a.id === 'server-errors'));
+});
+
+test('each nightly backup is also kept off the server, compressed, and a failure there never fails the backup', { skip }, async () => {
+  const zlib = require('node:zlib');
+  const http = require('node:http');
+  const offsite = require('../../src/utils/offsiteBackup');
+  const { runBackupJob } = require('../../src/jobs/backupJob');
+
+  const store = new Map();
+  const uploads = [];
+  let failNext = false;
+  // A tiny stand-in for the storage's delivery address, so the download path is exercised for real.
+  const fileServer = http.createServer((req, res) => {
+    const id = decodeURIComponent(req.url.slice(1));
+    const hit = store.get(id);
+    if (!hit) { res.statusCode = 404; return res.end(); }
+    res.end(hit.bytes);
+  });
+  await new Promise((resolve) => fileServer.listen(0, '127.0.0.1', resolve));
+  const fake = {
+    uploader: {
+      async upload(file, opts) {
+        if (failNext) throw new Error('Cloudinary is having a bad day');
+        const bytes = fs.readFileSync(file);
+        uploads.push({ opts, bytes });
+        store.set(opts.public_id, { bytes, public_id: opts.public_id, bytes_len: bytes.length, created_at: new Date().toISOString() });
+        return {};
+      },
+    },
+    api: {
+      async resources() {
+        return { resources: [...store.values()].map((v) => ({ public_id: v.public_id, bytes: v.bytes_len, created_at: v.created_at })) };
+      },
+      async delete_resources(ids) { ids.forEach((id) => store.delete(id)); },
+    },
+    utils: { private_download_url: (id) => 'http://127.0.0.1:' + fileServer.address().port + '/' + encodeURIComponent(id) },
+  };
+  offsite.setClientForTests(fake);
+  process.env.OFFSITE_BACKUP_RETENTION = '2';
+  try {
+    const run = await runBackupJob({ trigger: 'manual' });
+    assert.equal(run.offsite.ok, true);
+    assert.match(run.offsite.publicId, /^chama-system\/backups\/chama-backup-.*\.json\.gz$/);
+    // Private, raw, never overwritten.
+    assert.equal(uploads[0].opts.type, 'authenticated');
+    assert.equal(uploads[0].opts.resource_type, 'raw');
+    assert.equal(uploads[0].opts.overwrite, false);
+    // What was stored is the real backup, compressed.
+    const text = zlib.gunzipSync(uploads[0].bytes).toString('utf8');
+    assert.equal(JSON.parse(text).format, 'chama-system-backup');
+
+    // It is kept to the newest two.
+    await sleep(1100);
+    await runBackupJob({ trigger: 'manual' });
+    await sleep(1100);
+    await runBackupJob({ trigger: 'manual' });
+    assert.equal(store.size, 2);
+
+    // A failure off the server is reported, and the backup itself still happened.
+    failNext = true;
+    const failed = await runBackupJob({ trigger: 'manual' });
+    assert.equal(failed.offsite.ok, false);
+    assert.match(failed.offsite.error, /bad day/);
+    assert.ok(failed.file, 'the local backup was still written');
+    failNext = false;
+
+    // A safety copy before a restore uploads but never prunes the others away.
+    const before = store.size;
+    await sleep(1100);
+    await runBackupJob({ trigger: 'pre-restore', prune: false });
+    assert.equal(store.size, before + 1);
+
+    // The super admin can list and download them, and nobody else can.
+    const list = await call('GET', '/api/superadmin/offsite', { token: tokens.super });
+    assert.equal(list.body.enabled, true);
+    assert.equal(list.body.files.length, store.size);
+    assert.equal((await call('GET', '/api/superadmin/offsite', { token: tokens.admin })).status, 403);
+    const id = list.body.files[0].id;
+    const dl = await fetch(base + '/api/superadmin/offsite/download?id=' + encodeURIComponent(id), { headers: { Authorization: 'Bearer ' + tokens.super } });
+    assert.equal(dl.status, 200);
+    const got = Buffer.from(await dl.arrayBuffer());
+    assert.equal(JSON.parse(zlib.gunzipSync(got).toString('utf8')).format, 'chama-system-backup');
+    // Only the group's own folder can be asked for.
+    const stray = await fetch(base + '/api/superadmin/offsite/download?id=' + encodeURIComponent('somebody-elses/file.gz'), { headers: { Authorization: 'Bearer ' + tokens.super } });
+    assert.equal(stray.status, 400);
+
+    // And the compressed file restores as it is.
+    const form = new FormData();
+    form.append('file', new Blob([got]), 'backup.json.gz');
+    const seen = await fetch(base + '/api/superadmin/restore/inspect', { method: 'POST', headers: { Authorization: 'Bearer ' + tokens.super }, body: form });
+    assert.equal(seen.status, 200);
+    assert.ok((await seen.json()).plan.some((row) => row.name === 'members'));
+
+    // The Control Room says so, once the job has run through its own door (which records it).
+    assert.equal((await call('POST', '/api/jobs/nightly-backup/run', { token: tokens.super })).status, 200);
+    const overview = await call('GET', '/api/superadmin/overview', { token: tokens.super });
+    assert.equal(overview.body.health.backup.offsite.enabled, true);
+    assert.ok(overview.body.health.backup.offsite.lastGoodAt);
+  } finally {
+    offsite.setClientForTests(null);
+    delete process.env.OFFSITE_BACKUP_RETENTION;
+    fileServer.close();
+  }
+  // With nothing set up, the Control Room names it as something to fix.
+  const bare = await call('GET', '/api/superadmin/overview', { token: tokens.super });
+  assert.equal(bare.body.health.backup.offsite.enabled, false);
+  assert.ok(bare.body.attention.some((a) => a.id === 'offsite-off'));
+});
+
+test('an outside pinger runs the jobs a sleeping host missed, once, and only with the secret', { skip }, async () => {
+  const JobRun = require('../../src/models/JobRun');
+  // Nothing in this test may email anybody, whatever the machine it runs on has configured.
+  const saved = { smtp: process.env.SMTP_HOST, from: process.env.MAIL_FROM, key: process.env.MAIL_API_KEY };
+  delete process.env.SMTP_HOST;
+  delete process.env.MAIL_FROM;
+  delete process.env.MAIL_API_KEY;
+
+  const tick = (headers = {}) => call('GET', '/api/cron/tick', { headers });
+  try {
+    delete process.env.JOBS_CRON_TOKEN;
+    assert.equal((await tick()).status, 404, 'without a secret the door does not exist');
+
+    process.env.JOBS_CRON_TOKEN = 'a-long-secret-for-the-test-only';
+    assert.equal((await tick()).status, 401);
+    assert.equal((await tick({ 'X-Cron-Token': 'wrong' })).status, 401);
+
+    await JobRun.deleteMany({});
+    const first = await tick({ 'X-Cron-Token': process.env.JOBS_CRON_TOKEN });
+    assert.equal(first.status, 200);
+    const backup = first.body.jobs.find((j) => j.job === 'nightly-backup');
+    assert.equal(backup.ran, true, 'the missed nightly backup is made up');
+    assert.equal((await JobRun.findOne({ name: 'nightly-backup' })).trigger, 'catch-up');
+
+    const second = await tick({ Authorization: 'Bearer ' + process.env.JOBS_CRON_TOKEN });
+    assert.equal(second.status, 200);
+    const again = second.body.jobs.find((j) => j.job === 'nightly-backup');
+    assert.equal(again.ran, false);
+    assert.match(again.skipped, /already ran/);
+
+    // A paused job is left alone.
+    await JobRun.deleteMany({});
+    await call('PUT', '/api/superadmin/jobs/nightly-backup', { token: tokens.super, body: { paused: true } });
+    invalidateSettings();
+    const paused = await tick({ 'X-Cron-Token': process.env.JOBS_CRON_TOKEN });
+    assert.equal(paused.body.jobs.find((j) => j.job === 'nightly-backup').skipped, 'paused');
+    await call('PUT', '/api/superadmin/jobs/nightly-backup', { token: tokens.super, body: { paused: false } });
+  } finally {
+    delete process.env.JOBS_CRON_TOKEN;
+    if (saved.smtp) process.env.SMTP_HOST = saved.smtp;
+    if (saved.from) process.env.MAIL_FROM = saved.from;
+    if (saved.key) process.env.MAIL_API_KEY = saved.key;
+  }
+});
+
 test('closing the members’ area stops members and leaves the front page and the office alone', { skip }, async () => {
   const bad = await call('PUT', '/api/superadmin/switches', { token: tokens.super, body: { membersAreaEnabled: 'no' } });
   assert.equal(bad.status, 400);

@@ -21,12 +21,14 @@ const { computeMemberLedger } = require('../utils/memberLedger');
 // The working behind a member's figure: the same arithmetic, one step at a time (utils/ledgerWalk).
 const { buildLedgerWalk } = require('../utils/ledgerWalk');
 const { nonPersonalTypeIds } = require('../utils/personalTypes');
-const { renderMemberStatementPdf } = require('../utils/memberStatementPdf');
+const { renderMemberStatementPdf, memberStatementPdfBuffer } = require('../utils/memberStatementPdf');
 const { memberStatementSheets } = require('../utils/memberStatement');
 const { resolvePeriod, computePeriodBlock } = require('../utils/statementPeriod');
 const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
-const { cleanEmail, isValidEmail } = require('../utils/mailer');
+const { cleanEmail, isValidEmail, assertMailConfigured, sendMail, buildStatementEmail, mailFailure } = require('../utils/mailer');
+const AuditLog = require('../models/AuditLog');
+const { activeLoanOwedBy } = require('./loanController');
 const { destroyImage } = require('../utils/cloudinary');
 const { nextOfKinList, nextOfKinListError } = require('../utils/nextOfKin');
 const { credentialChangeRefused } = require('../utils/memberCredentials');
@@ -769,14 +771,18 @@ async function resignMember(req, res, next) {
     let settlement = String(req.body?.settlement || '').trim();
     // A payout is itself the account of what became of his money.
     if (payout > 0 && settlement.length < 3) settlement = `Paid out ${fmtKsh(payout)}`;
-    if ((held > 0 || owed > 0) && settlement.length < 3) {
+    // A loan still out is the third thing that does not go away when he does.
+    const loanOwed = (await activeLoanOwedBy(member._id)).outstanding;
+    if ((held > 0 || owed > 0 || loanOwed > 0) && settlement.length < 3) {
       const fmt = (n) => `Ksh ${Number(n).toLocaleString('en-KE')}`;
       return res.status(409).json({
         message:
-          `He still holds ${fmt(held)} and owes ${fmt(owed)} in fines. ` +
-          'Write down how that was settled (paid out, kept, taken against his fines) before resigning him.',
+          `He still holds ${fmt(held)} and owes ${fmt(owed)} in fines` +
+          (loanOwed > 0 ? ` and ${fmt(loanOwed)} on a loan` : '') +
+          '. Write down how that was settled (paid out, kept, taken against his fines or his loan) before resigning him.',
         held,
         owed,
+        loanOwed,
         needsSettlement: true,
       });
     }
@@ -1383,6 +1389,84 @@ async function memberStatement(req, res, next) {
   }
 }
 
+// POST /api/members/:id/statement/email — ADMIN or TREASURER. `?year=`, `?quarter=`, `?from=&to=`,
+// `?range=` narrow it to a period, exactly as the downloads do.
+//
+// Sends the MEMBER'S OWN copy of his statement (the one his passbook downloads, which does not name
+// the Tea Fund) to the address on his record, as a PDF. Built from the same profile and the same
+// renderer as the download, so what is mailed is what the office would hand over.
+//
+// Held back where a person would hold it back: no address on file, or he has switched emails off; and
+// no more than three a day to one member, so a button pressed in a hurry cannot become a flood.
+const STATEMENT_EMAILS_PER_DAY = 3;
+
+async function emailMemberStatement(req, res, next) {
+  try {
+    const member = await Member.findById(req.params.id).lean();
+    if (!member) return res.status(404).json({ message: 'Member not found' });
+
+    // The mail-not-set-up refusal first, in the sentence every sender uses.
+    assertMailConfigured();
+
+    const address = cleanEmail(member.email);
+    if (!address || !isValidEmail(address)) {
+      return res.status(400).json({
+        message: `There is no usable email address on ${member.name}'s record. Add one (Edit), then send it.`,
+      });
+    }
+    if (member.emailNotifications === false) {
+      return res.status(400).json({
+        message: `${member.name} has switched email off, so the statement was not sent. He can still download it from his passbook.`,
+      });
+    }
+
+    const read = readStatementPeriod(req, res);
+    if (read.failed) return undefined;
+
+    const sentToday = await AuditLog.countDocuments({
+      entityType: 'Notification',
+      entityId: member._id,
+      'after.kind': 'statement',
+      createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    });
+    if (sentToday >= STATEMENT_EMAILS_PER_DAY) {
+      return res.status(429).json({
+        message: `${member.name} has already been sent ${STATEMENT_EMAILS_PER_DAY} statements in the last day. Ask him to check his inbox, or try again tomorrow.`,
+      });
+    }
+
+    const settings = await getOrCreateSettings();
+    const profile = await buildPublicProfile(member, { self: true, period: read.period });
+    const pdf = await memberStatementPdfBuffer(profile, settings.chamaName);
+    const slug = (profile.regNumber || profile.name || 'member').replace(/[^a-z0-9]+/gi, '-');
+    const periodLabel = profile.period?.label || read.period?.label || '';
+    const { subject, html, text } = buildStatementEmail({ chamaName: settings.chamaName, member, periodLabel });
+
+    try {
+      await sendMail({
+        to: address,
+        subject,
+        html,
+        text,
+        attachments: [{ filename: `statement-${slug}.pdf`, content: pdf, contentType: 'application/pdf' }],
+      });
+    } catch (err) {
+      throw mailFailure(err);
+    }
+
+    await logAudit({
+      action: 'create',
+      entityType: 'Notification',
+      entityId: member._id,
+      performedBy: req.user._id,
+      after: { channel: 'email', kind: 'statement', to: address, subject, period: periodLabel || 'everything to date' },
+    });
+    res.json({ ok: true, to: address, period: periodLabel || null });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // POST /api/public/lookup { nationalId, phone? } — PUBLIC, behind the gate guard, EXACT match only.
 //
 // A POST so that the ID and the phone number travel in the body: in a URL they would sit in browser
@@ -1465,6 +1549,7 @@ async function memberStatementExcel(req, res, next) {
 }
 
 module.exports = {
+  emailMemberStatement,
   listMembers,
   getMember,
   createMember,
