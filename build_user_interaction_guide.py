@@ -698,8 +698,8 @@ def build_5(doc):
         [
             ["Super admin", "Dashboard · Members · Finance · Reports · Minutes · Reminders · Docs · Audit · Discipline (+ Settings, My account)"],
             ["Admin", "Dashboard · Members · Finance · Reports · Minutes · Reminders · Docs · Audit · Discipline (+ Settings, My account)"],
-            ["Treasurer", "Dashboard · Members · Finance · Reports · Reminders · Docs · Audit (+ My account)"],
-            ["Secretary", "Reports · Minutes · Docs · Audit (+ My account)"],
+            ["Treasurer", "Dashboard · Members · Finance · Loans · Reports · Reminders · Docs (+ My account)"],
+            ["Secretary", "Reports · Minutes · Docs (+ My account)"],
             ["Disciplinary officer", "Discipline (+ My account)"],
         ],
         widths=[3.4, 13.1],
@@ -1048,7 +1048,7 @@ def build_8(doc):
             "admits only the super admin, and Annex D explains the screen that offers it anyway.",
             "**Lands on /admin/finance**, not the dashboard: the member list they log against is the "
             "screen they need.",
-            "**Menu:** Dashboard · Members · Finance · Loans · Reports · Reminders · Docs · Audit.",
+            "**Menu:** Dashboard · Members · Finance · Loans · Reports · Reminders · Docs. (There is no Audit: the audit trail is for the admins only.)",
         ],
     )
 
@@ -1091,7 +1091,7 @@ def build_8(doc):
             "and the fines report — each exportable as .xlsx for a meeting or an auditor.",
             "**Reminder emails** to whoever is behind, built from the same weekly schedule the members' "
             "passbooks show.",
-            "**The register export** (.xlsx or CSV) and the **audit trail** with its own export.",
+            "**The register export** (.xlsx or CSV). Not the audit trail: that is for the admins only, and an admin can export it for a meeting.",
         ],
     )
 
@@ -1184,9 +1184,9 @@ def build_9(doc):
     h(doc, "9. The secretary — the group's paperwork, and reading the books", 1)
     lead(
         doc,
-        "The secretary writes the minutes and files the group's papers, and reads everything the office "
-        "records without being able to change any of it. It is the role a group gives to whoever keeps "
-        "its records straight, and to an auditor who must verify without touching.",
+        "The secretary writes the minutes and files the group's papers, and reads the reports without "
+        "being able to change any of them. It is the role a group gives to whoever keeps its records "
+        "straight. It does not read the audit trail; that is the admins' alone.",
     )
 
     h(doc, "9.1 The account", 2)
@@ -1195,7 +1195,7 @@ def build_9(doc):
         [
             "**Created by the super admin or by an admin**, with the password set at creation.",
             "**Lands on /admin/minutes** — the screen the role actually works on.",
-            "**Menu:** Reports · Minutes · Docs · Audit. There is no dashboard, no Members and no Finance: "
+            "**Menu:** Reports · Minutes · Docs. There is no dashboard, no Members, no Finance and no Audit: "
             "the money screens are not this role's, and hiding them is how that is taught.",
         ],
     )
@@ -1230,7 +1230,7 @@ def build_9(doc):
         ],
     )
 
-    h(doc, "9.4 Reading the books — Reports and the audit trail", 2)
+    h(doc, "9.4 Reading the books — Reports", 2)
     bullets(
         doc,
         [
@@ -1239,9 +1239,8 @@ def build_9(doc):
             "as .xlsx. This is the role that hands figures to a meeting or an auditor.",
             "**One member's own chart** opens from the performance list. The report endpoint serves it, so "
             "the secretary never needs the member register to explain a figure.",
-            "**The audit trail:** filter by money, people, records or settings, by who did it, by record "
-            "type, by date and by free text; switch on \"unusual only\" to read what needs explaining; "
-            "export exactly the view on screen.",
+            "**Not the audit trail.** It is for the admins only. When an outside auditor needs it, an admin "
+            "exports the view from the Audit screen and hands over the workbook.",
         ],
     )
 
@@ -1283,9 +1282,9 @@ def build_9(doc):
     )
     note(
         doc,
-        "Behind the screen: /api/reports (read and export), /api/audit (read and export), /api/documents "
+        "Behind the screen: /api/reports (read and export), /api/documents "
         "(read, and write), /api/minutes (read, and write). Nothing under /api/members, /api/ledger, "
-        "/api/fines, /api/settings, /api/backup or /api/jobs."
+        "/api/fines, /api/audit, /api/settings, /api/backup or /api/jobs."
     )
 
 
@@ -1506,8 +1505,8 @@ def build_12(doc):
         [
             ["**Super admin**", "Yes", "Yes", "Yes", "Yes", "Read + export", "Yes", "Yes"],
             ["**Admin**", "Yes", "Yes", "Yes", "Yes", "Read + export", "Yes", "No"],
-            ["**Treasurer**", "Read (no tab)", "Read only", "Yes", "No", "Read + export", "No", "No"],
-            ["**Secretary**", "Yes", "Yes", "No", "No", "Read + export", "No", "No"],
+            ["**Treasurer**", "Read (no tab)", "Read only", "Yes", "No", "No", "No", "No"],
+            ["**Secretary**", "Yes", "Yes", "No", "No", "No", "No", "No"],
             ["**Disciplinary officer**", "No", "No", "No", "Yes", "No", "No", "No"],
         ],
         widths=[2.6, 2.0, 1.7, 2.0, 2.0, 2.2, 1.5, 2.5],
@@ -1681,7 +1680,7 @@ def build_13(doc):
             ],
             [
                 "**Find out who changed a figure**",
-                "Super admin, admin, treasurer, secretary",
+                "Super admin, admin",
                 "Audit → filter by category, action, record type, who, dates or a word; switch on \"Unusual "
                 "only\" → Export for the meeting.",
             ],
@@ -1891,8 +1890,9 @@ def build_15(doc):
             "member or another fund, one re-dated, a member's phone, ID or carried-in balance changed, an "
             "account's role changed, a group-wide operation such as a ledger reset. Ordinary edits are not "
             "flagged, which is what makes the flags worth reading.",
-            "**Who may read it:** the super admin, the admin, the treasurer and the secretary — the roles "
-            "that have to explain a figure or verify one. The disciplinary officer has no access.",
+            "**Who may read it:** the super admin and the admin only — the people who answer for the "
+            "office. The treasurer and the secretary, whose own work it records, do not read it (the API "
+            "answers 403 and the menu has no Audit entry), and neither does the disciplinary officer.",
             "**The screen receives only what it prints.** The stored snapshots contain whole member records "
             "— national ID, family, next of kin — and they are read to work out the flags and never sent to "
             "the browser.",
@@ -2114,7 +2114,7 @@ def build_annex_a(doc):
             [
                 "Audit",
                 "/admin/audit",
-                "Super admin, admin, treasurer, secretary",
+                "Super admin, admin",
                 "Every change, filtered, with the unusual ones flagged and the view exportable",
             ],
             [
@@ -2192,7 +2192,7 @@ def build_annex_b(doc):
             ],
             [
                 "/api/audit",
-                "super_admin, admin, treasurer, secretary",
+                "super_admin, admin",
                 "List and export; the screen is sent only what it prints",
             ],
             [
@@ -2364,6 +2364,14 @@ def build_annex_d2(doc):
             "hours.",
             "**A truthful last-seen** (section 6.5): accounts used before sign-in tracking began no longer "
             "read \"never signed in\".",
+        ],
+    )
+    bullets(
+        doc,
+        [
+            "**The audit trail is for the admins only** (section 15.3). The treasurer and the secretary "
+            "used to read it; the group withdrew that. The menu entry is gone for both and the API "
+            "refuses them.",
         ],
     )
     note(

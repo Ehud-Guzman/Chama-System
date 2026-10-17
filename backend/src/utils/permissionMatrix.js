@@ -32,7 +32,7 @@ const AREAS = {
   '/api/uploads': { label: 'Photo and logo uploads', note: 'Member photographs and the group logo.' },
   '/api/notifications': { label: 'Reminder emails', note: 'Chase members who are behind.' },
   '/api/settings': { label: 'Group settings', note: 'Name, logo, rules, switches.' },
-  '/api/audit': { label: 'Audit trail', note: 'Who changed what, and when. What each role may read is narrowed inside.' },
+  '/api/audit': { label: 'Audit trail', note: 'Who changed what, and when. Admins only; what each of them may read is narrowed inside.' },
   '/api/backup': { label: 'Backup', note: 'Download a copy of everything.' },
   '/api/jobs': { label: 'Scheduled jobs', note: 'Nightly backup, audit check, reminder sweep.' },
   '/api/cron': { label: 'Job pinger', note: 'One secret-protected address an outside timer calls to run the jobs a sleeping host missed.' },

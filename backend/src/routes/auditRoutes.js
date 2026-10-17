@@ -3,10 +3,10 @@ const { list, exportList, oversight, attention, markReviewed, verify } = require
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 // The audit trail is its own destination now, not a panel at the foot of the
-// reports screen. The guard is the same set of roles that could already read it
-// from there: a record of who did what is what a committee, a treasurer and a
-// secretary all have a reason to read.
-router.use(requireAuth, requireRole('super_admin', 'admin', 'treasurer', 'secretary'));
+// reports screen, and it is for the admins only. A record of who did what is read
+// by the people who answer for the office; the treasurer and the secretary, whose
+// own work it records, do not read it (they used to; the group withdrew that).
+router.use(requireAuth, requireRole('super_admin', 'admin'));
 
 router.get('/', list);
 // The same trail, filtered the same way, as a workbook — the sheet a committee

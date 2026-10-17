@@ -280,7 +280,8 @@ set it to the deployed API URL.
   disciplinary officer with no screen for either.
 - `/admin/audit` — the audit trail: every change, filtered by category, who, when and what, with the
   unusual entries flagged and an export of the view on screen. Its own destination because it is the
-  screen somebody opens when a figure needs explaining.
+  screen somebody opens when a figure needs explaining. **Admin and super admin only**: the treasurer
+  and the secretary, whose own work it records, do not read it (the API answers 403).
 - `/admin/finance` · `/admin/finance/setup` · `/admin/finance/expenses` · `/admin/finance/:id` — the
   ledger: the member list, one member's page, the go-live figures, and **Fund spending** — every
   expense on the books, the form that records one, and the spending report as a PDF or workbook.
@@ -1212,7 +1213,8 @@ figure rather than a wrong one, and `npm run minutes:count-pages` (dry run by de
 came to 147 pages. The number is counted, never derived from a word count, so a minute of bullet
 lists and a minute of prose are both right.
 
-**The audit trail** (`/admin/audit`, its own destination — it was a panel under the reports). The
+**The audit trail** (`/admin/audit`, its own destination — it was a panel under the reports; admin and
+super admin only). The
 trail is read when something needs explaining, by whoever has to explain it, so it is not buried
 under four cards of figures. Every entry arrives read by `utils/auditFlags.js`: put in one of four
 categories (money, people, records, settings), and flagged when it is worth a second look — an amount

@@ -562,7 +562,7 @@ export default function Reminders() {
           </ul>
           {history.total >= history.limit && (
             <p className="border-t border-rule px-4 py-3 text-xs text-muted">
-              The newest {history.limit} are shown. The full record is in Audit trail (filter
+              The newest {history.limit} are shown. An admin can find the full record in Audit trail (filter
               &ldquo;Notification&rdquo;) — this list is read from exactly that record.
             </p>
           )}

@@ -30,8 +30,8 @@ const MyAccount = lazy(() => import('./pages/MyAccount.jsx'));
 const ControlRoom = lazy(() => import('./pages/ControlRoom.jsx'));
 
 // Who may open what, said once. The guard on each screen is the set of roles the API lets use it, so
-// the menu, the guard and the server agree. (Settings' tooling is admin-only at the API too; the audit
-// trail's guard is the set of roles the API lets read it; the Control Room's routes refuse every role
+// the menu, the guard and the server agree. (Settings' tooling is admin-only at the API too, and so is the audit
+// trail; the Control Room's routes refuse every role
 // but the super admin on the server, and its guard only keeps the page out of their way.)
 const MONEY_ROLES = ['super_admin', 'admin', 'treasurer'];
 const OFFICE_ROLES = [...MONEY_ROLES, 'secretary'];
@@ -54,7 +54,7 @@ const GUARDED = [
   ['documents', Documents, OFFICE_ROLES],
   ['fines', Fines, ADMIN_ROLES],
   ['disciplinary', DisciplinaryFines, ['super_admin', 'admin', 'disciplinary']],
-  ['audit', AuditTrail, OFFICE_ROLES],
+  ['audit', AuditTrail, ADMIN_ROLES],
   ['control', ControlRoom, ['super_admin']],
 ];
 

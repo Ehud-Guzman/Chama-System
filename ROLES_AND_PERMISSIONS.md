@@ -144,7 +144,7 @@ and reports on all of it
   register, keep member photographs, and print any member's statement
 - ✅ Record contributions, and create/edit/delete expenses; create/edit contribution types
 - ✅ View reports (summary, performance, monthly, weekly, fines) and export them to Excel
-- ✅ View the audit trail and export it
+- ❌ Cannot view the audit trail (admins only)
 - ✅ View chama documents (title deeds, certificates) — read only, not upload or remove
 - ✅ Reminder emails to members who are behind — each member has a weekly budget
   (`Settings.reminderMaxPerWeek`, 1 by default, set by an admin), so the same member is not emailed
@@ -197,7 +197,7 @@ dashboard.
   reconciliation
 - ✅ Open one member's own chart **from the performance list** — that figure is served by the reports
   endpoint, so this role never needs the member register
-- ✅ View the audit trail and export it
+- ❌ Cannot view the audit trail (admins only)
 - ✅ Change his own password and enrol his own second factor (My account, below)
 - ❌ Cannot modify any money: no contributions, no expenses, no week cycle, no opening balances
 - ❌ Cannot open the member register, the ledger or the dashboard
@@ -284,7 +284,7 @@ phone numbers are no longer accepted anywhere on the public side.
 | **Admin Accounts** | R/W | C (secretary/disciplinary) | ❌ | ❌ | ❌ |
 | **Settings** | R/W | R/W | ❌ | ❌ | ❌ |
 | **Backup/Restore & jobs** | R/W | ❌ | ❌ | ❌ | ❌ |
-| **Audit Log** | R + export | R + export | R + export | R + export | ❌ |
+| **Audit Log** | R + export | R + export | ❌ | ❌ | ❌ |
 | **Own password** (My account) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Own two-factor** (My account) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Two-factor reset** (another account) | ✅ | C (secretary/disciplinary) | ❌ | ❌ | ❌ |
@@ -378,7 +378,7 @@ been accepted. Ten recovery codes are issued with it.
 
 ### Scenario 1: The group appoints a treasurer
 - **Create a Treasurer account:** only the super admin can, from Settings → Accounts.
-- **Access:** the ledger, the register, reports, reminders, documents (read), the audit trail.
+- **Access:** the ledger, the register, reports, reminders, documents (read). Not the audit trail.
 
 ### Scenario 2: Disciplinary committee member must record a fine
 - **Create a Disciplinary Officer account** (Admin or Super Admin).
@@ -388,11 +388,12 @@ been accepted. Ten recovery codes are issued with it.
 ### Scenario 3: Minutes secretary
 - **Create a Secretary account** (Admin or Super Admin).
 - **Access:** write, import and publish the minutes; upload the group's documents; read and export
-  every report and the audit trail. No money, no register, no dashboard.
+  every report. No money, no register, no dashboard, and not the audit trail.
 
 ### Scenario 4: Finance auditor needs to verify records
-- **Create a Secretary account** — read-only on the money, with every report and the audit trail
-  exportable to a workbook for external audit.
+- **Create a Secretary account** — read-only on the money, with every report exportable to a
+  workbook. The audit trail is for the admins only: if an outside auditor needs it, an admin exports
+  it from the Audit screen and hands the workbook over.
 
 ### Scenario 5: A member says his balance is wrong
 - **Any role with the register** can open his page and print the same statement his own passbook
@@ -405,13 +406,13 @@ been accepted. Ten recovery codes are issued with it.
 
 1. **Minimize Super Admin accounts** — usually only 1–2 people need this, and the account cannot be
    deactivated, so keep its password where the committee can find it.
-2. **Use Secretary for audit and verification** — it reads everything and changes nothing but the
-   minutes and the documents.
+2. **Use Secretary for reading the books** — it reads the reports and changes nothing but the
+   minutes and the documents. It cannot read the audit trail.
 3. **Rotate Disciplinary Officers** — don't give one person permanent fine authority.
 4. **Change passwords regularly**, and pair a second-factor reset with a password change.
 5. **Turn two-factor on when the committee is ready** — and know that it protects every role now,
    not just the admins, because every role can enrol from My account.
-6. **Review the audit trail weekly** — it has its own screen (`/admin/audit`): filter by Money,
+6. **Review the audit trail weekly** — admins only. It has its own screen (`/admin/audit`): filter by Money,
    People, Records or Settings, read the flagged entries first, and export the view for a meeting.
 7. **Keep the register's IDs complete.** A member without one cannot open his own record, and the
    Members screen counts them so the office can chase them.

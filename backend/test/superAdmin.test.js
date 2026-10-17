@@ -50,6 +50,9 @@ test('the matrix agrees with ROLES_AND_PERMISSIONS.md on the rules people ask ab
   assert.equal(area('/api/reports').cells.secretary.read, true);
   assert.equal(area('/api/minutes').cells.secretary.write, true);
   assert.equal(area('/api/contributions').cells.secretary.read, false);
+  // The audit trail is the admins' alone: the people whose work it records do not read it.
+  for (const role of ['super_admin', 'admin']) assert.equal(area('/api/audit').cells[role].read, true);
+  for (const role of ['treasurer', 'secretary', 'disciplinary']) assert.equal(area('/api/audit').cells[role].read, false);
   // The disciplinary officer can issue fines, but only part of the area is his.
   assert.equal(area('/api/fines').cells.disciplinary.write, true);
   assert.equal(area('/api/fines').cells.disciplinary.partial, true);

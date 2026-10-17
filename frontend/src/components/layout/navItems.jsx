@@ -147,7 +147,7 @@ export const NAV_ITEMS = [
     to: '/admin/audit',
     label: 'Audit',
     group: 'Administration',
-    roles: ['super_admin', 'admin', 'treasurer', 'secretary'],
+    roles: ['super_admin', 'admin'],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M12 2 3 6v6c0 5 3.8 8.7 9 10 5.2-1.3 9-5 9-10V6z" />

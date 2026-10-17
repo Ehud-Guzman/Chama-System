@@ -883,6 +883,21 @@ test('the audit trail remembers where an entry came from, for the super admin’
   assert.ok(probe.body.entries.length > 0);
 });
 
+test('only the admins can read the audit trail; the treasurer and the secretary are refused', { skip }, async () => {
+  for (const who of ['super', 'admin']) {
+    const read = await call('GET', '/api/audit', { token: tokens[who] });
+    assert.equal(read.status, 200, `${who} reads it`);
+    const sheet = await call('GET', '/api/audit/export', { token: tokens[who] });
+    assert.equal(sheet.status, 200, `${who} exports it`);
+  }
+  for (const who of ['treasurer', 'secretary']) {
+    const read = await call('GET', '/api/audit', { token: tokens[who] });
+    assert.equal(read.status, 403, `${who} is refused the list`);
+    const sheet = await call('GET', '/api/audit/export', { token: tokens[who] });
+    assert.equal(sheet.status, 403, `${who} is refused the export`);
+  }
+});
+
 test('one entry can be read raw, flagged for review, and cleared', { skip }, async () => {
   const entry = await AuditLog.findOne({ entityType: 'User', 'before.role': 'secretary', 'after.role': 'treasurer' });
   const detail = await call('GET', `/api/superadmin/audit/${entry._id}`, { token: tokens.super });

@@ -69,7 +69,7 @@ export const WORKSPACE_GROUPS = [
         to: '/admin/audit',
         label: 'Audit trail',
         hint: 'Every change, with the odd ones flagged',
-        roles: CLERK_ROLES,
+        roles: ['super_admin', 'admin'],
       },
       {
         to: '/admin/documents',
