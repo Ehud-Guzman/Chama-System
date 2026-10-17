@@ -2467,6 +2467,136 @@ FILES
   ROLES_AND_PERMISSIONS.md, README.md, ADDING_NEW_ROLES_GUIDE.md, backend/.env.example   documented
 
 
+SIX MORE THINGS: LOANS, SPENDING APPROVALS, EMAILED STATEMENTS, BACKUPS THAT SURVIVE A FREE HOST,
+ERROR ALERTS, AND A TRUTHFUL "LAST SEEN"
+=================================================================================================
+
+Written for the committee. Each one says what it does, why, and what to know.
+
+1. LOANS TO MEMBERS  (Loans, in the Money menu)
+
+   What it does. A member can borrow from the group. The treasurer records the amount, the interest
+   (one flat percentage on the amount lent, charged once - not per month) and the number of months, and
+   the system works out the monthly instalment and the date each one falls due. Repayments are recorded
+   as they come in. The screen shows what is out on loan, what is still to come in, who is behind and by
+   how much and for how many days, and the interest earned. A member's own page shows his loans. There
+   are no guarantors; that was the committee's choice.
+
+   Why it matters. Until now a loan was a payment out of the "refunds and loans" fund with a note, and
+   nothing tracked what came back. Now every loan has a number, a schedule and a balance.
+
+   The important part - it does not disturb the group's figures. Money lent is counted as "owed back",
+   not "spent", so what the group holds does not drop when it lends. Each repayment gives back its share
+   of principal (which reduces what is owed back) and only its share of interest counts as income. So the
+   group holds exactly the interest more, never the principal twice. This was checked to the cent through
+   lending, repaying, paying off, taking a repayment back, and cancelling: every existing figure ends up
+   exactly where it should.
+
+   Rules worth knowing.
+     - Each repayment is split in the proportion the loan was priced in, so however the member pays
+       (in full instalments, odd amounts, all at once) the principal and interest add up exactly.
+     - Paying more than is owed is refused, with the figure.
+     - Only the most recent repayment can be taken back; a loan with nothing repaid can be cancelled
+       with a reason, and the books forget it.
+     - A loan counts as behind once an instalment's date has passed and the total paid does not cover it.
+       The Control Room says when any loan is behind.
+     - A member with a loan out cannot be resigned without writing down what became of it, as with money
+       he holds or fines he owes.
+     - Lending follows the same rules as other money: the closed-books lock, the "more than the fund
+       holds" tick, the spending limit (below), and every step is in the audit trail.
+     - CHOOSING THE LOAN FUND IS AN ADMIN'S DECISION, NOT THE TREASURER'S. The first time, the group has
+       to say which fund is its loan fund. Doing so changes how money ALREADY paid out of that fund is
+       counted (it stops being "spent" and becomes "owed back"), which raises what the group is shown as
+       holding. The screen says by how much and asks for confirmation before anything changes.
+
+   Not done: writing off a loan nobody will repay. It needs the committee's decision on how to show the
+   loss; until then a loan stays on the books until it is repaid or, if made in error, cancelled.
+
+2. A SPENDING LIMIT  (Settings -> Spending limit)
+
+   The group sets a figure (0 means none, which is how it starts). Above it, an expense - and a loan -
+   must say which minute approved it, in an "Approved in" box that appears only for amounts above the
+   limit. It shows on the expenses list and in the workbook. It does not check that the approval was real;
+   it makes sure somebody wrote down which one, so it can be found in the minutes and argued in a meeting.
+   Correcting an old expense is never held up for an approval it never had, unless the correction raises it
+   past the limit.
+
+3. EMAIL A MEMBER HIS STATEMENT  (Email statement, on the member's page)
+
+   Sends his own copy of his statement, as a PDF attachment, for whichever period is chosen beside the
+   button, to the address on his record. It is the same document his own passbook downloads. It will not
+   send when there is no usable address or he has switched emails off, it sends at most three a day to one
+   member, and every send is in the audit trail. It works through whichever mail service the group uses.
+
+4. BACKUPS THAT SURVIVE A FREE HOST  (important if the group stays on Render's free plan)
+
+   The problem. On a free Render instance the server's disk is wiped on every deploy and restart, so the
+   nightly backup files were wiped with it. They were a copy on the same machine, not a backup. And the
+   instance goes to sleep when nobody is using it, so a "02:00 backup" could simply not happen.
+
+   What was done.
+     - Each nightly backup is now ALSO compressed and stored, privately, in the same Cloudinary account the
+       photos use. It cannot be reached by an address; only the super admin can download it, through the
+       system. The newest 14 are kept. The Control Room lists them, downloads one, and restores from it.
+       It warns when the off-server copy is missing, failed, or more than three days old.
+     - There is now an address an outside timer can call (GET /api/cron/tick, with a secret) that wakes the
+       server and runs any job that was due in the last day and a half and did not run. With a free timer
+       service (cron-job.org) calling it hourly, and the health address every ten minutes, the backup
+       happens even though the server sleeps. The README has the exact steps; the group must set
+       JOBS_CRON_TOKEN and create those two timers - the system cannot do that by itself.
+     - Limits to know about: Cloudinary's free plan allows about 10 MB for one file. How big the group's
+       real backup is when compressed depends mostly on the scanned documents in the vault, and was not
+       measured (the test database was tiny); it grows as documents and members are added, and the
+       Control Room names the problem if an upload is ever refused for size. A free MongoDB Atlas cluster has no backups of its own, so
+       this copy is the group's only protection against losing the database.
+
+   A caution from building it: the first test runs of this feature uploaded test backups (made-up members,
+   no real data) to the group's real Cloudinary account, because the developer's configuration was loaded.
+   They were found, listed, and removed the same day, and the code now refuses to touch a real account
+   while running tests.
+
+5. ERROR ALERTS  (Control Room -> Server errors)
+
+   Whenever the server itself fails (not a mistyped form: a fault), it is recorded, grouped by what and
+   where, counted, and the super admin is emailed once per distinct fault per six hours. The Control Room
+   lists the last week's. No outside service is needed. It cannot see a server that is down or asleep; for
+   that, an uptime monitor (UptimeRobot, free) pointed at the health address emails when it stops answering.
+
+6. "LAST SEEN" TELLS THE TRUTH  (Control Room -> Accounts)
+
+   Sign-ins were only recorded from when the Control Room was added, so accounts that had been in daily use
+   read as "never signed in". Those accounts now get a last-seen time from the audit trail (the newest thing
+   each one did), and an account with nothing on file says "no sign-in recorded yet" instead of "never". The
+   "created a week ago and never used" warning no longer fires for accounts that simply pre-date the tracking.
+
+ALSO
+
+   - The admin screens now load as one separate piece the moment someone goes to /admin. Before, the table
+     of every admin address was carried by every member who only wanted to check a balance. The members'
+     page is now 148.7 KB against its 150 KB limit, with 1.3 KB to spare; it had been down to 0.1 KB.
+   - The audit screen's flag labels were list items inside list items; fixed.
+
+HOW IT WAS PROVED
+
+   Backend: all 20 rehearsal suites against a real MongoDB pass (195 checks), including 10 new for loans
+   (every figure checked at every step), 6 for emailed statements, 4 more for spending limits, and new
+   ones for the off-server copy, the timer address, the error recorder and the last-seen fix; 362 tests that
+   need no database also pass. Loan arithmetic has its own 8 tests, including odd amounts in awkward orders
+   that must still add up to the cent.
+   Screens: the real screens were driven in a browser-like environment against the real server: opening
+   every admin address and being turned away by the role guard where it should, then the whole of lending
+   (make the loan fund, pick the member, read the terms back, lend, repay, see the split, take it back,
+   see every figure return). No warnings. Not yet looked at in a real browser or on a phone.
+   Off-server backups were checked against the real Cloudinary account: upload, listing and a signed
+   download all work (the first download method tried was refused by the service and was replaced).
+
+WHAT THE GROUP HAS TO DO
+
+   - Choose the loan fund (Loans -> Lend to a member) before the first loan.
+   - Optionally set a spending limit (Settings).
+   - If staying on the free host: set JOBS_CRON_TOKEN and create the two timers described in the README.
+
+
 END OF DOCUMENT
 ===============
 
