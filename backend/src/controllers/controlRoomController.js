@@ -187,7 +187,7 @@ async function overview(req, res, next) {
       } else if (off?.lastTry && !off.lastTry.ok) {
         flag('high', 'offsite-failed', 'The last off-server backup failed', off.lastTry.error || 'See Backups, restore and jobs.', 'data');
       } else if (off?.enabled && off.lastGoodAt && now - new Date(off.lastGoodAt).getTime() > 3 * DAY_MS) {
-        flag('medium', 'offsite-old', 'The newest off-server backup is more than 3 days old', 'The nightly job may not be running. If the host sleeps, an outside pinger has to call /api/cron/tick (see the README).', 'data');
+        flag('medium', 'offsite-old', 'The newest off-server backup is more than 3 days old', 'The nightly job may not be running: a host that sleeps has no timer. Press Run now on nightly-backup under Backups, then Download one to keep.', 'data');
       }
       if (!health.mail.configured) {
         flag('info', 'mail-off', 'Email is not set up', 'Reminders, fine emails and password-reset links cannot be sent.');

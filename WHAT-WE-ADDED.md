@@ -2539,11 +2539,15 @@ Written for the committee. Each one says what it does, why, and what to know.
        photos use. It cannot be reached by an address; only the super admin can download it, through the
        system. The newest 14 are kept. The Control Room lists them, downloads one, and restores from it.
        It warns when the off-server copy is missing, failed, or more than three days old.
-     - There is now an address an outside timer can call (GET /api/cron/tick, with a secret) that wakes the
-       server and runs any job that was due in the last day and a half and did not run. With a free timer
-       service (cron-job.org) calling it hourly, and the health address every ten minutes, the backup
-       happens even though the server sleeps. The README has the exact steps; the group must set
-       JOBS_CRON_TOKEN and create those two timers - the system cannot do that by itself.
+     - An address exists that an outside timer could call (GET /api/cron/tick, with a secret) to run a
+       missed job. THE GROUP HAS DECIDED NOT TO USE IT. Keeping a free instance awake with a pinger spends
+       the month's free hours and the service is then switched off, so no timer is set up and the secret
+       (JOBS_CRON_TOKEN) is left unset, which makes the address not exist at all.
+     - What that means in practice: the 02:00 backup only happens if the server happens to be awake at
+       02:00, and on the free plan it usually is not. Take the backup by hand instead - Control Room ->
+       Backups -> Run now on nightly-backup makes the copy and sends it off the server in one go. Do it
+       after any day money was recorded, and before anything risky. The Control Room warns when the
+       newest off-server copy is more than three days old; that warning is the reminder.
      - Limits to know about: Cloudinary's free plan allows about 10 MB for one file. How big the group's
        real backup is when compressed depends mostly on the scanned documents in the vault, and was not
        measured (the test database was tiny); it grows as documents and members are added, and the
@@ -2559,8 +2563,8 @@ Written for the committee. Each one says what it does, why, and what to know.
 
    Whenever the server itself fails (not a mistyped form: a fault), it is recorded, grouped by what and
    where, counted, and the super admin is emailed once per distinct fault per six hours. The Control Room
-   lists the last week's. No outside service is needed. It cannot see a server that is down or asleep; for
-   that, an uptime monitor (UptimeRobot, free) pointed at the health address emails when it stops answering.
+   lists the last week's. No outside service is needed. It cannot see a server that is down or asleep (an
+   uptime monitor could, but it would keep the free instance awake and spend its hours, so none is used).
 
 6. "LAST SEEN" TELLS THE TRUTH  (Control Room -> Accounts)
 
@@ -2594,7 +2598,8 @@ WHAT THE GROUP HAS TO DO
 
    - Choose the loan fund (Loans -> Lend to a member) before the first loan.
    - Optionally set a spending limit (Settings).
-   - If staying on the free host: set JOBS_CRON_TOKEN and create the two timers described in the README.
+   - On the free host: do NOT set JOBS_CRON_TOKEN or create timers. Instead, run the nightly backup by hand
+     (Control Room -> Backups -> Run now) after any day money was recorded, and before anything risky.
 
 
 END OF DOCUMENT

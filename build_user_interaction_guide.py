@@ -764,8 +764,10 @@ def build_6(doc):
             "rather than restoring.",
             "**The scheduled work:** the nightly backup, the weekly audit check and the reminder sweep — "
             "what they are, when they run next, what they last did, and a way to run one by hand.",
+            "**The Control Room** (Control Room in the menu): one screen for seeing the whole system and "
+            "putting it right. Section 6.5 describes it.",
             "**Everything else**, exactly as the admin and the treasurer have it: the ledger, members, "
-            "fines, minutes, documents, reports, reminders and the audit trail.",
+            "fines, minutes, documents, reports, reminders, loans and the audit trail.",
         ],
     )
 
@@ -789,7 +791,79 @@ def build_6(doc):
         ],
     )
 
-    h(doc, "6.4 What even the super admin cannot do", 2)
+    h(doc, "6.4 Backups on the free host", 2)
+    bullets(
+        doc,
+        [
+            "**Each backup is also kept off the server.** The host the system runs on may wipe its own disk "
+            "whenever it restarts, so a copy sitting there is not a backup. Every backup is also compressed "
+            "and stored, privately, in the same Cloudinary account the photographs use; the newest 14 are "
+            "kept. Only the super admin can list, download or restore from them (Control Room → Backups).",
+            "**The 02:00 backup only happens if the server is awake at 02:00.** The free plan puts the "
+            "server to sleep when nobody is using it, and the group has chosen not to keep it awake with an "
+            "outside timer, because that spends the month's free hours and the service is then switched off "
+            "until the month turns. So on most nights the scheduled backup does not run.",
+            "**Take it by hand instead.** Control Room → Backups → Run now on nightly-backup makes the copy "
+            "and sends it off the server in one go. Do it after any day money was recorded, and before "
+            "anything risky (a restore, clearing the rehearsal's money, merging two members).",
+            "**The reminder is built in.** The Control Room raises a warning when the newest off-server "
+            "copy is more than three days old, or when the last attempt failed.",
+            "**Download one now and then.** The free database has no backups of its own, so these copies "
+            "are the group's only protection against losing it. Keep a downloaded one where the committee "
+            "keeps the register, never in the repository.",
+        ],
+    )
+
+    h(doc, "6.5 The Control Room", 2)
+    bullets(
+        doc,
+        [
+            "**Needs your attention.** The first thing on the screen: what is wrong right now, most serious "
+            "first. For example a backup that is old or failed, loans that are behind, errors the server "
+            "has hit, or an account that looks wrong.",
+            "**Accounts and sessions.** Everybody who can sign in: their role, when they last signed in and "
+            "were last active, and from where. You can sign an account out everywhere, freeze it with a "
+            "reason (it takes hold on the very next request, not when the session expires), or see the app "
+            "as that role sees it. An account that pre-dates sign-in tracking says \"no sign-in recorded "
+            "yet\" rather than \"never\".",
+            "**See the app as someone else.** A 30-minute, read-only preview of what a treasurer, secretary "
+            "or other role sees. Every change is refused while previewing, and the Control Room itself is "
+            "not reachable from inside it.",
+            "**Maintenance mode.** Stops everyone but the super admin from changing anything, with a "
+            "message you write. Sign-in stays open, because locking out sign-in would lock out the one "
+            "person who has to switch it off.",
+            "**Closing the books.** Pick a closing day; money dated on or before it can no longer be added, "
+            "changed or voided. The super admin can still go through with a written reason, which is "
+            "recorded in the audit trail before the change it allowed.",
+            "**Switches.** Turn the members' page, fine emails, reminder emails and the constitution vote "
+            "on or off without a redeploy. All are on unless you switch them off.",
+            "**Backups, restore and jobs.** The nightly backup, the weekly audit check and the reminder "
+            "sweep (pause, run now, history); the off-server copies (list, download); and restore. Restore "
+            "is two steps: first look at a file (nothing is written), then restore, which needs "
+            "maintenance mode, your password and the word RESTORE, and takes a safety copy of today "
+            "first. It only adds and replaces; it never empties anything.",
+            "**Server errors.** Every time the server itself fails (not a mistyped form: a fault), it is "
+            "recorded, grouped by what and where, and counted. You are emailed once per distinct fault "
+            "every six hours, and the last week's are listed here.",
+            "**Danger zone.** Clear the rehearsal's money before go-live: contributions, expenses and fines "
+            "are marked deleted (never hard-deleted); members, accounts, settings and opening balances "
+            "stay. Needs maintenance mode, your password, the phrase RESET REHEARSAL DATA and a safety "
+            "copy that succeeded.",
+            "**Merge two members.** For a member entered twice: moves his contributions, fines, opening "
+            "balance and constitution votes onto the record kept and retires the duplicate with a note "
+            "saying where it went. Nothing is deleted. A preview shows what will move first.",
+            "**Who can do what.** A generated table of every screen and address against every role, read "
+            "from the code itself, so it cannot drift from what the server actually enforces.",
+        ],
+    )
+    note(
+        doc,
+        "Behind the screen: every address under /api/superadmin is refused to every role but the super "
+        "admin, and a test fails if a new one is added without that guard. The Control Room does not "
+        "repeat the Audit screen's oversight tables; it counts them and links there."
+    )
+
+    h(doc, "6.6 What even the super admin cannot do", 2)
     bullets(
         doc,
         [
@@ -848,6 +922,15 @@ def build_7(doc):
             "glance how many active members still have no usable ID.",
             "**Prints a member's statement.** Any period — the whole book, a year, a quarter or a range — "
             "as a PDF or an Excel workbook.",
+            "**Emails a member his own statement.** *Email statement* on the member's page sends the same "
+            "PDF his passbook downloads, for the period chosen beside the button, to the address on his "
+            "record. It is held back when there is no usable address or he has switched emails off, it "
+            "sends at most three a day to one member, and every send is in the audit trail.",
+            "**Lends to members.** Loans (Money menu): amount, one flat interest rate charged once on the "
+            "amount lent, and the number of months. See section 7.5.",
+            "**Sets a spending limit.** Settings → Spending limit. Above it, an expense or a loan must say "
+            "which meeting's minute approved it (an *Approved in* box that appears only above the limit). "
+            "Zero, which is how it starts, means no limit.",
             "**Issues, settles and voids fines.** Issue from the member's page or the discipline screen, "
             "settle a fine that has been paid, and void one that should never have been issued.",
             "**Runs the go-live figures.** Finance → Setup: the weekly amount, the tea amount, the week "
@@ -908,9 +991,41 @@ def build_7(doc):
     )
     note(
         doc,
-        "Behind the screen: /api/members, /api/contributions, /api/expenses, /api/ledger, /api/types, "
-        "/api/fines (settle and void), /api/fine-types (write), /api/minutes (write), /api/documents "
-        "(write), /api/notifications, /api/uploads, /api/settings and /api/auth/admins."
+        "Behind the screen: /api/members, /api/contributions, /api/expenses, /api/loans, /api/ledger, "
+        "/api/types, /api/fines (settle and void), /api/fine-types (write), /api/minutes (write), "
+        "/api/documents (write), /api/notifications, /api/uploads, /api/settings and /api/auth/admins."
+    )
+
+    h(doc, "7.5 Loans, and the one decision that is the admin's", 2)
+    bullets(
+        doc,
+        [
+            "**How a loan works.** The treasurer or admin records the amount, the interest (one flat "
+            "percentage on the amount lent, charged once, not per month) and the number of months. The "
+            "system works out the monthly instalment and the date each one falls due. There are no "
+            "guarantors; that was the committee's choice.",
+            "**Repayments** are recorded as they come in, whatever the amount. Each is split between "
+            "principal and interest in the proportion the loan was priced in, so the two add up to the "
+            "cent however the member pays. Paying more than is owed is refused, with the figure.",
+            "**Who is behind.** A loan is behind once an instalment's date has passed and the total paid "
+            "does not cover it. The Loans screen, the member's own page and the Control Room all say by how "
+            "much and for how many days.",
+            "**It does not disturb the group's figures.** Money lent counts as *owed back*, not *spent*, so "
+            "what the group holds does not drop when it lends. Each repayment gives back its share of "
+            "principal and only the interest counts as income. Do not edit or delete a loan's expense from "
+            "Expenses; the system refuses. Record a repayment, take the last one back, or cancel instead.",
+            "**Taking back and cancelling.** Only the most recent repayment can be taken back. A loan with "
+            "nothing repaid can be cancelled, with a reason, and the books forget it.",
+            "**Choosing the loan fund is an admin's decision, not the treasurer's.** The first time, the "
+            "group has to say which fund is its loan fund. Doing so changes how money already paid out of "
+            "that fund is counted (it stops being *spent* and becomes *owed back*), which raises what the "
+            "group is shown as holding. The screen says by how much and asks for confirmation first.",
+            "**A member with a loan out cannot be resigned** without writing down what became of it, as "
+            "with money he holds or fines he owes.",
+            "**Not built:** writing off a loan nobody will repay. It needs the committee to decide how to "
+            "show the loss; until then a loan stays on the books until repaid or, if made in error, "
+            "cancelled.",
+        ],
     )
 
 
@@ -933,7 +1048,7 @@ def build_8(doc):
             "admits only the super admin, and Annex D explains the screen that offers it anyway.",
             "**Lands on /admin/finance**, not the dashboard: the member list they log against is the "
             "screen they need.",
-            "**Menu:** Dashboard · Members · Finance · Reports · Reminders · Docs · Audit.",
+            "**Menu:** Dashboard · Members · Finance · Loans · Reports · Reminders · Docs · Audit.",
         ],
     )
 
@@ -949,6 +1064,11 @@ def build_8(doc):
             "an extra payment, the tea, or an expense, each with the amount, the date, the method and a "
             "free-text note for pasting the M-Pesa or bank message.",
             "**Logging refreshes the list underneath**, so the next name is already correct.",
+            "**Loans** (Money menu) lets the treasurer lend to a member, record repayments, take the last "
+            "one back and cancel a loan made in error, and shows who is behind (section 7.5). Choosing "
+            "which fund is the loan fund is the admin's decision, not the treasurer's.",
+            "**Email statement** on a member's page sends him his own statement as a PDF, for the period "
+            "chosen, to the address on his record (at most three a day to one member).",
             "**Finance → Setup is the go-live sheet:** the weekly amount, the tea amount, the week number "
             "and the week anchor, then every member's opening balance (with \"Use all suggestions\" to fill "
             "them from the ledger), each fund's one-time carry-in, and the one-time whole-week collection "
@@ -989,7 +1109,9 @@ def build_8(doc):
             "**Change the group's identity or settings**: the name, the logo and the weekly tracking start "
             "date belong to the admins.",
             "**Upload or remove documents.** The treasurer may read the vault, not change it.",
-            "**Create or manage accounts**, take a backup, or run a scheduled job.",
+            "**Create or manage accounts**, take a backup, run a scheduled job, or open the Control Room.",
+            "**Choose the loan fund**, or set the spending limit. Both change what the books say and are "
+            "the admins'.",
             "**Open the minutes screen** — although the API does let this role read the minutes, since the "
             "money agreed in a meeting is exactly what a treasurer has to account for (Annex D).",
         ],
@@ -1392,6 +1514,28 @@ def build_12(doc):
         size=7.5,
     )
 
+    caption(doc, "Loans, the spending limit and the Control Room")
+    table(
+        doc,
+        [
+            "Role",
+            "Loans: lend, repay, take back, cancel",
+            "Choose the loan fund",
+            "Spending limit (Settings)",
+            "Email a member his statement",
+            "Control Room",
+        ],
+        [
+            ["**Super admin**", "Yes", "Yes", "Yes", "Yes", "Yes"],
+            ["**Admin**", "Yes", "Yes", "Yes", "Yes", "No"],
+            ["**Treasurer**", "Yes", "No", "No", "Yes", "No"],
+            ["**Secretary**", "No", "No", "No", "No", "No"],
+            ["**Disciplinary officer**", "No", "No", "No", "No", "No"],
+        ],
+        widths=[2.6, 3.4, 2.6, 2.8, 3.0, 2.2],
+        size=7.5,
+    )
+
     caption(doc, "Security switches and account hygiene")
     table(
         doc,
@@ -1578,6 +1722,41 @@ def build_13(doc):
                 "Settings → Backup → read the two lines above the button (when a copy last left the "
                 "machine, and what is only on the host) → Download. Keep it where the committee keeps the "
                 "register, never in the repository.",
+            ],
+            [
+                "**Take the backup by hand (free host)**",
+                "Super admin only",
+                "Control Room → Backups → Run now on nightly-backup. It makes the copy and sends it off the "
+                "server in one go. The free host sleeps, so the 02:00 run usually does not happen: do this "
+                "after any day money was recorded, and before anything risky. Do not set up an outside "
+                "timer to keep the server awake; it spends the month's free hours.",
+            ],
+            [
+                "**Restore from an off-server copy**",
+                "Super admin only",
+                "Control Room → Backups → the copy → Download. Then Restore below it: choose the file "
+                "(the compressed file is read as it is), read what it says would be added or replaced, "
+                "switch on maintenance mode, then confirm with your password and the word RESTORE. A "
+                "safety copy of today is taken first.",
+            ],
+            [
+                "**Lend to a member**",
+                "Super admin, admin, treasurer",
+                "Loans → Lend to a member → pick the member, the amount, the interest and the months → read "
+                "the terms back → Lend. The first time, an admin chooses the loan fund and confirms the "
+                "change it shows. Above the spending limit, add the minute that approved it.",
+            ],
+            [
+                "**Record a loan repayment**",
+                "Super admin, admin, treasurer",
+                "Loans → the loan → Record a repayment → amount and date. The screen shows the split between "
+                "principal and interest. Taking back a mistake works for the latest repayment only.",
+            ],
+            [
+                "**Email a member his statement**",
+                "Super admin, admin, treasurer",
+                "Members → the member → choose the period → Email statement. It goes to the address on his "
+                "record, as a PDF.",
             ],
             [
                 "**Run a scheduled job by hand**",
@@ -2163,6 +2342,38 @@ def build_annex_d(doc):
 # ---------------------------------------------------------------------------
 # Annex E — maintaining this document
 # ---------------------------------------------------------------------------
+def build_annex_d2(doc):
+    h(doc, "Annex D2 — what was added in October 2026", 1)
+    p(
+        doc,
+        "Since the guide was first written the system gained six things and a super-admin screen. They "
+        "are described where they belong (sections 6 to 8, 12 and 13); this is the list in one place.",
+    )
+    bullets(
+        doc,
+        [
+            "**The Control Room** (section 6.5): sessions, maintenance mode, closing the books, switches, "
+            "restore, merging two members and a generated permissions table.",
+            "**Loans to members** (section 7.5): flat interest, monthly instalments, behind-schedule "
+            "tracking, a card on the member's page.",
+            "**A spending limit** (section 7.2): above it an expense or loan must say which minute "
+            "approved it.",
+            "**Emailed statements** (section 7.2): a member's own PDF, sent to his address.",
+            "**Backups that survive a free host** (section 6.4): each backup is also kept in Cloudinary.",
+            "**Server error alerts** (section 6.5): faults recorded and emailed once per fault per six "
+            "hours.",
+            "**A truthful last-seen** (section 6.5): accounts used before sign-in tracking began no longer "
+            "read \"never signed in\".",
+        ],
+    )
+    note(
+        doc,
+        "One decision shapes how the group runs: no outside timer is used to keep the free server awake, "
+        "because that spends the free hours. The scheduled backup therefore usually does not run on its "
+        "own; the super admin takes it by hand (section 6.4)."
+    )
+
+
 def build_annex_e(doc):
     h(doc, "Annex E — keeping this true", 1)
     bullets(
@@ -2234,6 +2445,7 @@ def main():
     build_annex_b(doc)
     build_annex_c(doc)
     build_annex_d(doc)
+    build_annex_d2(doc)
     build_annex_e(doc)
 
     doc.core_properties.title = "The Chama System: who uses it, and what they get"

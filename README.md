@@ -841,26 +841,34 @@ Every 5xx and every crash is recorded (`ServerError`, kept 30 days), grouped by 
 (`/api/members/:id/ledger` is one route, whichever member), counted, and the super admin is **emailed once
 per distinct error per six hours** (inside the existing alert budget; `SECURITY_ALERTS=off` silences it).
 The Control Room lists them. No third-party service and no new dependency. It cannot see a server that is
-down or asleep; for that, point an uptime monitor at `GET /api/health`.
+down or asleep. (An uptime monitor on `GET /api/health` would, but it also keeps a free instance awake and
+spends its monthly hours; see *Running on Render's free tier*.)
 
 ### Running on Render's free tier
 
 A free instance has two properties that matter here: its disk is **wiped on every deploy and restart**,
-and it **sleeps when idle**, so nothing inside the app can promise a 02:00 job. Both are covered:
+and it **sleeps when idle**. It also has a fixed number of running hours a month. The group's decision is
+**not to keep it awake with outside timers**: a pinger on `/api/health` every few minutes holds the
+instance up around the clock, spends the month's hours in a few weeks, and the service is then switched
+off until the month turns. So no timer is set up, and that has consequences worth knowing:
 
-1. **Off-server backups.** With the Cloudinary variables set (they already are, for photos), each nightly
-   backup is also gzipped and stored privately in Cloudinary (`BACKUP_OFFSITE`, default on), the newest 14
-   kept. The Control Room lists them, downloads one (through the API; the storage is private) and restores
-   from it (the compressed file is read as it is). It says so loudly when the copy is missing, failed, or
-   older than three days. The free plan limits one file to about 10 MB compressed; when the database
-   outgrows that the Control Room names it.
-2. **Waking the server and catching up.** Set `JOBS_CRON_TOKEN` to a long random string, then in
-   [cron-job.org](https://cron-job.org) (free) create two jobs: `GET https://<your-api>/api/health` every
-   10 minutes (keeps the instance awake, which also keeps the in-app timers running), and
-   `GET https://<your-api>/api/cron/tick` with the header `X-Cron-Token: <the secret>` every hour (runs any
-   job that was due in the last day and a half and did not run, once; a paused job is skipped). UptimeRobot
-   on `/api/health` also emails you when the server is down, which nothing inside it can.
-3. A free MongoDB Atlas cluster has no backups of its own, so the off-server copy above is the group's only
+1. **Off-server backups still work.** With the Cloudinary variables set (they already are, for photos),
+   each backup is also gzipped and stored privately in Cloudinary (`BACKUP_OFFSITE`, default on), the
+   newest 14 kept. The Control Room lists them, downloads one (through the API; the storage is private)
+   and restores from it (the compressed file is read as it is). It says so loudly when the copy is
+   missing, failed, or older than three days. The free plan limits one file to about 10 MB compressed;
+   when the database outgrows that the Control Room names it.
+2. **The 02:00 backup only happens if the instance is awake at 02:00.** The jobs run on a timer inside
+   the app, and a sleeping app has no timer. In practice that means most nights it does not run. Take
+   the backup by hand instead: Control Room → Backups → *Run now* on `nightly-backup` (it makes the copy
+   and sends it off the server in one go). Do it after any day the office has recorded money, and
+   before anything risky (a restore, a clear, a merge). The Control Room's warning that the newest
+   off-server copy is more than three days old is the reminder.
+3. **The catch-up address is there but switched off.** `GET /api/cron/tick` runs any job that was due in
+   the last day and a half and did not run, and it needs `JOBS_CRON_TOKEN`. Leave that variable unset
+   and the address does not exist (404). Set it only if the app moves to a plan that does not sleep, or
+   if a spare machine that the group already runs can call it once a day.
+4. A free MongoDB Atlas cluster has no backups of its own, so the off-server copy above is the group's only
    protection against losing the database. Download one now and then too (Control Room → Backups).
 
 ### The Control Room
@@ -1088,7 +1096,7 @@ bundle as a foreign-looking URL).
 | `REMINDER_SWEEP_MAX` | Most members one sweep will email, default 200 |
 | `FINE_EMAILS` | `off` stops the emails a fine sends on its own — the one that tells a member a fine has been recorded and the one that acknowledges his payment. On by default, because both are triggered by somebody recording or settling a fine, not by a schedule. Needs a mail configuration either way; a member with no address or with email reminders switched off is skipped |
 | `BACKUP_OFFSITE` · `CLOUDINARY_BACKUP_FOLDER` · `OFFSITE_BACKUP_MAX_MB` · `OFFSITE_BACKUP_RETENTION` | Off-server copies of the nightly backup, in the same Cloudinary account as the photos. On whenever Cloudinary is configured (`off` to stop); folder default `chama-system/backups`; largest compressed file default 10 MB (the free plan's limit); newest 14 kept |
-| `JOBS_CRON_TOKEN` | Secret for `GET /api/cron/tick` (header `X-Cron-Token`), the address an outside timer calls to run jobs a sleeping host missed. Unset means the address does not exist. See *Running on Render's free tier* |
+| `JOBS_CRON_TOKEN` | Secret for `GET /api/cron/tick` (header `X-Cron-Token`), an address an outside timer could call to run jobs a sleeping host missed. **Leave unset on Render's free tier** (the group does not run timers there: pinging spends the free hours); unset means the address does not exist. See *Running on Render's free tier* |
 | `RESTORE_MAX_MB` | Largest backup file the Control Room's restore screen will take, default 50. A bigger one is restored from the command line (`npm run restore:backup`) |
 | `SYSTEM_ACTOR_EMAIL` | Which account automatic writes are credited to in the audit trail. Defaults to the earliest super admin |
 
