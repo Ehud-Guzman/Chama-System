@@ -122,6 +122,19 @@ export default function MemberDetail() {
     }
   }
 
+  const [emailing, setEmailing] = useState(false);
+  async function emailStatement() {
+    setEmailing(true);
+    try {
+      const res = await api.post(`/api/members/${id}/statement/email${statementPeriod.query}`, {}, { timeout: 60000 });
+      toast(`Statement sent to ${res.data.to}`);
+    } catch (err) {
+      toast(apiMessage(err, 'Could not send the statement'), 'error');
+    } finally {
+      setEmailing(false);
+    }
+  }
+
   async function exportStatement() {
     try {
       const res = await api.get(`/api/members/${id}/statement${statementPeriod.query}`, {
@@ -646,6 +659,17 @@ async function exportStatementExcel() {
             className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium"
           >
             Statement Excel
+          </button>
+
+          {/* His own copy, as a PDF, to the address on his record, for the period chosen below. */}
+          <button
+            type="button"
+            onClick={emailStatement}
+            disabled={emailing || !member.email}
+            title={member.email ? `Send to ${member.email}` : 'There is no email address on his record'}
+            className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium disabled:opacity-50"
+          >
+            {emailing ? 'Sending…' : 'Email statement'}
           </button>
 
           {/* Both statement buttons download whatever period is chosen here. The picker sits in the

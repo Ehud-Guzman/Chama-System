@@ -581,3 +581,29 @@ test('a From with no address in it is refused, and names the variable to fix', a
     clearMailEnv();
   }
 });
+
+test('an attachment goes out on every API road in the shape that provider wants', () => {
+  const file = { filename: 'statement.pdf', content: Buffer.from('%PDF-1.4 hello'), contentType: 'application/pdf' };
+  const base = { key: 'k', from: { email: 'a@example.test', name: 'A' }, rawFrom: 'A <a@example.test>', to: 'm@example.test', subject: 's', text: 't', html: '<p>h</p>', attachments: [file] };
+  const b64 = Buffer.from('%PDF-1.4 hello').toString('base64');
+
+  const send = (name) => require('../src/utils/mailer').__apiProviders[name].send(base).body;
+  assert.deepEqual(send('brevo').attachment, [{ name: 'statement.pdf', content: b64 }]);
+  assert.deepEqual(send('resend').attachments, [{ filename: 'statement.pdf', content: b64 }]);
+  assert.deepEqual(send('sendgrid').attachments, [{ content: b64, filename: 'statement.pdf', type: 'application/pdf', disposition: 'attachment' }]);
+  // No attachment, no key in the payload: the existing messages are exactly as they were.
+  for (const name of ['brevo', 'resend', 'sendgrid']) {
+    const body = require('../src/utils/mailer').__apiProviders[name].send({ ...base, attachments: undefined }).body;
+    assert.equal('attachment' in body || 'attachments' in body, false, name);
+  }
+});
+
+test('the statement email says what it covers and carries no figures', () => {
+  const { buildStatementEmail } = require('../src/utils/mailer');
+  const mail = buildStatementEmail({ chamaName: 'Our Chama', member: { name: 'Mary Wanjiru' }, periodLabel: 'This year' });
+  assert.match(mail.subject, /Our Chama: your statement/);
+  assert.match(mail.text, /Hi Mary,/);
+  assert.match(mail.text, /It covers: This year\./);
+  assert.equal(/Ksh/.test(mail.text), false);
+  assert.match(buildStatementEmail({ member: { name: 'X' } }).text, /everything up to today/);
+});
