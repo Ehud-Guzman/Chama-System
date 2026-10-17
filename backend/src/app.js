@@ -72,6 +72,7 @@ const backupRoutes = require('./routes/backupRoutes');
 const jobRoutes = require('./routes/jobRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const superAdminRoutes = require('./routes/superAdminRoutes');
+const loanRoutes = require('./routes/loanRoutes');
 const { tick } = require('./controllers/jobController');
 const app = express();
 
@@ -299,6 +300,9 @@ app.use('/api/fine-types', fineTypeRoutes);
 app.use('/api/fines', fineRoutes);
 
 app.use('/api/expenses', expenseRoutes);
+
+// Loans to members, out of a loan fund.
+app.use('/api/loans', loanRoutes);
 
 app.use('/api/minutes', minuteRoutes);
 

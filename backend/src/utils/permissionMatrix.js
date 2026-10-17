@@ -22,6 +22,7 @@ const AREAS = {
   '/api/contributions': { label: 'Contributions', note: 'Money members pay in.' },
   '/api/ledger': { label: 'Finance ledger', note: 'Per-member logs, week collection, the week cycle and opening balances.' },
   '/api/expenses': { label: 'Expenses', note: 'Money spent out of the funds.' },
+  '/api/loans': { label: 'Loans', note: 'Lend to a member out of a loan fund, record repayments, see who is behind.' },
   '/api/fines': { label: 'Fines', note: 'Issue, settle, void, export.' },
   '/api/fine-types': { label: 'Fine types', note: 'What each infraction costs.' },
   '/api/types': { label: 'Contribution types', note: 'The funds money is paid into.' },

@@ -14,6 +14,7 @@ import IssueFineForm from '../components/members/IssueFineForm';
 import PayFinesModal from '../components/fines/PayFinesModal';
 import MessageMemberPanel from '../components/members/MessageMemberPanel';
 import FinesPanel from '../components/shared/FinesPanel';
+import MemberLoans from '../components/members/MemberLoans';
 import LedgerWalk from '../components/shared/LedgerWalk';
 import WeeklyScheduleTable from '../components/shared/WeeklyScheduleTable';
 import Loader from '../components/shared/Loader';
@@ -788,6 +789,8 @@ async function exportStatementExcel() {
               <FinesPanel fines={fines} onVoid={setVoidingFine} onSettle={setSettlingFine} />
             )}
           </div>
+
+          <MemberLoans memberId={member._id} />
 
           <MessageMemberPanel member={member} pendingFinesTotal={fines?.totalOwed || 0} />
         </section>

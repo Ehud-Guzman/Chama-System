@@ -43,6 +43,9 @@ const ExpenseSchema = new Schema(
     note: { type: String, default: '', maxlength: 2000 },
     // Which minute or resolution approved spending above the group's limit (Settings -> Spending
     // limit, utils/expenseApproval). Blank on anything under the limit.
+    // Set when this expense is a loan's disbursement (models/Loan). Such an expense is managed from the
+    // loan, never edited or deleted on its own: its amount is what is still owed back.
+    loanId: { type: require('mongoose').Schema.Types.ObjectId, ref: 'Loan', default: null },
     approvalRef: { type: String, default: '', trim: true, maxlength: 120 },
     loggedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     deleted: { type: Boolean, default: false },

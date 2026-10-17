@@ -191,6 +191,13 @@ function overdrawRefusal(check) {
   };
 }
 
+// A loan's disbursement is the loan's: its amount falls as the member repays, so editing or deleting it
+// here would quietly break the loan. The way to change it is on the Loans screen.
+const LOAN_OWNED = {
+  code: 'LOAN_EXPENSE',
+  message: 'This is the money lent out on a member loan, so it is changed from the Loans screen (record a repayment, or cancel the loan), not here.',
+};
+
 // POST /api/expenses
 async function createExpense(req, res, next) {
   try {
@@ -284,6 +291,7 @@ async function updateExpense(req, res, next) {
   try {
     const expense = await Expense.findById(req.params.id);
     if (!expense || expense.deleted) return res.status(404).json({ message: 'Expense not found' });
+    if (expense.loanId) return res.status(409).json(LOAN_OWNED);
     const before = snapshot(expense);
     // What it was charged to and for how much before this correction, for the overdraw check.
     const current = { source: expense.source || 'fund', typeId: expense.typeId, amount: expense.amount };
@@ -384,6 +392,7 @@ async function deleteExpense(req, res, next) {
   try {
     const expense = await Expense.findById(req.params.id);
     if (!expense || expense.deleted) return res.status(404).json({ message: 'Expense not found' });
+    if (expense.loanId) return res.status(409).json(LOAN_OWNED);
     const before = snapshot(expense);
 
     expense.deleted = true;
@@ -454,6 +463,11 @@ async function exportExpenses(req, res, next) {
 }
 
 module.exports = {
+  // The overdraw check and the lock around it, shared with the loan that lends from a fund.
+  overdrawn,
+  overdrawRefusal,
+  withExpenseLock,
+  ensureLock,
   listExpenses,
   createExpense,
   updateExpense,

@@ -19,6 +19,7 @@ const { listDefinitions, jobsEnabled } = require('../jobs');
 const { walkChain } = require('../jobs/auditJob');
 const { toEatDateString } = require('../utils/weekCycle');
 const { recentServerErrors } = require('../utils/serverErrors');
+const { loansSnapshot } = require('./loanController');
 
 // The Control Room's first screen: is the system healthy, what needs the super admin's attention,
 // and where do the group's figures stand — in one call, so the page opens on an answer rather than
@@ -81,7 +82,7 @@ async function overview(req, res, next) {
     const settings = await getOrCreateSettings();
     const definitions = listDefinitions();
 
-    const [health, glance, accounts, auditWeek, jobRuns, openReviews, serverErrors, signIns] = await Promise.all([
+    const [health, glance, accounts, auditWeek, jobRuns, openReviews, serverErrors, loans, signIns] = await Promise.all([
       section('Health', async () => {
         const backup = await computeBackupHealth();
         return {
@@ -149,6 +150,7 @@ async function overview(req, res, next) {
       section('Scheduled jobs', () => latestJobRuns(definitions)),
       section('Reviews', openReviewCount),
       section('Server errors', () => recentServerErrors()),
+      section('Loans', () => loansSnapshot()),
       section('Sign-ins', async () => {
         const since = new Date(now - DAY_MS);
         const [failedSignIns, failedLookups] = await Promise.all([
@@ -265,6 +267,17 @@ async function overview(req, res, next) {
       }
     }
 
+    if (loans && !loans.error && loans.overdueCount > 0) {
+      flag(
+        'medium',
+        'loans-overdue',
+        `${loans.overdueCount} loan${loans.overdueCount === 1 ? ' is' : 's are'} behind on repayments`,
+        `Ksh ${Number(loans.overdueAmount).toLocaleString('en-KE')} is overdue. ` +
+          loans.overdue.map((l) => `${l.member} (${l.daysOverdue} days)`).join(', '),
+        '/admin/loans'
+      );
+    }
+
     if (serverErrors && !serverErrors.error && serverErrors.distinct > 0) {
       flag(
         'medium',
@@ -345,6 +358,7 @@ async function overview(req, res, next) {
             }
           : auditWeek,
       serverErrors,
+      loans,
       controls: controlsOf(settings),
     });
   } catch (err) {

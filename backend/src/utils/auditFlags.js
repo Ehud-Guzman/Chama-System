@@ -18,6 +18,7 @@ const CATEGORY_BY_ENTITY = {
   Expense: 'money',
   Fine: 'money',
   FineType: 'money',
+  Loan: 'money',
   Member: 'people',
   User: 'people',
   Minute: 'records',

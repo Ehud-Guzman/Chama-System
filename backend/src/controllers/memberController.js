@@ -28,6 +28,7 @@ const { getOrCreateSettings } = require('../utils/settings');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { cleanEmail, isValidEmail, assertMailConfigured, sendMail, buildStatementEmail, mailFailure } = require('../utils/mailer');
 const AuditLog = require('../models/AuditLog');
+const { activeLoanOwedBy } = require('./loanController');
 const { destroyImage } = require('../utils/cloudinary');
 const { nextOfKinList, nextOfKinListError } = require('../utils/nextOfKin');
 const { credentialChangeRefused } = require('../utils/memberCredentials');
@@ -770,14 +771,18 @@ async function resignMember(req, res, next) {
     let settlement = String(req.body?.settlement || '').trim();
     // A payout is itself the account of what became of his money.
     if (payout > 0 && settlement.length < 3) settlement = `Paid out ${fmtKsh(payout)}`;
-    if ((held > 0 || owed > 0) && settlement.length < 3) {
+    // A loan still out is the third thing that does not go away when he does.
+    const loanOwed = (await activeLoanOwedBy(member._id)).outstanding;
+    if ((held > 0 || owed > 0 || loanOwed > 0) && settlement.length < 3) {
       const fmt = (n) => `Ksh ${Number(n).toLocaleString('en-KE')}`;
       return res.status(409).json({
         message:
-          `He still holds ${fmt(held)} and owes ${fmt(owed)} in fines. ` +
-          'Write down how that was settled (paid out, kept, taken against his fines) before resigning him.',
+          `He still holds ${fmt(held)} and owes ${fmt(owed)} in fines` +
+          (loanOwed > 0 ? ` and ${fmt(loanOwed)} on a loan` : '') +
+          '. Write down how that was settled (paid out, kept, taken against his fines or his loan) before resigning him.',
         held,
         owed,
+        loanOwed,
         needsSettlement: true,
       });
     }

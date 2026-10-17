@@ -1,6 +1,7 @@
 const Contribution = require('../models/Contribution');
 const Expense = require('../models/Expense');
 const Fine = require('../models/Fine');
+const Loan = require('../models/Loan');
 const { getOrCreateSettings } = require('../utils/settings');
 const { resolveConfig, weekRange, parseEatDate, toEatDateString, DAY_MS } = require('../utils/weekCycle');
 const { overrideReason } = require('../utils/overrides');
@@ -48,6 +49,13 @@ const SOURCES = {
     validDate(req.body?.date),
   ],
   fine: async (req) => [(await Fine.findById(req.params.id).select('date').lean())?.date],
+  // A loan repayment is dated by its own date, and taking the last one back or cancelling a loan
+  // changes money on the day it was made.
+  loan: async (req) => [(await Loan.findById(req.params.id).select('issuedAt').lean())?.issuedAt],
+  loanLastRepayment: async (req) => {
+    const loan = await Loan.findById(req.params.id).select('repayments').lean();
+    return [loan?.repayments?.length ? loan.repayments[loan.repayments.length - 1].date : null];
+  },
   // Taking back a fine payment changes money on the day that payment was made.
   finePayment: async (req) => {
     const fine = await Fine.findById(req.params.id).select('settlements').lean();

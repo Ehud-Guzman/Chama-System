@@ -64,12 +64,6 @@ body {
   outline-offset: 2px;
 }
 
-/* A table or a row of chips that is wider than its card scrolls inside the card, not the page. */
-.scroll-x {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-}
-
 /* All monetary figures use tabular numerals */
 .amount {
   font-variant-numeric: tabular-nums;

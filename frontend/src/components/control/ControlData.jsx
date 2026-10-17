@@ -298,7 +298,7 @@ function RestoreFromBackup({ overview, reload }) {
             </p>
           ))}
 
-          <div className="scroll-x rounded-lg border border-rule">
+          <div className="overflow-x-auto rounded-lg border border-rule">
             <table className="w-full min-w-[30rem] text-left text-sm">
               <thead>
                 <tr className="border-b border-rule bg-canvas text-xs uppercase tracking-wider text-muted">

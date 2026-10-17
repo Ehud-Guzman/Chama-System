@@ -1,4 +1,4 @@
-import api, { TOKEN_KEY, REAL_TOKEN_KEY } from './api';
+import api, { TOKEN_KEY, REAL_TOKEN_KEY } from './api.js';
 
 // The super admin looking at the app as another role (Control Room → Accounts and sessions).
 //
@@ -36,4 +36,23 @@ export async function exitPreview(applyMe) {
   }
   const me = await api.get('/api/auth/me');
   applyMe(me.data);
+}
+
+// The session is over (a 401). If a preview was running, the real session is still parked: put it back
+// and say so (the parked token), so the caller can send the super admin to the Control Room instead of
+// the sign-in page. Otherwise the session is simply cleared.
+export function endSession() {
+  let parked = null;
+  try {
+    parked = localStorage.getItem(REAL_TOKEN_KEY);
+    if (parked) {
+      localStorage.setItem(TOKEN_KEY, parked);
+      localStorage.removeItem(REAL_TOKEN_KEY);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {
+    // No storage: nothing to put back.
+  }
+  return parked;
 }

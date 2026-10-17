@@ -35,6 +35,7 @@ const CHUNKS = {
   '/admin/fines': () => import('../pages/Fines.jsx'),
   '/admin/disciplinary': () => import('../pages/DisciplinaryFines.jsx'),
   '/admin/control': () => import('../pages/ControlRoom.jsx'),
+  '/admin/loans': () => import('../pages/Loans.jsx'),
 };
 
 // The two detail screens reached by id rather than by a fixed path.

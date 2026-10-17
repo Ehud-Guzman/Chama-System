@@ -6,7 +6,6 @@ import { ToastProvider } from './components/shared/Toast.jsx';
 import OfflineBanner from './components/shared/OfflineBanner.jsx';
 import UpdateBanner from './components/shared/UpdateBanner';
 import Loader from './components/shared/Loader.jsx';
-import RoleGuard from './components/layout/RoleGuard.jsx';
 
 // Everything except the members' lookup page is lazy-loaded, including the
 // constitution: it is reached from the members' area by a handful of visitors, and
@@ -15,24 +14,9 @@ import RoleGuard from './components/layout/RoleGuard.jsx';
 const PublicConstitution = lazy(() => import('./pages/PublicConstitution.jsx'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin.jsx'));
 const PasswordReset = lazy(() => import('./pages/PasswordReset.jsx'));
-const ProtectedRoute = lazy(() => import('./components/layout/ProtectedRoute.jsx'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
-const AdminSettings = lazy(() => import('./pages/AdminSettings.jsx'));
-const MembersList = lazy(() => import('./pages/MembersList.jsx'));
-const MemberDetail = lazy(() => import('./pages/MemberDetail.jsx'));
-const FinanceLedger = lazy(() => import('./pages/FinanceLedger.jsx'));
-const FinanceMemberLedger = lazy(() => import('./pages/FinanceMemberLedger.jsx'));
-const Expenses = lazy(() => import('./pages/Expenses.jsx'));
-const Fines = lazy(() => import('./pages/Fines.jsx'));
-const FinanceSetup = lazy(() => import('./pages/FinanceSetup.jsx'));
-const Reports = lazy(() => import('./pages/Reports.jsx'));
-const Minutes = lazy(() => import('./pages/Minutes.jsx'));
-const Documents = lazy(() => import('./pages/Documents.jsx'));
-const Reminders = lazy(() => import('./pages/Reminders.jsx'));
-const DisciplinaryFines = lazy(() => import('./pages/DisciplinaryFines.jsx'));
-const AuditTrail = lazy(() => import('./pages/AuditTrail.jsx'));
-const MyAccount = lazy(() => import('./pages/MyAccount.jsx'));
-const ControlRoom = lazy(() => import('./pages/ControlRoom.jsx'));
+// Everything behind a sign-in is one lazily loaded module (AdminRoutes), so the members' page carries none
+// of the admin route table.
+const AdminRoutes = lazy(() => import('./AdminRoutes.jsx'));
 
 export default function App() {
   // Take down the splash that index.html painted.
@@ -66,153 +50,7 @@ export default function App() {
                 password from it. Public, because the person cannot sign in. */}
             <Route path="/admin/forgot-password" element={<PasswordReset />} />
             <Route path="/admin/reset-password" element={<PasswordReset />} />
-            <Route element={<ProtectedRoute />}>
-              <Route
-                path="/admin/dashboard"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
-                    <AdminDashboard />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/settings"
-                element={
-                  /* The tooling behind this page is admin-only at the API too
-                     (api/settings, api/fine-types, api/auth/admins, api/backup), so
-                     the guard and the server agree about who may be here. */
-                  <RoleGuard roles={['super_admin', 'admin']}>
-                    <AdminSettings />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/members"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
-                    <MembersList />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/members/:id"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
-                    <MemberDetail />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/finance"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
-                    <FinanceLedger />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/finance/setup"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
-                    <FinanceSetup />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/finance/expenses"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
-                    <Expenses />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/finance/:id"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
-                    <FinanceMemberLedger />
-                  </RoleGuard>
-                }
-              />
-              {/* The old single-entry / weekly-grid log screen is retired — the
-                  member list is the one way in. Kept as a redirect so a bookmark
-                  or an old shared link still lands somewhere useful. */}
-              <Route path="/admin/log" element={<Navigate to="/admin/finance" replace />} />
-              <Route
-                path="/admin/reports"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer', 'secretary']}>
-                    <Reports />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/minutes"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'secretary']}>
-                    <Minutes />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/reminders"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer']}>
-                    <Reminders />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/documents"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer', 'secretary']}>
-                    <Documents />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/fines"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin']}>
-                    <Fines />
-                  </RoleGuard>
-                }
-              />
-              <Route
-                path="/admin/disciplinary"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'disciplinary']}>
-                    <DisciplinaryFines />
-                  </RoleGuard>
-                }
-              />
-              {/* The audit trail is its own destination, not a panel under the
-                  reports. The guard is the set of roles the API lets read it. */}
-              <Route
-                path="/admin/audit"
-                element={
-                  <RoleGuard roles={['super_admin', 'admin', 'treasurer', 'secretary']}>
-                    <AuditTrail />
-                  </RoleGuard>
-                }
-              />
-              {/* The super admin's oversight and override tools. The API refuses every other
-                  role on each of its routes; the guard just keeps the page out of their way. */}
-              <Route
-                path="/admin/control"
-                element={
-                  <RoleGuard roles={['super_admin']}>
-                    <ControlRoom />
-                  </RoleGuard>
-                }
-              />
-              {/* Every signed-in role reaches this one, so it carries no RoleGuard:
-                  it is where a treasurer, secretary or disciplinary officer changes
-                  his own password and enrols his own second factor, since neither
-                  Settings nor the dashboard is his to open. */}
-              <Route path="/admin/account" element={<MyAccount />} />
-            </Route>
-            <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin/*" element={<AdminRoutes />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

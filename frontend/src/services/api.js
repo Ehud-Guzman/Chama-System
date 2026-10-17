@@ -3,7 +3,7 @@
 import { queueRequest } from './offlineQueue.js';
 
 export const TOKEN_KEY = 'cm_token';
-// Where the super admin's real session is parked while previewing another role (AuthContext).
+// Where the super admin's real session is parked while previewing another role (services/preview).
 export const REAL_TOKEN_KEY = 'cm_real_token';
 
 // A phone on a dying 3G cell does not fail, it stalls: without a ceiling the
@@ -161,19 +161,19 @@ async function handleFailure(err) {
       window.location.pathname !== '/admin/login';
     if (err.response?.status === 401 && onAdminPage) {
       // A preview that simply ran out (it lasts 30 minutes) is not a reason to sign the super admin
-      // out: the real session is still parked, so put it back and return to the Control Room.
-      // Anything else is a genuinely ended session.
+      // out: the real session is still parked, so it is put back (services/preview, loaded only
+      // here, so the members' page does not carry it) and the super admin returns to the Control
+      // Room. Anything else is a genuinely ended session.
       let parked = null;
       try {
-        parked = localStorage.getItem(REAL_TOKEN_KEY);
-        if (parked) {
-          localStorage.setItem(TOKEN_KEY, parked);
-          localStorage.removeItem(REAL_TOKEN_KEY);
-        } else {
-          localStorage.removeItem(TOKEN_KEY);
-        }
+        parked = (await import('./preview.js')).endSession();
       } catch {
-        // Nothing to clean up when there is no storage.
+        // Nothing could be loaded or cleaned up: the session is over either way.
+        try {
+          localStorage.removeItem(TOKEN_KEY);
+        } catch {
+          // No storage.
+        }
       }
       window.location.assign(parked ? '/admin/control' : '/admin/login');
     }
