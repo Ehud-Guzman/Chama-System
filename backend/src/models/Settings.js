@@ -39,7 +39,7 @@ const SettingsSchema = new Schema(
     // Week number the anchor belongs to — 92 at go-live, +1 every Friday after.
     cycleStartWeek: { type: Number, default: 92 },
     // Required personal contribution per week (constitution §7.1).
-    weeklyAmount: { type: Number, default: 1400 },
+    weeklyAmount: { type: Number, default: 1500 },
     // Tea Fund contribution per week. Tracked on its own and never mixed into a
     // member's personal figures — the fund belongs to the Group (§7.2).
     chaiAmount: { type: Number, default: 100 },

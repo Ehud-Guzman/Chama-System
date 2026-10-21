@@ -25,9 +25,9 @@ const { normaliseMoneyLimit, normaliseMoneyLimitWeek } = require('./reminderLimi
 const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 // Fallbacks for a database whose Settings document predates the cycle fields.
-// 1,400 and 100 are the amounts written into the constitution (§7.1, §7.2).
+// 1,500 and 100 are the group's weekly and tea amounts (§7.1, §7.2).
 const DEFAULT_CYCLE_START_WEEK = 92;
-const DEFAULT_WEEKLY_AMOUNT = 1400;
+const DEFAULT_WEEKLY_AMOUNT = 1500;
 const DEFAULT_CHAI_AMOUNT = 100;
 
 // Midnight EAT of the day containing `value`, as an instant.

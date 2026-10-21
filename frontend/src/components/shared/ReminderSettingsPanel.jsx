@@ -31,7 +31,7 @@ export default function ReminderSettingsPanel() {
   const [savedLine, setSavedLine] = useState({ limit: 114600, week: null });
   // What the line rises by each week (the contribution less the tea), used only to show what the
   // line becomes next week.
-  const [weeklyAmount, setWeeklyAmount] = useState(1400);
+  const [weeklyAmount, setWeeklyAmount] = useState(1500);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -52,7 +52,7 @@ export default function ReminderSettingsPanel() {
         setLimitWeek(week == null ? '' : String(week));
         setSavedLine({ limit: Number(limit) || 0, week });
         setWeeklyAmount(
-          Math.max(0, (Number(res.data.settings.weeklyAmount) || 1400) - (Number(res.data.settings.chaiAmount) || 0)),
+          Math.max(0, (Number(res.data.settings.weeklyAmount) || 1500) - (Number(res.data.settings.chaiAmount) || 0)),
         );
       })
       .catch(() => {})

@@ -50,7 +50,7 @@ export default function FinanceSetup() {
   // books opened. It previews before it posts, and it can be taken back out.
   const [collect, setCollect] = useState({
     weekNumber: '91',
-    weeklyAmount: '1400',
+    weeklyAmount: '1500',
     chaiAmount: '100',
     method: 'cash',
   });
