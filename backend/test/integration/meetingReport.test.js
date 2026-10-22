@@ -40,7 +40,7 @@ const FineType = require('../../src/models/FineType');
 const Expense = require('../../src/models/Expense');
 const Contribution = require('../../src/models/Contribution');
 const ContributionType = require('../../src/models/ContributionType');
-const { invalidateSettings } = require('../../src/utils/settings');
+const { getOrCreateSettings, invalidateSettings } = require('../../src/utils/settings');
 
 let server;
 let base;
@@ -89,6 +89,12 @@ test.before(async () => {
 
   await mongoose.connect(targetFor(TEST_DB), { serverSelectionTimeoutMS: 10000 });
   await mongoose.connection.dropDatabase();
+  // The amounts this rehearsal's figures are built on (1,400 a week, 100 tea), pinned here so the test does
+  // not move when the default a brand-new database starts from does.
+  const settings = await getOrCreateSettings();
+  settings.weeklyAmount = 1400;
+  settings.chaiAmount = 100;
+  await settings.save();
   invalidateSettings();
 
   [admin] = await User.create([
