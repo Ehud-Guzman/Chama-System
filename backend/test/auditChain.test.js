@@ -160,3 +160,33 @@ test('the verifier sorts by sequence, so call order does not matter', () => {
   // The read path pages newest-first off an index; the verifier must not care.
   assert.equal(verifyChain([...chain].reverse()).ok, true);
 });
+
+// A trail restored from a backup written before ids were kept as ids has the ids inside `before` and `after` as hex
+// text, and used to be reported as tampered with. Some of the ids in one snapshot may have been text all along.
+test('a restored trail with nested ids as text still verifies, and a real change still does not', () => {
+  const mongoose = require('mongoose');
+  const { matchesStoredHash } = require('../src/utils/auditChain');
+  const id = new mongoose.Types.ObjectId();
+  const other = new mongoose.Types.ObjectId();
+  const entry = {
+    action: 'update',
+    entityType: 'ContributionType',
+    entityId: id,
+    performedBy: id,
+    before: { name: 'A', owner: String(other) },
+    after: { name: 'B', fund: id, owner: String(other) },
+    createdAt: new Date('2026-10-17T11:34:21.820Z'),
+  };
+  const stored = chainedEntry({ previous: null, entry });
+  const original = { ...entry, ...stored };
+
+  // As an old backup carried it: the nested id is now text, the text stays text.
+  const restored = { ...original, after: { name: 'B', fund: String(id), owner: String(other) } };
+  assert.notEqual(chainHash(restored.prevHash, restored), restored.hash, 'the text hashes differently, which is the bug');
+  assert.equal(matchesStoredHash(restored).ok, true);
+  assert.equal(verifyChain([restored]).ok, true);
+
+  const altered = { ...restored, after: { name: 'C', fund: String(id), owner: String(other) } };
+  assert.equal(matchesStoredHash(altered).ok, false);
+  assert.equal(verifyChain([altered]).ok, false);
+});

@@ -34,6 +34,7 @@ function reviveBuffers(value) {
   if (value && typeof value === 'object') {
     if (typeof value.$binary === 'string') return Buffer.from(value.$binary, 'base64');
     if (typeof value.$date === 'string') return new Date(value.$date);
+    if (typeof value.$oid === 'string' && mongoose.Types.ObjectId.isValid(value.$oid)) return new mongoose.Types.ObjectId(value.$oid);
     const out = {};
     for (const [key, val] of Object.entries(value)) out[key] = reviveBuffers(val);
     return out;
@@ -212,9 +213,21 @@ async function applyRestore({ backup, plan, db, replace = false, log = () => {} 
       }
     } else {
       try {
-        const res = await db.collection(row.name).insertMany(docs, { ordered: false });
-        collectionInserted = res.insertedCount || 0;
-        log(`  ${row.name.padEnd(22)} ${collectionInserted} inserted (raw driver)`);
+        // Replace-or-add by `_id`, like every collection that has a model: a plain insert made a second restore into
+        // the same database report a failure on rows the first one wrote (the login-attempt counters, say), which in a
+        // real recovery reads as "a partial restore". A document with no `_id` cannot be matched and is inserted.
+        const withId = docs.filter((doc) => doc && doc._id !== undefined);
+        const without = docs.filter((doc) => !doc || doc._id === undefined);
+        if (withId.length) {
+          const res = await db.collection(row.name).bulkWrite(
+            withId.map((doc) => ({ replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true } })),
+            { ordered: false }
+          );
+          collectionInserted += res.upsertedCount || 0;
+          collectionReplaced += res.modifiedCount || 0;
+        }
+        if (without.length) collectionInserted += (await db.collection(row.name).insertMany(without, { ordered: false })).insertedCount || 0;
+        log(`  ${row.name.padEnd(22)} ${collectionInserted} new, ${collectionReplaced} replaced (raw driver)`);
       } catch (err) {
         collectionFailed = true;
         log(`  ${row.name.padEnd(22)} FAILED: ${err.message}`, 'error');
@@ -235,7 +248,28 @@ async function applyRestore({ backup, plan, db, replace = false, log = () => {} 
   return { inserted, replaced, failed, perCollection };
 }
 
+// The note a restore leaves in the audit trail: what file, onto which database, in which mode. It goes through the
+// chained writer (a direct create left it outside the chain, and a second restore into the same database then failed on
+// the unique index). The person who took the backup is written in the file as TEXT, but the trail hashes what it is
+// given and verifies what the database stores, and the database stores an id: so the text is turned into an id here, or
+// the note would fail the very check that proves the trail is whole. Found by restoring a backup downloaded by a signed-in
+// user, 2026-10-31; a backup made by the nightly job has no person in it and never showed it.
+async function recordRestore({ backup, file, target, replace = false, collections = 0 }) {
+  const { logAudit } = require('./auditLogger');
+  const by = String((backup && backup.exportedBy && backup.exportedBy.id) || '');
+  const performedBy = /^[0-9a-f]{24}$/i.test(by) ? new mongoose.Types.ObjectId(by) : new mongoose.Types.ObjectId();
+  return logAudit({
+    action: 'reset',
+    entityType: 'System',
+    entityId: new mongoose.Types.ObjectId(),
+    performedBy,
+    before: null,
+    after: { action: 'restore-backup', file, target, mode: replace ? 'replace' : 'upsert', collections },
+  });
+}
+
 module.exports = {
+  recordRestore,
   loadAllModels,
   reviveBuffers,
   modelByCollection,

@@ -41,6 +41,7 @@ const {
   readBackupFile,
   planRestore,
   applyRestore,
+  recordRestore,
 } = require('../utils/restore');
 
 loadAllModels();
@@ -146,21 +147,8 @@ async function main() {
   // onto which database, and in which mode. Written even when the file carried the audit
   // trail itself — that trail ends at the moment the backup was taken, so without this
   // entry the restored database has no record of having been restored.
-  const AuditLog = mongoose.models.AuditLog;
-  if (AuditLog) {
-    await AuditLog.create({
-      action: 'reset',
-      entityType: 'System',
-      entityId: new mongoose.Types.ObjectId(),
-      performedBy: backup.exportedBy?.id || new mongoose.Types.ObjectId(),
-      after: {
-        action: 'restore-backup',
-        file: path.basename(filePath),
-        target: targetName,
-        mode: REPLACE ? 'replace' : 'upsert',
-        collections: plan.length,
-      },
-    });
+  if (mongoose.models.AuditLog) {
+    await recordRestore({ backup, file: path.basename(filePath), target: targetName, replace: REPLACE, collections: plan.length });
   }
 
   console.log(

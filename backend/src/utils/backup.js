@@ -37,11 +37,17 @@ function filenameDate(date) {
 //             contribution dates and audit trail are all corrupt. It is written as
 //             `{$date: ISO}`.
 //
-// Everything else (ObjectId, Decimal128, Long) has its own `toJSON` and is left to it: an id
-// serialises as its hex string, and the restore casts it back through the model. That is
-// why this function returns the value rather than walking it.
+//   ObjectId — `{$oid: hex}`. Left to its own `toJSON` it is a bare hex string, and the restore can only
+//             cast a string back to an id where the schema says the field is one. Inside a free-form field
+//             (an audit entry's `before` and `after`) there is no schema, so the id came back as text, and
+//             the audit chain, which hashes ids and text differently, reported a restored trail as tampered
+//             with (found by restoring a real backup into a scratch database, 2026-10-31).
+//
+// Everything else (Decimal128, Long) has its own `toJSON` and is left to it, and the restore casts it back
+// through the model. That is why this function returns the value rather than walking it.
 function encodeForBackup(value, slim) {
   if (value instanceof Date) return { $date: value.toISOString() };
+  if (value && value._bsontype === 'ObjectId') return { $oid: String(value) };
   if (Buffer.isBuffer(value)) return slim ? null : { $binary: value.toString('base64') };
   if (Array.isArray(value)) return value.map((item) => encodeForBackup(item, slim));
   if (value && typeof value === 'object') {

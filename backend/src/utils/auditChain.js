@@ -19,6 +19,7 @@
 // an emailed copy, or a backup kept off-site. This module gives that anchor something to
 // be: `chainHead` is the value to write down and compare later, and the README says to.
 const crypto = require('crypto');
+const { ObjectId } = require('mongoose').Types;
 
 // The hash a first entry chains from. Sixty-four zeros keeps the field the same shape
 // for every entry including the first, so the verifier needs no special case and a null
@@ -56,6 +57,61 @@ function entryPayload(prevHash, entry) {
 
 function chainHash(prevHash, entry) {
   return crypto.createHash('sha256').update(entryPayload(prevHash, entry)).digest('hex');
+}
+
+// An id nested in `before` or `after` was an id when the entry was hashed. A backup written before ids carried a
+// marker (`{$oid}`) turned it into hex text on the way out, and nothing in the file says which texts were ids:
+// the same snapshot can hold `memberId` as text (it went through JSON first) and another field as an id. So a
+// restored entry is tried again with each combination of its 24-hex texts turned back into ids. It passes ONLY
+// if the stored hash is reproduced exactly, so nothing that was changed is excused.
+const HEX_ID = /^[0-9a-f]{24}$/i;
+const MAX_HEX_TEXTS = 12; // 4,095 combinations at most; an entry with more is left to fail rather than hang a check
+
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !(value instanceof Date) && !Buffer.isBuffer(value) && value.constructor === Object;
+}
+
+function countHexTexts(value) {
+  if (Array.isArray(value)) return value.reduce((n, item) => n + countHexTexts(item), 0);
+  if (typeof value === 'string') return HEX_ID.test(value) ? 1 : 0;
+  if (isPlainObject(value)) return Object.values(value).reduce((n, item) => n + countHexTexts(item), 0);
+  return 0;
+}
+
+// `value` with the hex texts whose position (in walking order) has its bit set in `mask` turned into ids.
+function applyHexMask(value, mask, state) {
+  if (Array.isArray(value)) return value.map((item) => applyHexMask(item, mask, state));
+  if (typeof value === 'string' && HEX_ID.test(value)) {
+    const turn = (mask >> state.i) & 1;
+    state.i += 1;
+    return turn ? new ObjectId(value) : value;
+  }
+  if (isPlainObject(value)) {
+    const out = {};
+    for (const [key, inner] of Object.entries(value)) out[key] = applyHexMask(inner, mask, state);
+    return out;
+  }
+  return value;
+}
+
+function* hexIdVariants(entry) {
+  const count = countHexTexts(entry.before) + countHexTexts(entry.after);
+  if (count === 0 || count > MAX_HEX_TEXTS) return;
+  for (let mask = 1; mask < 2 ** count; mask += 1) {
+    const state = { i: 0 };
+    const before = applyHexMask(entry.before, mask, state);
+    const after = applyHexMask(entry.after, mask, state);
+    yield { ...entry, before, after };
+  }
+}
+
+// Whether `entry` hashes to its stored hash, exactly or as an entry restored from a backup that did not keep ids as ids.
+function matchesStoredHash(entry) {
+  if (chainHash(entry.prevHash, entry) === entry.hash) return { ok: true, legacy: false };
+  for (const variant of hexIdVariants(entry)) {
+    if (chainHash(entry.prevHash, variant) === entry.hash) return { ok: true, legacy: true };
+  }
+  return { ok: false, legacy: false };
 }
 
 
@@ -102,8 +158,7 @@ function verifyChain(entries, { expectedHead = null, continueFrom = null } = {})
         message: `Entry ${entry.chainSequence} does not point at the entry before it — an entry was inserted, removed or reordered.`,
       };
     }
-    const recomputed = chainHash(entry.prevHash, entry);
-    if (recomputed !== entry.hash) {
+    if (!matchesStoredHash(entry).ok) {
       return {
         ok: false,
         reason: 'content',
@@ -150,6 +205,7 @@ module.exports = {
   canonicalize,
   entryPayload,
   chainHash,
+  matchesStoredHash,
   verifyChain,
   chainedEntry,
 };
