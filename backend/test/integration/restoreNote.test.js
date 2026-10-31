@@ -81,3 +81,48 @@ test('a collection no model owns can be restored twice into the same database wi
   assert.equal(await db.collection('scratchcounters').countDocuments(), 2, 'nothing was duplicated');
   await db.collection('scratchcounters').drop().catch(() => {});
 });
+
+// Found by restoring the real Wazo Moja backup (2026-10-31): 113 audit entries from the first days, before the chain
+// existed, have NO `chainSequence` in the file. The restore passed each document through the model, which filled the
+// missing field with an explicit `null`, and the database's unique index on that field allows only one `null`, so 112
+// of the earliest audit entries were silently dropped ("a partial restore"). A restore reproduces the file: a field that
+// is absent stays absent.
+test('entries from before the audit chain (no chainSequence) are all restored, and stay without one', { skip }, async () => {
+  const { applyRestore } = require('../../src/utils/restore');
+  const db = mongoose.connection.db;
+  await db.collection('auditlogs').deleteMany({});
+  const id = () => new mongoose.Types.ObjectId().toString();
+  const legacy = (n) => ({ _id: id(), action: 'update', entityType: 'Member', entityId: id(), performedBy: id(), before: { n }, after: { n: n + 1 }, createdAt: { $date: '2026-09-18T06:53:11.338Z' }, updatedAt: { $date: '2026-09-18T06:53:11.338Z' } });
+  const rows = [legacy(1), legacy(2), legacy(3), legacy(4)];
+  const backup = { data: { auditlogs: rows } };
+  const plan = [{ name: 'auditlogs', docs: rows.length, existing: 0, overlapping: 0, added: rows.length, model: AuditLog }];
+  const logs = [];
+  const result = await applyRestore({ backup, plan, db, replace: false, log: (line, level) => logs.push([level, line]) });
+
+  assert.equal(result.failed, 0, JSON.stringify(logs));
+  assert.equal(await db.collection('auditlogs').countDocuments(), 4, 'all four came back, not just the first');
+  assert.equal(await db.collection('auditlogs').countDocuments({ chainSequence: { $exists: true } }), 0, 'and none was given a chain number it never had');
+  // Idempotent: restoring again replaces, it does not duplicate or fail.
+  const again = await applyRestore({ backup, plan, db, replace: false, log: () => {} });
+  assert.equal(again.failed, 0);
+  assert.equal(await db.collection('auditlogs').countDocuments(), 4);
+});
+
+// The same rule one level down: the model also adds defaults INSIDE an object the document does have (a nested
+// `lastFailedAt: null`), and a restore must not invent those either (the restored copy of the real backup gained one).
+test('a nested object keeps exactly the fields the file had, and a value that is there is still cast', { skip }, async () => {
+  const { applyRestore } = require('../../src/utils/restore');
+  const User = require('../../src/models/User');
+  const db = mongoose.connection.db;
+  await db.collection('users').deleteMany({});
+  const _id = new mongoose.Types.ObjectId().toString();
+  const row = { _id, name: 'Nested Check', email: 'nested@example.test', password: '$2a$10$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz01234', role: 'admin', twoFactor: { enabled: true, enrolledAt: { $date: '2026-10-01T00:00:00.000Z' } }, createdAt: { $date: '2026-09-18T06:53:11.338Z' } };
+  const plan = [{ name: 'users', docs: 1, existing: 0, overlapping: 0, added: 1, model: User }];
+  const result = await applyRestore({ backup: { data: { users: [row] } }, plan, db, replace: false, log: () => {} });
+  assert.equal(result.failed, 0);
+  const stored = await db.collection('users').findOne({});
+  assert.deepEqual(Object.keys(stored.twoFactor).sort(), ['enabled', 'enrolledAt'], 'no defaults invented inside the nested object');
+  assert.ok(stored.twoFactor.enrolledAt instanceof Date, 'a value that is there is still cast to what it was');
+  assert.ok(stored._id instanceof mongoose.Types.ObjectId, 'and so is the id');
+  await db.collection('users').deleteMany({});
+});

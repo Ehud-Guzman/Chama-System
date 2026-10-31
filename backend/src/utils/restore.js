@@ -126,6 +126,25 @@ async function planRestore({ backup, db, only = [] }) {
   return plan;
 }
 
+// `casted` (the document after the model has cast it) trimmed to the keys `source` (the same document as the file
+// carries it) actually has, at every depth: the model adds a default for a field the document never had (a nested
+// `lastFailedAt: null`, say), and a restore that invents values is not a faithful copy. Dates, ids and buffers are
+// not plain objects and pass through as cast.
+function onlyWhatTheFileHas(casted, source) {
+  const plain = (v) => v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype;
+  if (Array.isArray(casted) && Array.isArray(source)) {
+    return casted.map((item, i) => (i < source.length ? onlyWhatTheFileHas(item, source[i]) : item));
+  }
+  if (plain(casted) && plain(source)) {
+    const out = {};
+    for (const key of Object.keys(casted)) {
+      if (key in source) out[key] = onlyWhatTheFileHas(casted[key], source[key]);
+    }
+    return out;
+  }
+  return casted;
+}
+
 // Writes the plan. Default is an upsert by `_id`: every document in the file is written under its
 // own id, existing rows are replaced, and collections or rows that are not in the file are left
 // alone — the mode that cannot lose data that is not in the backup. `replace` empties each
@@ -178,7 +197,15 @@ async function applyRestore({ backup, plan, db, replace = false, log = () => {} 
             virtuals: false,
             getters: false,
           });
-          const merged = { ...doc, ...casted };
+          // Only what the FILE has. `toObject()` also carries the schema's defaults for fields the document never had,
+          // and writing those back is not restoring: the audit entries from before the chain existed have no
+          // `chainSequence`, the model gave each an explicit `null`, and the unique index allowed one `null` in the
+          // whole collection, so all but one of them were silently dropped (found restoring the real Wazo Moja
+          // backup, 2026-10-31). A field that is absent in the file stays absent; a field that is there is cast.
+          const merged = { ...doc };
+          for (const key of Object.keys(casted)) {
+            if (key in doc) merged[key] = onlyWhatTheFileHas(casted[key], doc[key]);
+          }
           writes.push({
             replaceOne: { filter: { _id: merged._id }, replacement: merged, upsert: true },
           });
