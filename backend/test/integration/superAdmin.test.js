@@ -777,11 +777,26 @@ test('closing the members’ area stops members and leaves the front page and th
 });
 
 test('switching reminder emails off refuses a send in words a person can read', { skip }, async () => {
-  await call('PUT', '/api/superadmin/switches', { token: tokens.super, body: { reminderEmailsEnabled: false } });
-  const send = await call('POST', '/api/notifications/reminders', { token: tokens.treasurer, body: { memberIds: [] } });
-  assert.equal(send.status, 403);
-  assert.match(send.body.message, /switched off by the super admin/);
-  await call('PUT', '/api/superadmin/switches', { token: tokens.super, body: { reminderEmailsEnabled: true } });
+  // The send route asks "is email set up?" before it asks "has the super admin switched reminders off?", so on a
+  // machine with no mail settings (a clean checkout, the CI runner) the first question answers 503 and this test
+  // never reached the switch. Mail is made to look set up for this test and put back after: nothing is sent, the
+  // switch refuses the request first.
+  const saved = { from: process.env.MAIL_FROM, host: process.env.SMTP_HOST, key: process.env.MAIL_API_KEY };
+  process.env.MAIL_FROM = 'office@example.com';
+  process.env.SMTP_HOST = 'smtp.invalid';
+  delete process.env.MAIL_API_KEY;
+  try {
+    await call('PUT', '/api/superadmin/switches', { token: tokens.super, body: { reminderEmailsEnabled: false } });
+    const send = await call('POST', '/api/notifications/reminders', { token: tokens.treasurer, body: { memberIds: [] } });
+    assert.equal(send.status, 403);
+    assert.match(send.body.message, /switched off by the super admin/);
+  } finally {
+    await call('PUT', '/api/superadmin/switches', { token: tokens.super, body: { reminderEmailsEnabled: true } });
+    for (const [name, value] of [['MAIL_FROM', saved.from], ['SMTP_HOST', saved.host], ['MAIL_API_KEY', saved.key]]) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
 });
 
 test('closing the constitution vote stops a member’s verdict with a plain sentence', { skip }, async () => {
