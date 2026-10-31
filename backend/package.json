@@ -13,6 +13,7 @@
     "test:integration": "node scripts/runIntegration.mjs",
     "restore:backup": "node src/scripts/restoreBackup.js",
     "check:data": "node scripts/checkNoDataFiles.mjs",
+    "books:check": "node src/scripts/booksCheck.js",
     "check:national-ids": "node src/scripts/verifyNationalIds.js",
     "audit:prune": "node src/scripts/pruneAuditLog.js",
     "verify:audit": "node src/scripts/verifyAuditChain.js",
