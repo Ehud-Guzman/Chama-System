@@ -6,10 +6,10 @@
   --color-canvas: #f2f4f1;
   --color-primary: #166534;
   --color-primary-dark: #14532d;
-  --color-accent: #a16207;
+  --color-accent: #8f5a05; /* was #a16207: 3.9-4.3:1 as small text on cream; now 4.6-5.8:1 */
   --color-alert: #b91c1c;
   --color-rule: #e2e6e1;
-  --color-muted: #5c6b62;
+  --color-muted: #57665d; /* was #5c6b62: 4.47:1 on a tinted card; now 4.8:1 or better */
   /* `page` and `elevation` are used across the app as the fill of a field or a
      rail sitting on a white card, and as the tint a row takes under the pointer.
      They were referenced 30+ times before they existed here, which is why those

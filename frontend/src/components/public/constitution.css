@@ -981,7 +981,14 @@
    PRINT
 ========================================================= */
 
+/* The margin of a printed sheet is the page's own, so a paper copy does not depend on whether the person's print dialog
+   is on "Default" or "None": text no longer runs to the edge of the paper. */
+@page {
+  margin: 14mm;
+}
+
 @media print {
+  .constitution-back-button,
   .constitution-topbar,
   .constitution-sidebar,
   .constitution-mobile-nav,
@@ -1034,11 +1041,12 @@
     border: 0;
     border-radius: 0;
     margin-bottom: 28px;
-    page-break-inside: avoid;
   }
 
   .constitution-chapter-header {
     border-bottom: 1px solid #aaa;
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   .constitution-clause {

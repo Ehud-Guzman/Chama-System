@@ -274,7 +274,7 @@ export default function Documents() {
               type="file"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*"
-              className="block w-full rounded-lg border border-rule bg-page px-3 py-2 text-sm"
+              className="block min-h-11 w-full rounded-lg border border-rule bg-page px-3 py-2 text-sm"
             />
           </label>
 
@@ -284,7 +284,7 @@ export default function Documents() {
             </p>
           )}
 
-          <label className="mt-3 flex items-start gap-2 text-sm">
+          <label className="mt-3 flex min-h-11 items-start gap-2 py-1 text-sm">
             <input
               type="checkbox"
               checked={form.visibleToMembers}
@@ -339,7 +339,7 @@ export default function Documents() {
               stays the first thing on the screen, and folded away entirely on a
               phone where the file picker is the only thing being reached for. */}
           <details className="mt-4 border-t border-rule pt-3">
-            <summary className="cursor-pointer text-sm font-semibold text-primary">
+            <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-primary">
               Manage categories ({categories.length})
             </summary>
 

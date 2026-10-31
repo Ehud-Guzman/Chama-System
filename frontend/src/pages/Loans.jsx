@@ -564,7 +564,7 @@ export default function Loans() {
             </button>
           ))}
           <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Member or loan number" aria-label="Search loans"
-            className="h-11 min-w-0 flex-1 rounded-lg border border-rule bg-canvas px-3 text-sm sm:max-w-xs" />
+            className="h-11 w-full min-w-0 rounded-lg border border-rule bg-canvas px-3 text-sm sm:w-auto sm:max-w-xs sm:flex-1" />
         </div>
 
         {loans.length === 0 ? (

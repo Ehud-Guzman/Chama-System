@@ -90,7 +90,7 @@ function Pager({ page, pages, total, from, to, perPage, onPage, onPerPage }) {
             aria-label="Rows per page"
             value={perPage}
             onChange={(e) => onPerPage(Number(e.target.value))}
-            className="h-9 rounded-lg border border-rule bg-canvas px-2 text-xs"
+            className="h-11 rounded-lg border border-rule bg-canvas px-2 text-xs"
           >
             {[25, 50, 100, 200].map((n) => (
               <option key={n} value={n}>
@@ -103,7 +103,7 @@ function Pager({ page, pages, total, from, to, perPage, onPage, onPerPage }) {
           type="button"
           onClick={() => onPage(page - 1)}
           disabled={page <= 1}
-          className="min-h-9 rounded-lg border border-rule px-3 text-xs font-medium text-primary disabled:opacity-40"
+          className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium text-primary disabled:opacity-40"
         >
           Previous
         </button>
@@ -114,7 +114,7 @@ function Pager({ page, pages, total, from, to, perPage, onPage, onPerPage }) {
           type="button"
           onClick={() => onPage(page + 1)}
           disabled={page >= pages}
-          className="min-h-9 rounded-lg border border-rule px-3 text-xs font-medium text-primary disabled:opacity-40"
+          className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium text-primary disabled:opacity-40"
         >
           Next
         </button>
@@ -307,7 +307,7 @@ export default function AuditTrail() {
             type="button"
             onClick={() => change({ category: "" })}
             aria-pressed={!filters.category}
-            className={`min-h-9 rounded-lg border px-3 text-sm font-semibold ${
+            className={`min-h-11 min-w-11 rounded-lg border px-3 text-sm font-semibold ${
               !filters.category
                 ? "border-primary bg-primary/10 text-primary"
                 : "border-rule text-muted"
@@ -321,7 +321,7 @@ export default function AuditTrail() {
               type="button"
               onClick={() => toggleCategory(c.key)}
               aria-pressed={filters.category === c.key}
-              className={`min-h-9 rounded-lg border px-3 text-sm font-semibold ${
+              className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${
                 filters.category === c.key
                   ? "border-primary bg-primary/10 text-primary"
                   : "border-rule text-muted"
@@ -377,7 +377,7 @@ export default function AuditTrail() {
         </div>
 
         <details className="mt-2">
-          <summary className="cursor-pointer text-xs font-medium text-primary">
+          <summary className="flex min-h-11 cursor-pointer items-center text-xs font-medium text-primary">
             More filters
             {moreCount > 0 ? ` · ${moreCount} on` : ""}
           </summary>

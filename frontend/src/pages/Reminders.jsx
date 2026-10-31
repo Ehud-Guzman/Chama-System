@@ -265,7 +265,7 @@ export default function Reminders() {
         <h2 className="text-sm font-semibold">What to include</h2>
 
         <div className="mt-2 space-y-2">
-          <label className="flex items-start gap-2 text-sm">
+          <label className="flex min-h-11 items-start gap-2 py-1 text-sm">
             <input
               type="checkbox"
               checked={includeLate}
@@ -281,7 +281,7 @@ export default function Reminders() {
             </span>
           </label>
 
-          <label className="flex items-start gap-2 text-sm">
+          <label className="flex min-h-11 items-start gap-2 py-1 text-sm">
             <input
               type="checkbox"
               checked={includeFines}
@@ -298,7 +298,7 @@ export default function Reminders() {
               limit is actually set, because a box that does nothing is a box that teaches people
               to ignore the ones that matter. */}
           {weeklyLimit > 0 && (
-            <label className="flex items-start gap-2 border-t border-rule pt-3 text-sm">
+            <label className="flex min-h-11 items-start gap-2 border-t border-rule pt-3 text-sm">
               <input
                 type="checkbox"
                 checked={ignoreLimit}
@@ -447,10 +447,10 @@ export default function Reminders() {
                   <MemberAvatar name={m.name} photoUrl={m.photoUrl} />
 
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">
-                      {m.name}
+                    <span className="flex min-w-0 items-baseline gap-2 text-sm font-semibold">
+                      <span className="truncate">{m.name}</span>
                       {m.regNumber ? (
-                        <span className="amount ml-2 text-xs font-normal text-muted">
+                        <span className="amount shrink-0 text-xs font-normal text-muted">
                           {m.regNumber}
                         </span>
                       ) : null}
@@ -537,10 +537,10 @@ export default function Reminders() {
               <li key={String(row.id)} className="flex items-start gap-3 p-4">
                 <MemberAvatar name={row.name} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">
-                    {row.name}
+                  <span className="flex min-w-0 items-baseline gap-2 text-sm font-semibold">
+                    <span className="truncate">{row.name}</span>
                     {row.regNumber ? (
-                      <span className="amount ml-2 text-xs font-normal text-muted">
+                      <span className="amount shrink-0 text-xs font-normal text-muted">
                         {row.regNumber}
                       </span>
                     ) : null}

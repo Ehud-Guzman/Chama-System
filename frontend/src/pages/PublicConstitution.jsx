@@ -428,6 +428,27 @@ export default function PublicConstitution() {
   };
 
   /*
+   * Print / PDF prints the WHOLE text. The page prints as it is drawn, and every clause is folded shut until it is opened,
+   * so the paper copy used to carry the titles of the chapters and clauses and none of the clause text. Everything is opened
+   * first (the staff page does the same), printing waits a moment for it to be drawn, and what the reader had open is put
+   * back afterwards.
+   */
+  const printWholeText = () => {
+    const wasExpanded = expanded;
+    const before = openClauses;
+    setAllExpanded(true);
+    const restore = () => {
+      window.removeEventListener("afterprint", restore);
+      if (!wasExpanded) {
+        setExpanded(false);
+        setOpenClauses(before);
+      }
+    };
+    window.addEventListener("afterprint", restore);
+    setTimeout(() => window.print(), 150);
+  };
+
+  /*
    * ---------------------------------------------------------
    * SEARCH
    * ---------------------------------------------------------
@@ -715,7 +736,7 @@ export default function PublicConstitution() {
             <button
               type="button"
               className="constitution-action"
-              onClick={() => window.print()}
+              onClick={printWholeText}
             >
               Print / PDF
             </button>
