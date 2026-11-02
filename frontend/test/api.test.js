@@ -220,3 +220,57 @@ test('a queued body is an object, whether it was handed one or a string of JSON'
   assert.throws(() => normaliseBody('not json'), /JSON/);
   assert.throws(() => normaliseBody('[1,2,3]'), /JSON object/);
 });
+
+// ---------------------------------------------------------------------------------------------
+// The host was asleep
+// ---------------------------------------------------------------------------------------------
+
+test('a read that met a sleeping host is asked once more, with a minute to answer', async () => {
+  let attempts = 0;
+  const stub = captureFetch(() => {
+    attempts += 1;
+    if (attempts === 1) return respond({ status: 502, body: '<html>Bad gateway</html>', type: 'text/html' });
+    return respond({ body: JSON.stringify({ members: [] }) });
+  });
+  try {
+    const res = await api.get('/api/members');
+    assert.equal(res.status, 200);
+    assert.equal(stub.calls.length, 2);
+  } finally {
+    stub.restore();
+  }
+});
+
+test('it asks only once, and never repeats a write or a refusal that was a decision', async () => {
+  const down = captureFetch(() => respond({ status: 502, body: 'x', type: 'text/html' }));
+  try {
+    await assert.rejects(() => api.get('/api/members'));
+    assert.equal(down.calls.length, 2, 'one more try, not a loop');
+  } finally {
+    down.restore();
+  }
+
+  const write = captureFetch(() => respond({ status: 502, body: 'x', type: 'text/html' }));
+  try {
+    await assert.rejects(() => api.post('/api/ledger/members/1/log', { amount: 1 }));
+    assert.equal(write.calls.length, 1, 'a write is the outbox’s business, not retried here');
+  } finally {
+    write.restore();
+  }
+
+  const maintenance = captureFetch(() => respond({ status: 503, body: JSON.stringify({ code: 'maintenance', message: 'Back soon' }) }));
+  try {
+    await assert.rejects(() => api.get('/api/members'));
+    assert.equal(maintenance.calls.length, 1, 'maintenance is a decision, not a sleeping host');
+  } finally {
+    maintenance.restore();
+  }
+
+  const refused = captureFetch(() => respond({ status: 403, body: JSON.stringify({ message: 'No' }) }));
+  try {
+    await assert.rejects(() => api.get('/api/members'));
+    assert.equal(refused.calls.length, 1);
+  } finally {
+    refused.restore();
+  }
+});

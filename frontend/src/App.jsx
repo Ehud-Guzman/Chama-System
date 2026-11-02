@@ -4,6 +4,7 @@ import PublicLookup from './pages/PublicLookup.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './components/shared/Toast.jsx';
 import OfflineBanner from './components/shared/OfflineBanner.jsx';
+import WakeNotice from './components/shared/WakeNotice.jsx';
 import UpdateBanner from './components/shared/UpdateBanner';
 import Loader from './components/shared/Loader.jsx';
 
@@ -38,6 +39,7 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <OfflineBanner />
+        <WakeNotice />
         <UpdateBanner />
         <Suspense fallback={<Loader />}>
           <Routes>

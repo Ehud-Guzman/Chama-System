@@ -1,6 +1,7 @@
 // The extension is explicit because Node's resolver needs one and Vite does not: with it, this
 // module can be imported by `node --test` (test/api.test.js) instead of only by the bundler.
 import { queueRequest } from './offlineQueue.js';
+import { slowRequests } from './slowRequests.js';
 
 export const TOKEN_KEY = 'cm_token';
 // Where the super admin's real session is parked while previewing another role (services/preview).
@@ -11,6 +12,13 @@ export const REAL_TOKEN_KEY = 'cm_real_token';
 // tell a slow network from a broken app. 20s is long enough for a real mobile round
 // trip and short enough that the failure is still attached to the action.
 export const REQUEST_TIMEOUT_MS = 20000;
+
+// The free host sleeps when nobody has used it for a while, and the first request after that is answered only once it
+// has started - often longer than the 20 s above. A read that fails that way is asked once more, with a minute to
+// answer, instead of showing an error to the person who woke it. Reads only (a repeated write is the outbox's
+// business), and only when the caller kept the default ceiling.
+export const WAKE_TIMEOUT_MS = 60000;
+const WAKE_PAUSE_MS = 1500;
 
 // `import.meta.env` belongs to Vite; the optional chaining lets this module be imported by the test
 // runner, which has no Vite behind it.
@@ -336,9 +344,37 @@ function sendWithProgress(config) {
 
 // The client itself. The axios call signatures are kept exactly — `get/delete(url, config)`,
 // `post/put/patch(url, data, config)` — so not one call site in the app had to change.
+//
+// A request that has been waiting several seconds tells the screen so (services/slowRequests, components/shared/
+// WakeNotice): on the free host that is the server waking up. Uploads and file downloads are slow for honest
+// reasons and are left out, so the notice never says "waking up" about a 5 MB scan on a weak signal.
 function request(config) {
+  const tracked = !config.onUploadProgress && config.responseType !== 'blob';
+  if (!tracked) return requestUntracked(config);
+  const done = slowRequests.begin();
+  return requestUntracked(config).finally(done);
+}
+
+function requestUntracked(config) {
   const send = config.onUploadProgress ? sendWithProgress : sendWithFetch;
-  return send(config);
+  const isRead = (config.method || 'get').toLowerCase() === 'get';
+  if (!isRead || config.onUploadProgress || config.timeout || config.__woken) return send(config);
+  return send(config).catch(async (err) => {
+    if (!hostWasAsleep(err)) throw err;
+    // A reset or a gateway error is the host still starting: give it a moment. A timeout already waited.
+    if (err.code !== 'ECONNABORTED') await new Promise((resolve) => setTimeout(resolve, WAKE_PAUSE_MS));
+    return send({ ...config, timeout: WAKE_TIMEOUT_MS, __woken: true });
+  });
+}
+
+// Did the host not answer (as opposed to answering "no")? Not for a browser that knows it is offline, and not for a
+// 503 that carries a reason - maintenance and a closed members' area are decisions, not a sleeping host.
+function hostWasAsleep(err) {
+  if (isOffline()) return false;
+  if (err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK') return true;
+  const status = err.response?.status;
+  if (status === 502 || status === 504) return true;
+  return status === 503 && !err.response?.data?.code;
 }
 
 const api = {
