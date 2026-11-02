@@ -1,4 +1,6 @@
 const PDFDocument = require('pdfkit');
+// Swaps the standard PDF fonts for an embedded one with every Kenyan letter, so names print as written (pdfFonts.js).
+const { canDraw } = require('./pdfFonts');
 const { CHAMA_NAME } = require('../data/branding');
 const { toMoney } = require('./money');
 const { coveredByBalance } = require('./reminderLimit');
@@ -327,11 +329,11 @@ function shortDate(value) {
 }
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-// The page is set in the PDF's built-in Helvetica, which can draw Western-European text (the Latin-1
-// letters and the usual punctuation) and nothing else. A character outside that is not skipped: it is
-// drawn as some other, wrong glyph ("Ngũgĩ" came out as "¦qig"), which on a page of names and money is
-// worse than an honest substitute. So the plain letter stands in (ũ -> u), and what cannot be
-// drawn at all (another script, an emoji) becomes "?".
+// The page is set in an embedded font (pdfFonts.js) that draws every letter of Gikuyu, Kiswahili and the other Kenyan
+// languages, so "Ngũgĩ" prints as written. A character even that font lacks is not skipped or drawn as some other, wrong
+// glyph, which on a page of names and money is worse than an honest substitute: the plain letter stands in (ũ -> u), and
+// what cannot be drawn at all (another script, an emoji) becomes "?". If the font file were missing from a deploy the page
+// falls back to the built-in Helvetica (Latin-1 only), and everything above it is spelled out as before.
 const CP1252_EXTRAS = new Set(
   '‘’‚“”„†‡•…‰‹›€™' +
     '–—ŒœŠšŸŽžƒˆ˜'
@@ -341,8 +343,13 @@ function printable(value) {
   if (typeof value !== 'string') return value;
   let out = '';
   // for..of walks code points, so an emoji is one character to replace, not two broken halves.
-  for (const char of value) {
+  // Composed (ĩ as one letter, not i and a floating tilde): the font draws the one-piece letter.
+  for (const char of value.normalize('NFC')) {
     const code = char.codePointAt(0);
+    if (code >= 0x100 && canDraw(char)) {
+      out += char;
+      continue;
+    }
     if (((code >= 0x20 && code <= 0x7e) || (code >= 0xa0 && code <= 0xff)) || CP1252_EXTRAS.has(char) || code === 10) {
       out += char;
       continue;

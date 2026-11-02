@@ -1,4 +1,6 @@
 const PDFDocument = require('pdfkit');
+// Swaps the standard PDF fonts for an embedded one with every Kenyan letter, so names print as written (pdfFonts.js).
+require('./pdfFonts');
 const { entityText } = require('./minuteSearch');
 
 // How many pages a minute is.

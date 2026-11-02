@@ -7,6 +7,10 @@
 // actually returns.
 //
 //   npm run test:integration
+// This suite reads the page's text back out of the PDF, which only works in the standard fonts (an embedded font stores
+// glyph numbers, not characters). The embedded font is covered in test/pdfFonts.test.js.
+process.env.PDF_FONTS = 'standard';
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const zlib = require('node:zlib');

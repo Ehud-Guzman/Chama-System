@@ -1,4 +1,6 @@
 const PDFDocument = require('pdfkit');
+// Swaps the standard PDF fonts for an embedded one with every Kenyan letter, so names print as written (pdfFonts.js).
+require('./pdfFonts');
 const { buildStatement, reconciliationLines, money, shortDate } = require('./memberStatement');
 const { CHAMA_NAME } = require('../data/branding');
 
@@ -91,6 +93,9 @@ function renderMemberStatementPdf(res, profile, chamaName) {
     y = ensureRoom(doc, y, 16);
     doc.font(figure.strong ? 'Helvetica-Bold' : 'Helvetica').fontSize(figure.strong ? 10 : 9);
     doc.fillColor(figure.alert ? '#b3261e' : '#000');
+    // A label longer than its column wraps onto a second line, so the row is as tall as the label needs: it used to be a
+    // fixed height, and the wrapped line was printed over the next row.
+    const labelHeight = doc.heightOfString(figure.label, { width: 300 });
     doc.text(figure.label, MARGIN, y, { width: 300 });
     doc.text(
       typeof figure.value === 'string' ? figure.value : money(figure.value),
@@ -99,7 +104,7 @@ function renderMemberStatementPdf(res, profile, chamaName) {
       { width: 195, align: 'right' }
     );
     doc.fillColor('#000');
-    y += figure.strong ? 16 : 14;
+    y += Math.max(figure.strong ? 16 : 14, labelHeight + 3);
   }
 
   // ------------------------------------------------------- the arithmetic
@@ -146,6 +151,20 @@ function renderMemberStatementPdf(res, profile, chamaName) {
       doc.text(money(entry.contributed), MARGIN + 300, y, { width: 195, align: 'right' });
       y += 14;
     }
+    if (statement.teaFundIncluded && statement.teaTaken > 0) {
+      // The Tea line above reads Ksh 0 where tea is only ever taken out of the weekly contribution (which is inside
+      // that other line). Without this a reader sees a tea figure elsewhere and none here.
+      y = ensureRoom(doc, y, 24);
+      doc.font('Helvetica').fontSize(8).fillColor('#666');
+      doc.text(
+        `Tea is also taken automatically out of the weekly contributions above: ${money(statement.teaTaken)} so far (listed under the weekly funds below), on top of anything paid under its own name in this list.`,
+        MARGIN,
+        y,
+        { width: CONTENT_WIDTH }
+      );
+      doc.fillColor('#000');
+      y = doc.y + 4;
+    }
     y += 10;
   }
 
@@ -174,10 +193,21 @@ function renderMemberStatementPdf(res, profile, chamaName) {
       { key: 'status', label: 'Status', x: MARGIN + 415, width: 80 },
     ];
 
-    y = sectionTitle(doc, y, `Weekly contribution - last ${statement.weeksShown} weeks`);
-    y = tableHeader(doc, y, cols);
+    y = sectionTitle(doc, y, `Weekly funds - last ${statement.weeksShown} weeks`);
 
     for (const schedule of statement.weekly) {
+      // Each fund is named, with what it asks each week, and has its own column headings.
+      y = ensureRoom(doc, y, 44);
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#000');
+      doc.text(`${schedule.typeName || 'Weekly contribution'}  (${money(schedule.weeklyAmount)} a week)`, MARGIN, y, { width: CONTENT_WIDTH });
+      y = doc.y + 2;
+      if (schedule.automatic) {
+        doc.font('Helvetica').fontSize(8).fillColor('#666');
+        doc.text('Taken automatically out of what he pays in, oldest week first. He does not pay it separately.', MARGIN, y, { width: CONTENT_WIDTH });
+        doc.fillColor('#000');
+        y = doc.y + 3;
+      }
+      y = tableHeader(doc, y, cols);
       for (const week of schedule.weeks.slice(0, statement.weeksShown)) {
         y = ensureRoom(doc, y, 14, cols);
         doc.font('Helvetica').fontSize(9);
@@ -207,6 +237,7 @@ function renderMemberStatementPdf(res, profile, chamaName) {
         doc.fillColor('#000');
         y = doc.y + 4;
       }
+      y += 8;
     }
     y += 10;
   }

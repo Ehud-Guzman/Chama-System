@@ -120,6 +120,8 @@ function buildStatement(profile) {
   const weekly = (profile.weeklySchedules || []).map((schedule) => ({
     typeName: schedule.typeName,
     weeklyAmount: schedule.weeklyAmount,
+    // Tea is taken automatically out of what he pays in, never paid on its own: the printed statement says so.
+    automatic: Boolean(schedule.automatic),
     weeks: [...(schedule.weeks || [])]
       .filter((w) => withinPeriod(w.endDate || w.startDate))
       .reverse()
@@ -223,14 +225,15 @@ function buildStatement(profile) {
           value: ledger ? ledger.arrears : 0,
           alert: Boolean(ledger && ledger.arrears > 0),
         },
-        { label: 'Contributions logged', value: profile.contributionsCount || contributions.length },
+        // A count, as text: a number here would be printed as money ("Ksh 3").
+        { label: 'Contributions logged', value: String(profile.contributionsCount || contributions.length) },
         { label: 'Paid in the rows below', value: profile.totalContributed || 0 },
         {
           label: 'Fines owed now (kept out of the figures above)',
           value: fines.totalOwed || 0,
           alert: Number(fines.totalOwed) > 0,
         },
-        { label: 'Fines cleared', value: profile.finesSettledCount || 0 },
+        { label: 'Fines cleared', value: String(profile.finesSettledCount || 0) },
         { label: 'Member since', value: shortDate(profile.joinDate) },
         { label: 'Statement generated', value: shortDate(new Date()) },
       ];
@@ -261,6 +264,8 @@ function buildStatement(profile) {
     // The rows in scope — the period's, or every row there is.
     contributions: rows,
     teaFundIncluded: Boolean(profile.teaFundIncluded),
+    // What has been taken as tea so far, for the note under the by-fund list.
+    teaTaken: Number(ledger && ledger.tea) || 0,
   };
 }
 

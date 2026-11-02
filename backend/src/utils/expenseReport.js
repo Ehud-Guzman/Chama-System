@@ -1,4 +1,6 @@
 const PDFDocument = require('pdfkit');
+// Swaps the standard PDF fonts for an embedded one with every Kenyan letter, so names print as written (pdfFonts.js).
+require('./pdfFonts');
 const { CHAMA_NAME } = require('../data/branding');
 const { toMoney } = require('./money');
 const { groupFundTotals } = require('./moneyPosition');
@@ -355,12 +357,22 @@ function renderExpenseReportPdf(res, report, chamaName) {
     ]
       .filter(Boolean)
       .join('  ·  ');
-    y = ensureRoom(doc, y, detail ? 28 : 14, EXPENSE_COLS);
+    // A row is as tall as its tallest cell. A long fund name or description wraps onto a second line, and the note under
+    // the row used to be placed at a fixed offset, so it printed over the wrapped text.
+    const cells = [
+      [shortDate(row.date), EXPENSE_COLS[0]],
+      [row.fund, EXPENSE_COLS[1]],
+      [row.description || '—', EXPENSE_COLS[2]],
+      [row.reference || '—', EXPENSE_COLS[3]],
+    ];
+    doc.font('Helvetica').fontSize(9);
+    const cellHeight = Math.max(11, ...cells.map(([text, col]) => doc.heightOfString(String(text), { width: col.width })));
+    doc.fontSize(8);
+    const detailHeight = detail ? doc.heightOfString(detail, { width: CONTENT_WIDTH }) : 0;
+    const rowHeight = detail ? cellHeight + detailHeight + 6 : cellHeight + 3;
+    y = ensureRoom(doc, y, rowHeight, EXPENSE_COLS);
     doc.font('Helvetica').fontSize(9).fillColor('#000');
-    doc.text(shortDate(row.date), EXPENSE_COLS[0].x, y, { width: EXPENSE_COLS[0].width });
-    doc.text(row.fund, EXPENSE_COLS[1].x, y, { width: EXPENSE_COLS[1].width });
-    doc.text(row.description || '—', EXPENSE_COLS[2].x, y, { width: EXPENSE_COLS[2].width });
-    doc.text(row.reference || '—', EXPENSE_COLS[3].x, y, { width: EXPENSE_COLS[3].width });
+    for (const [text, col] of cells) doc.text(String(text), col.x, y, { width: col.width });
     doc.font('Helvetica-Bold').text(money(row.amount), EXPENSE_COLS[4].x, y, {
       width: EXPENSE_COLS[4].width,
       align: 'right',
@@ -368,10 +380,10 @@ function renderExpenseReportPdf(res, report, chamaName) {
     doc.font('Helvetica');
     if (detail) {
       doc.font('Helvetica').fontSize(8).fillColor('#666');
-      doc.text(detail, EXPENSE_COLS[0].x, y + 11, { width: CONTENT_WIDTH });
+      doc.text(detail, EXPENSE_COLS[0].x, y + cellHeight + 1, { width: CONTENT_WIDTH });
       doc.fillColor('#000');
     }
-    y += detail ? 28 : 14;
+    y += rowHeight;
   }
 
   // -------------------------------------------------------------- footer

@@ -6,6 +6,11 @@
 // built — and that the totals really reach the paper, by reading the PDF's own text back.
 //
 // No database and no HTTP: the builder takes the figures as arguments.
+// This file reads the page's text back from the file, which only works in the standard fonts (an embedded font stores
+// glyph numbers, not characters), and it pins the fallback spelling of letters those fonts lack. The embedded font is
+// covered in pdfFonts.test.js.
+process.env.PDF_FONTS = 'standard';
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { PassThrough } = require('node:stream');

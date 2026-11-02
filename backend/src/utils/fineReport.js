@@ -1,4 +1,6 @@
 const PDFDocument = require('pdfkit');
+// Swaps the standard PDF fonts for an embedded one with every Kenyan letter, so names print as written (pdfFonts.js).
+require('./pdfFonts');
 const { CHAMA_NAME } = require('../data/branding');
 
 // One member's fines, in full: what was issued, what has been paid off, what is

@@ -106,3 +106,13 @@ pays. `REDESIGN.md` says what is on it and `REDESIGN_SHIPPING_GUIDE.pdf` has the
    the same (the redesign changes no figure).
 
 If anything is wrong, the guide's rollback restores the previous version. The data is not touched by either.
+
+---
+
+## 6. If a PDF will not open, or its letters look wrong
+
+Every PDF the system makes (statements, the meeting report, fines, spending, minutes) is set in an embedded font, so a name
+like Wĩlson Kĩnũthia prints as it is written and not as Wilson Kinuthia. If a deploy ever breaks that, set `PDF_FONTS=standard`
+on Render: every document goes back to the standard fonts at once (names with ĩ or ũ then print as i and u). Remove it when
+the cause is fixed. The font is Liberation Sans, a free font (SIL Open Font Licence; its licence is in
+`backend/src/assets/fonts`), with the same letter widths as the old one, so no page moves.
