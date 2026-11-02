@@ -130,6 +130,7 @@ money dated before the cycle opens is credited to the opening week.
 | --- | --- |
 | `npm run restore:backup -- <file.json>` | Puts a downloaded backup back into a database. Dry run without `--confirm-write`; upserts by `_id` unless `--replace`; refuses the live database unless `--replace-live` as well. Restore into a scratch database (`--target=…`) before you ever need it |
 | `npm run test:integration` | The rehearsal: the money paths and a backup round trip against a scratch MongoDB (see Checks and tests) |
+| `npm run books:check` | Read-only health check of the books: every figure adds up, no payment counted twice, the audit trail whole, the backup and the weekly audit check ran, the security settings are what the group meant. Writes nothing; the day-to-day guide is `OPERATIONS.md` |
 | `npm run seed:constitution -- --confirm-write` | Copies the constitution into the database (then the file can leave git). `--from=/path` seeds from a copy kept outside the repository |
 | `npm run check:national-ids` | Reports duplicate/blank/free-text IDs. Exit code 1 on duplicates — a unique index cannot build while two members share a number, and the gate refuses both |
 | `npm run audit:prune -- --days=730 --confirm-write` | Trims the audit trail to a retention window. Dry run without `--confirm-write`; the prune itself is recorded in what remains |
@@ -1100,6 +1101,7 @@ bundle as a foreign-looking URL).
 | `JOBS_CRON_TOKEN` | Secret for `GET /api/cron/tick` (header `X-Cron-Token`), an address an outside timer could call to run jobs a sleeping host missed. **Leave unset on Render's free tier** (the group does not run timers there: pinging spends the free hours); unset means the address does not exist. See *Running on Render's free tier* |
 | `RESTORE_MAX_MB` | Largest backup file the Control Room's restore screen will take, default 50. A bigger one is restored from the command line (`npm run restore:backup`) |
 | `SYSTEM_ACTOR_EMAIL` | Which account automatic writes are credited to in the audit trail. Defaults to the earliest super admin |
+| `PDF_FONTS` | Set to `standard` to put every PDF back in the standard fonts. Normally unset: the documents are set in an embedded font (Liberation Sans, `src/assets/fonts`) so names like Wĩlson print as written. An emergency switch if a deploy ever makes a PDF unreadable; names with ĩ or ũ then print as i and u |
 
 **Not an environment variable: how often one member may be emailed.** That is
 `Settings.reminderMaxPerWeek` (1 by default, 0 for no limit), set from Settings → Reminders by an
