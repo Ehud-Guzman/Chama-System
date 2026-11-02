@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
 import { money, shortDate, todayISO, isoDateOf } from '../utils/format';
@@ -8,6 +7,10 @@ import Loader from '../components/shared/Loader';
 import ErrorState from '../components/shared/ErrorState';
 import BackLink from '../components/shared/BackLink';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import CompactStat from '../components/shared/CompactStat';
+import ExpenseForm from './expenses/ExpenseForm';
+import ExpenseSummaries from './expenses/ExpenseSummaries';
+import ExpenseList from './expenses/ExpenseList';
 
 // Money leaving the funds, in one place.
 //
@@ -38,16 +41,6 @@ function emptyForm(date = todayISO()) {
     approvalRef: '',
     note: '',
   };
-}
-
-// One fund, as the picker writes it: what it is called, what it holds, and — for a fund
-// that has been spent past what it held — that it is overdrawn rather than showing a
-// negative "holds". A loan fund is named as one, because money paid out of it is owed
-// back rather than spent.
-function fundLabel(fund) {
-  const balance = Number(fund.balance) || 0;
-  const held = balance < 0 ? `overdrawn by ${money(-balance)}` : `holds ${money(balance)}`;
-  return `${fund.name} — ${held}${fund.isRecoverable ? ' (loan fund)' : ''}`;
 }
 
 export default function Expenses() {
@@ -345,12 +338,12 @@ export default function Expenses() {
           from them (and, named separately, less anything out on loan, which is still
           owed back rather than gone). */}
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
+        <CompactStat
           label="Money in, all time"
           value={money(holding.totalContributed)}
           hint="Members and funds, carry-in included"
         />
-        <Stat
+        <CompactStat
           label="Group funds hold"
           value={money(groupFund.holds)}
           hint={`${money(groupFund.in)} came in − ${money(groupFund.spent)} spent${
@@ -358,7 +351,7 @@ export default function Expenses() {
           }`}
           accent
         />
-        <Stat
+        <CompactStat
           label="Spent, and deducted"
           value={`− ${money(holding.totalExpenses)}`}
           hint={`${money(holding.spentFromFunds)} out of the funds${
@@ -368,7 +361,7 @@ export default function Expenses() {
           } — loans and advances are not counted`}
           alert
         />
-        <Stat
+        <CompactStat
           label="The group holds now"
           value={money(holding.netBalance)}
           hint="Everything in (members' money included), less everything spent"
@@ -377,343 +370,39 @@ export default function Expenses() {
 
       {/* Recording what was spent. Two roles may do this — admin and treasurer — and
           the API refuses anyone else, so this form is safe to render on the page. */}
-      <section className="rounded-xl border border-rule bg-surface p-4">
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h2 className="text-sm font-semibold">
-            {editing
-              ? `Correcting ${money(editing.amount)} on ${shortDate(editing.date)}`
-              : 'Record an expense'}
-          </h2>
-          {editing && (
-            <button
-              type="button"
-              onClick={cancelEdit}
-              className="-my-1 min-h-11 rounded-lg px-2 text-sm font-medium text-primary"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
+      <ExpenseForm
+        amountRef={amountRef}
+        busy={busy}
+        cancelEdit={cancelEdit}
+        confirmOverdraw={confirmOverdraw}
+        data={data}
+        editing={editing}
+        empty={empty}
+        form={form}
+        funds={funds}
+        groupFund={groupFund}
+        holding={holding}
+        inCredit={inCredit}
+        overdraw={overdraw}
+        pickSource={pickSource}
+        selectedFund={selectedFund}
+        set={set}
+        setConfirmOverdraw={setConfirmOverdraw}
+        submit={submit}
+      />
 
-        {funds.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-rule px-4 py-6 text-center text-sm text-muted">
-            No fund is set up to be spent from yet. Mark one on{' '}
-            <Link to="/admin/finance/setup" className="text-primary underline">
-              Finance → Setup
-            </Link>{' '}
-            first.
-          </p>
-        ) : (
-          <form onSubmit={submit} className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label htmlFor="expense-fund" className="mb-1 block text-xs font-medium">
-                  Spent from
-                </label>
-                <select
-                  id="expense-fund"
-                  value={form.source === 'group' ? 'group' : form.typeId || selectedFund?.id || ''}
-                  onChange={pickSource}
-                  className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-                >
-                  {/* The group's own money first, because that is what a purchase the
-                      group makes as a whole — land, a building — comes out of, and it
-                      needs no fund to charge and no member's balance touched. */}
-                  <option value="group">
-                    The group's total money — {money(holding.netBalance)} available
-                  </option>
-                  {/* Then the funds, ordered by what they hold, so the pot the money is
-                      actually in comes next and the funds nothing has been collected
-                      into yet sit under a heading of their own. */}
-                  {inCredit.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {fundLabel(f)}
-                    </option>
-                  ))}
-                  {empty.length > 0 && (
-                    <optgroup label="Nothing collected into these yet">
-                      {empty.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {fundLabel(f)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-                <p className="amount mt-1 text-[11px] leading-4 text-muted">
-                  {form.source === 'group'
-                    ? "Comes off the group's total money — what the members have contributed and the funds hold, less what has been spent. No fund is charged and no member's balance changes."
-                    : `Spending comes off the fund picked here. The group's funds hold ${money(
-                        groupFund.holds
-                      )} altogether.`}
-                </p>
-              </div>
-              <div>
-                <label htmlFor="expense-amount" className="mb-1 block text-xs font-medium">
-                  Amount
-                </label>
-                <input
-                  id="expense-amount"
-                  ref={amountRef}
-                  type="text"
-                  inputMode="decimal"
-                  value={form.amount}
-                  onChange={(e) => set('amount', e.target.value)}
-                  placeholder="0"
-                  className="amount h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-base font-semibold"
-                />
-              </div>
-              <div>
-                <label htmlFor="expense-date" className="mb-1 block text-xs font-medium">
-                  Date
-                </label>
-                <input
-                  id="expense-date"
-                  type="date"
-                  max={todayISO()}
-                  value={form.date}
-                  onChange={(e) => set('date', e.target.value)}
-                  className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label htmlFor="expense-description" className="mb-1 block text-xs font-medium">
-                  What it was for
-                </label>
-                <input
-                  id="expense-description"
-                  type="text"
-                  value={form.description}
-                  onChange={(e) => set('description', e.target.value)}
-                  placeholder="e.g. Tea and mandazi for the meeting"
-                  className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-                />
-              </div>
-              <div>
-                <label htmlFor="expense-reference" className="mb-1 block text-xs font-medium">
-                  Voucher or receipt no.{' '}
-                  <span className="font-normal text-muted">— what the paperwork says</span>
-                </label>
-                <input
-                  id="expense-reference"
-                  type="text"
-                  value={form.reference}
-                  onChange={(e) => set('reference', e.target.value)}
-                  placeholder="e.g. VOUCHER 014"
-                  className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-                />
-              </div>
-            </div>
-
-            {/* Only asked for above the group's spending limit, so nobody types an approval for the tea. */}
-            {Number(data?.approvalLimit) > 0 && Number(form.amount) > Number(data.approvalLimit) && (
-              <div className="rounded-lg border border-accent/40 bg-accent/10 p-3">
-                <label htmlFor="expense-approval" className="mb-1 block text-xs font-medium">
-                  Approved in{' '}
-                  <span className="font-normal text-muted">
-                    — above {money(data.approvalLimit)} the members must have agreed it. Which minute or meeting?
-                  </span>
-                </label>
-                <input
-                  id="expense-approval"
-                  type="text"
-                  value={form.approvalRef}
-                  onChange={(e) => set('approvalRef', e.target.value)}
-                  placeholder="e.g. Minutes of 12 Oct, item 4"
-                  className="h-12 w-full rounded-lg border border-rule bg-surface px-3 text-sm"
-                />
-              </div>
-            )}
-
-            <div>
-              <label htmlFor="expense-note" className="mb-1 block text-xs font-medium">
-                Note{' '}
-                <span className="font-normal text-muted">
-                  — paste the M-Pesa message or say who was paid
-                </span>
-              </label>
-              <textarea
-                id="expense-note"
-                rows={3}
-                value={form.note}
-                onChange={(e) => set('note', e.target.value)}
-                placeholder="QDE7X1LMN Confirmed. Ksh500.00 paid to MAMA GRACE SUPPLIERS on 17/9/26."
-                className="w-full rounded-lg border border-rule bg-canvas px-3 py-2 text-sm leading-5"
-              />
-            </div>
-
-            {overdraw && (
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-alert/40 bg-alert/5 px-3 py-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={confirmOverdraw}
-                  onChange={(e) => setConfirmOverdraw(e.target.checked)}
-                  className="mt-0.5 h-5 w-5 shrink-0"
-                />
-                <span>
-                  <span className="block font-semibold text-alert">
-                    This is {money(overdraw.shortfall)} more than {overdraw.pot} holds
-                  </span>
-                  <span className="mt-0.5 block text-xs text-muted">
-                    It holds {money(Math.max(0, overdraw.room))}. Tick to confirm you know, and the expense will be
-                    recorded anyway and noted in the audit trail.
-                  </span>
-                </span>
-              </label>
-            )}
-
-            <button
-              type="submit"
-              disabled={busy || (Boolean(overdraw) && !confirmOverdraw)}
-              className="min-h-12 w-full rounded-lg bg-primary text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {busy ? 'Saving…' : editing ? 'Save the correction' : 'Record the expense'}
-            </button>
-          </form>
-        )}
-      </section>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Where the money in each fund has gone. A fund that no longer exists still
-            appears if it has spending against it, so nothing vanishes from the total. */}
-        <section className="overflow-hidden rounded-xl border border-rule bg-surface">
-          <h2 className="border-b border-rule px-4 py-3 text-sm font-semibold">
-            How each fund stands
-          </h2>
-          {byFund.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-muted">Nothing spent yet.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-rule text-left text-[11px] uppercase tracking-widest text-muted">
-                  <th className="px-4 py-2 font-semibold">Fund</th>
-                  <th className="amount px-2 py-2 text-right font-semibold">In</th>
-                  <th className="amount px-2 py-2 text-right font-semibold">Out</th>
-                  <th className="amount px-4 py-2 text-right font-semibold">Holds</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byFund.map((f) => (
-                  <tr key={f.name} className="border-b border-rule last:border-b-0">
-                    <td className="px-4 py-2">
-                      <span className="font-medium">{f.name}</span>
-                      {f.advances > 0 && (
-                        <span className="block text-[11px] text-muted">
-                          {money(f.advances)} of that is a loan, still owed back
-                        </span>
-                      )}
-                    </td>
-                    <td className="amount px-2 py-2 text-right">
-                      {money(f.contributed + f.carriedIn + f.derived)}
-                    </td>
-                    <td className="amount px-2 py-2 text-right text-alert">{money(f.spent)}</td>
-                    <td className="amount px-4 py-2 text-right font-semibold">{money(f.balance)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-
-        <section className="overflow-hidden rounded-xl border border-rule bg-surface">
-          <h2 className="border-b border-rule px-4 py-3 text-sm font-semibold">
-            Spending by month
-          </h2>
-          {byMonth.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-muted">
-              Nothing spent yet, so there is nothing to chart.
-            </p>
-          ) : (
-            <ul>
-              {byMonth.map((m) => (
-                <li
-                  key={m.month}
-                  className="flex items-center justify-between gap-3 border-b border-rule px-4 py-2.5 text-sm last:border-b-0"
-                >
-                  <span>{monthLabel(m.month)}</span>
-                  <span className="text-xs text-muted">
-                    {m.count} {m.count === 1 ? 'entry' : 'entries'}
-                  </span>
-                  <span className="amount font-semibold text-alert">{money(m.total)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+      <ExpenseSummaries byFund={byFund} byMonth={byMonth} />
 
 
       {/* Every entry, newest first: the record itself, with what it was for and the
           voucher it is backed by, and the two ways of correcting one. */}
-      <section className="overflow-hidden rounded-xl border border-rule bg-surface">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rule px-4 py-3">
-          <h2 className="text-sm font-semibold">Every expense ({expenses.length})</h2>
-          <p className="amount text-sm font-semibold text-alert">
-            {money(totalSpent)} spent in total
-          </p>
-        </div>
-
-        {expenses.length === 0 ? (
-          <p className="px-5 py-10 text-center text-sm text-muted">
-            Nothing has been spent from the funds yet.
-          </p>
-        ) : (
-          <ul>
-            {expenses.map((x) => (
-              <li
-                key={x.id}
-                className={`flex items-start gap-3 border-b border-rule px-4 py-3 last:border-b-0 ${
-                  editingId === x.id ? 'bg-primary/5' : ''
-                }`}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">
-                    {x.description || 'Expense'}
-                    <span className="text-muted">
-                      {' · '}
-                      {x.fund} · {shortDate(x.date)}
-                      {x.reference ? ` · ${x.reference}` : ''}
-                    </span>
-                  </p>
-                  {x.approvalRef && (
-                    <p className="mt-0.5 text-xs text-muted">Approved in: {x.approvalRef}</p>
-                  )}
-                  {x.note && (
-                    <p className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-canvas px-3 py-2 text-xs leading-5 text-muted">
-                      {x.note}
-                    </p>
-                  )}
-                  {x.loggedBy && (
-                    <p className="mt-1 text-[11px] text-muted">Logged by {x.loggedBy}</p>
-                  )}
-                </div>
-                <p className="amount shrink-0 font-semibold text-alert">{money(x.amount)}</p>
-                <div className="flex shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => startEdit(x)}
-                    aria-label={`Correct the expense of ${money(x.amount)}`}
-                    className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-primary"
-                  >
-                    <PencilIcon />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeleting(x)}
-                    aria-label={`Delete the expense of ${money(x.amount)}`}
-                    className="flex h-11 w-11 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-alert"
-                  >
-                    <TrashIcon />
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <ExpenseList
+        editingId={editingId}
+        expenses={expenses}
+        setDeleting={setDeleting}
+        startEdit={startEdit}
+        totalSpent={totalSpent}
+      />
 
       <ConfirmDialog
         open={!!deleting}
@@ -732,71 +421,6 @@ export default function Expenses() {
         onCancel={() => setDeleting(null)}
       />
     </div>
-  );
-}
-
-// One figure with its explanation, the same shape the member's page uses: these are
-// the group's own numbers and a treasurer should be able to defend any of them.
-function Stat({ label, value, hint, accent, alert }) {
-  return (
-    <div className="rounded-xl border border-rule bg-surface p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{label}</p>
-      <p
-        className={`amount mt-1 text-lg font-bold ${
-          alert ? 'text-alert' : accent ? 'text-primary' : ''
-        }`}
-      >
-        {value}
-      </p>
-      {hint && <p className="amount mt-1 text-[11px] leading-4 text-muted">{hint}</p>}
-    </div>
-  );
-}
-
-const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-// 'YYYY-MM' as the group writes a month. A fixed list rather than a locale call, so
-// the label is the same on every device.
-function monthLabel(key) {
-  const [year, month] = String(key).split('-');
-  return `${MONTH_SHORT[Number(month) - 1] || month} ${year}`;
-}
-
-// Inline SVG, no icon library — the same pencil-and-bin pair the ledger rows use.
-function PencilIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 6h18" />
-      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-    </svg>
   );
 }
 

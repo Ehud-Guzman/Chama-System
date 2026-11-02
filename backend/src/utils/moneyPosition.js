@@ -1,7 +1,6 @@
 const Contribution = require('../models/Contribution');
 const Expense = require('../models/Expense');
 const ContributionType = require('../models/ContributionType');
-const Member = require('../models/Member');
 const { carriedInTotals } = require('./carriedIn');
 const { fundBalance } = require('./fundBalance');
 const { bucketForType } = require('./ledgerTypes');
@@ -140,7 +139,6 @@ async function computeMoneyPosition() {
   };
 }
 
-const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 // What the group's own funds hold, all of them together — the "group total fund".
 //

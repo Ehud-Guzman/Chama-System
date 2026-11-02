@@ -43,6 +43,30 @@ function readMoney(value, { min = 0, max = MAX_AMOUNT, label = 'Amount' } = {}) 
   return { value: toMoney(n) };
 }
 
+// Money typed by hand: "1,400", " 1400 ", "Ksh 1400" and "1400.50" all mean the same number, and
+// Number() alone reads three of those four as NaN — which is how a sheet full of perfectly good
+// figures ends up saving nothing.
+//
+// A blank box means "leave this one as it is", never zero: a half-filled sheet must not be able to
+// wipe a balance that was already agreed.
+//
+// `{ skip }` for blank, `{ invalid }` for text that is not a number, `{ outOfRange }` for a figure
+// that is negative or past MAX_AMOUNT (a typo like 1400000000 or -5000 — the model's own min/max do
+// not run on the update paths that write these figures, so the range is enforced here), else
+// `{ amount }`.
+function readAmount(value) {
+  if (value === undefined || value === null) return { skip: true };
+  const text = String(value)
+    .trim()
+    .replace(/^ksh/i, '')
+    .replace(/[\s,]/g, '');
+  if (text === '') return { skip: true };
+  const amount = Number(text);
+  if (!Number.isFinite(amount)) return { invalid: true };
+  if (amount < 0 || amount > MAX_AMOUNT) return { outOfRange: true };
+  return { amount: toMoney(amount) };
+}
+
 // A mongoose setter for a money field: every write through the model is rounded,
 // whichever controller or script made it. Defence in depth — the controllers round
 // too, so a future code path that forgets cannot introduce drift.
@@ -55,4 +79,4 @@ function moneySetter(value) {
 const MONEY_MAX = [MAX_AMOUNT, 'Amount is unrealistically large'];
 const MONEY_MIN = [0, 'Amount cannot be negative'];
 
-module.exports = { toMoney, readMoney, moneySetter, MAX_AMOUNT, MONEY_MAX, MONEY_MIN };
+module.exports = { toMoney, readMoney, readAmount, moneySetter, MAX_AMOUNT, MONEY_MAX, MONEY_MIN };

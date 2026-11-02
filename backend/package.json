@@ -25,7 +25,8 @@
     "balances:restore": "node src/scripts/restoreOpeningBalances.js",
     "minutes:count-pages": "node src/scripts/countMinutePages.js",
     "members:backfill-inactive": "node src/scripts/backfillDeactivatedAt.js",
-    "ledger:clear-contributions": "node src/scripts/clearContributions.js"
+    "ledger:clear-contributions": "node src/scripts/clearContributions.js",
+    "ledger:reset-to-paper": "node src/scripts/resetToPaperSheet.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

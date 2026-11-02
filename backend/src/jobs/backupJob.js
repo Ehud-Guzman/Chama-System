@@ -15,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { writeBackupJson, filenameDate } = require('../utils/backup');
-const { offsiteEnabled, uploadBackupOffsite, pruneOffsite } = require('../utils/offsiteBackup');
+const { uploadBackupOffsite, pruneOffsite } = require('../utils/offsiteBackup');
 
 const DEFAULT_DIR = path.join(__dirname, '..', '..', 'data', 'backups');
 

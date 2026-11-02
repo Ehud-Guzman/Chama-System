@@ -14,8 +14,6 @@ export { toEditorHtml };
 // twelve buttons used to be 40px, which is under both platform minimums.
 const TOOLBAR_BTN = 'min-h-11 min-w-11 rounded-lg px-2.5 text-sm font-bold text-ink hover:bg-primary/10 aria-pressed:bg-primary aria-pressed:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed';
 
-const TOOLBAR_DIVIDER = 'h-6 w-px bg-rule';
-
 function ToolbarButton({ onClick, active, disabled, label, icon, children }) {
   return (
     <button
@@ -30,10 +28,6 @@ function ToolbarButton({ onClick, active, disabled, label, icon, children }) {
       {icon ? <span className="text-base leading-none">{icon}</span> : children}
     </button>
   );
-}
-
-function ToolbarGroup({ children }) {
-  return <div className="flex items-center gap-1">{children}</div>;
 }
 
 function Toolbar({ editor }) {

@@ -1,5 +1,3 @@
-const PDFDocument = require('pdfkit');
-const { sendWorkbook } = require('./xlsxExport');
 const { toEatDateString } = require('./weekCycle');
 
 // The member's statement, in both of the formats it is asked for: a PDF to read on

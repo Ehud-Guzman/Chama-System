@@ -5,45 +5,16 @@ import { useToast } from '../components/shared/Toast';
 import { useModal } from '../hooks/useModal';
 import Modal from '../components/shared/Modal';
 import ErrorState from '../components/shared/ErrorState';
-import { money, shortDate, todayISO, isoDateOf, METHOD_LABELS } from '../utils/format';
+import { money, shortDate, todayISO, isoDateOf } from '../utils/format';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import BackLink from '../components/shared/BackLink';
 import LedgerWalk from '../components/shared/LedgerWalk';
 import Loader from '../components/shared/Loader';
 import { fetchMember, getCachedMember, invalidateLedger } from '../services/ledgerCache';
 import { parseMpesaMessage } from '../utils/mpesaMessage';
-
-const METHODS = Object.keys(METHOD_LABELS);
-
-// The four things the treasurer can put on a member's page. `kind` maps
-// straight onto the API's single write endpoint, and the amount each one
-// prefills with is what members actually owe — so the usual entry is: tap the
-// member, tap Weekly, paste the M-Pesa message, tap Log.
-// The two things the treasurer can add to a member's page. Tea is not here on
-// purpose — it is deducted automatically every week, so there is nothing to log
-// and nothing to edit.
-const KINDS = [
-  { value: 'weekly', label: 'Weekly', hint: 'The weekly contribution due' },
-  { value: 'expense', label: 'Expense', hint: 'Money spent from the Tea Fund' },
-];
-
-function Stat({ label, value, hint, accent, alert }) {
-  return (
-    <div className="rounded-xl border border-rule bg-surface p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">{label}</p>
-      <p
-        className={`amount mt-1 text-lg font-bold ${
-          alert ? 'text-alert' : accent ? 'text-primary' : ''
-        }`}
-      >
-        {value}
-      </p>
-      {/* The explanation in brackets: these are the group's own figures, and a
-          treasurer should be able to defend any one of them without a call. */}
-      {hint && <p className="amount mt-1 text-[11px] leading-4 text-muted">{hint}</p>}
-    </div>
-  );
-}
+import CompactStat from '../components/shared/CompactStat';
+import AddLogForm from './memberLedger/AddLogForm';
+import LedgerEntries from './memberLedger/LedgerEntries';
 
 // One member's ledger. Rendered two ways, from the same code: as the panel that
 // slides over the list when a name is tapped (no navigation, no new chunk, the
@@ -354,25 +325,25 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
       </header>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat
+        <CompactStat
           label={`Carried in at week ${data.week.cycleStartWeek}`}
           value={money(ledger.openingBalance)}
           hint="(what the paper ledger held for him when these books opened)"
         />
-        <Stat
+        <CompactStat
           label="Money he holds"
           value={money(ledger.money)}
           hint={ledger.finesPaid > 0 ? '(carried in + paid in − tea − fines paid out of his money)' : '(carried in + paid in − tea)'}
           accent
         />
-        <Stat
+        <CompactStat
           label="Weeks that have closed"
           value={money(ledger.required)}
           hint={`(expected so far: ${money(ledger.weeklyAmount)} × the ${ledger.chai.weeks} week${
             ledger.chai.weeks === 1 ? '' : 's'
           } — not taken off the money he holds)`}
         />
-        <Stat
+        <CompactStat
           label={owed ? 'Owed' : 'Paid in'}
           value={money(owed ? ledger.arrears : ledger.paid)}
           hint={
@@ -388,7 +359,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
           }
           alert={owed && (ledger.chasedArrears ?? ledger.arrears) > 0}
         />
-        <Stat
+        <CompactStat
           label={`Tea — ${ledger.chai.weeks} week${ledger.chai.weeks === 1 ? '' : 's'}`}
           value={money(ledger.chai.due)}
           hint={`(deducted automatically, ${money(ledger.chai.perWeek)} a week)`}
@@ -435,457 +406,46 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
 
       <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.85fr)] lg:items-start">
         {/* Add a log — the one write the treasurer needs */}
-        <form
-          onSubmit={submit}
-          className="min-w-0 space-y-4 rounded-xl border border-rule bg-surface p-4"
-        >
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted">Add a log</p>
-            <p className="mt-1 text-sm text-muted">
-              {KINDS.find((k) => k.value === kind)?.hint}
-            </p>
-          </div>
+        <AddLogForm
+          amount={amount}
+          amountRef={amountRef}
+          busy={busy}
+          coverArrears={coverArrears}
+          data={data}
+          date={date}
+          description={description}
+          duplicate={duplicate}
+          firstShortWeek={firstShortWeek}
+          kind={kind}
+          ledger={ledger}
+          method={method}
+          note={note}
+          pasted={pasted}
+          selectedWeek={selectedWeek}
+          setAmount={setAmount}
+          setDate={setDate}
+          setDescription={setDescription}
+          setDuplicate={setDuplicate}
+          setKind={setKind}
+          setMethod={setMethod}
+          setNote={setNote}
+          setTargetWeek={setTargetWeek}
+          submit={submit}
+          weekDue={weekDue}
+        />
 
-          <fieldset>
-            <legend className="mb-2 text-xs font-medium">Which week is this for?</legend>
-            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-              {[...ledger.weeks].reverse().map((w) => {
-                const isPicked = selectedWeek?.weekNumber === w.weekNumber;
-                return (
-                  <button
-                    key={w.weekNumber}
-                    type="button"
-                    onClick={() => setTargetWeek(w.weekNumber)}
-                    aria-pressed={isPicked}
-                    title={`${shortDate(w.startDate)} → ${shortDate(w.endDate)}`}
-                    className={`min-w-20 shrink-0 rounded-lg border px-3 py-2 text-center ${
-                      isPicked ? 'border-primary bg-primary/10 text-primary' : 'border-rule text-muted'
-                    }`}
-                  >
-                    <span className="amount block text-sm font-bold">W{w.weekNumber}</span>
-                    <span className="mt-0.5 block text-[11px] uppercase tracking-wide">
-                      {w.isBaseline
-                        ? 'opening'
-                        : w.isCurrent
-                          ? 'now'
-                          : w.settled
-                            ? 'settled'
-                            : 'owing'}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {selectedWeek && (
-              <p className="mt-2 text-xs text-muted">
-                Logging against week {selectedWeek.weekNumber} ({shortDate(selectedWeek.startDate)} →{' '}
-                {shortDate(selectedWeek.endDate)})
-                {selectedWeek.isBaseline
-                  ? ` — the opening week. Nothing was due for it, because his money for it is the ${money(
-                      ledger.openingBalance
-                    )} he carried in; the week's ${money(
-                      ledger.weeklyAmount
-                    )} is still collected, and it is simply his money against week ${
-                      selectedWeek.weekNumber + 1
-                    }.`
-                  : selectedWeek.isCurrent
-                    ? ` — the week running now. Its ${money(
-                        ledger.weeklyAmount
-                      )} is only counted the day after it closes, so logging it here is what settles it.`
-                    : selectedWeek.settled
-                      ? ' — already settled, so anything logged now is simply more of his money.'
-                      : ` — ${money(weekDue)} of the ${money(ledger.weeklyAmount)} still due.`}
-              </p>
-            )}
-            {data.history?.length > 0 && (
-              <p className="mt-2 text-xs leading-5 text-muted">
-                Weeks 1–{data.history[data.history.length - 1].weekNumber} are listed on the week table
-                below for reference. They ran before this ledger opened and their money is already
-                inside his brought-forward balance, so they are not scored — to correct one of those
-                weeks, change his opening balance instead.
-              </p>
-            )}
-          </fieldset>
-
-          {ledger.chasedWeeksBehind > 0 && firstShortWeek && (
-            <button
-              type="button"
-              onClick={coverArrears}
-              className="min-h-11 w-full rounded-lg border border-alert/40 bg-alert/5 px-3 text-xs font-semibold text-alert"
-            >
-              Week {firstShortWeek.weekNumber} is {money(firstShortWeek.shortfall)} short — log it
-              {ledger.chasedWeeksBehind > 1
-                ? ` (${ledger.chasedWeeksBehind} closed weeks unpaid — one line each, in its own week)`
-                : ''}
-            </button>
-          )}
-          {/* Above the group's line the uncollected week is not chased (utils/reminderLimit): the
-              treasurer still needs to see it, and to be able to log it when the member brings it —
-              so the button stays, and what changes is that it no longer calls him behind. */}
-          {(ledger.chasedArrears ?? ledger.arrears) === 0 && ledger.arrears > 0 && (
-            <button
-              type="button"
-              onClick={coverArrears}
-              className="min-h-11 w-full rounded-lg border border-rule bg-canvas px-3 text-xs font-semibold text-muted"
-            >
-              Ahead of the cycle — {ledger.weeksBehind} closed week
-              {ledger.weeksBehind === 1 ? '' : 's'} uncollected ({money(ledger.arrears)}), not chased
-              {ledger.moneyLimit > 0 ? ` above ${money(ledger.moneyLimit)}` : ''} — log it when he
-              brings it
-            </button>
-          )}
-
-          <fieldset>
-            <legend className="mb-2 text-xs font-medium">What is this?</legend>
-            <div className="flex flex-wrap gap-2">
-              {KINDS.map((k) => (
-                <button
-                  key={k.value}
-                  type="button"
-                  onClick={() => setKind(k.value)}
-                  aria-pressed={kind === k.value}
-                  className={`min-h-11 rounded-lg border px-3 text-xs font-semibold ${
-                    kind === k.value
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-rule text-muted'
-                  }`}
-                >
-                  {k.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="log-amount" className="mb-1 block text-xs font-medium">
-                Amount
-              </label>
-              <input
-                id="log-amount"
-                ref={amountRef}
-                type="text"
-                inputMode="numeric"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0"
-                className="amount h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-base font-semibold"
-              />
-            </div>
-            <div>
-              <label htmlFor="log-date" className="mb-1 block text-xs font-medium">
-                Date
-              </label>
-              <input
-                id="log-date"
-                type="date"
-                max={todayISO()}
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-              />
-            </div>
-          </div>
-
-          {kind === 'weekly' && weekDue === 0 && (
-            <p className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
-              That week is already settled. Anything logged now is more of his money.
-            </p>
-          )}
-
-          <fieldset>
-            <legend className="mb-2 text-xs font-medium">Paid by</legend>
-            <div className="grid grid-cols-4 gap-2">
-              {METHODS.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMethod(m)}
-                  aria-pressed={method === m}
-                  className={`min-h-11 rounded-lg border text-xs font-semibold ${
-                    method === m ? 'border-primary bg-primary/10 text-primary' : 'border-rule text-muted'
-                  }`}
-                >
-                  {METHOD_LABELS[m]}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          {kind === 'expense' && (
-            <div>
-              <label htmlFor="log-description" className="mb-1 block text-xs font-medium">
-                What was it for?
-              </label>
-              <input
-                id="log-description"
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Tea and mandazi"
-                className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-              />
-            </div>
-          )}
-
-          <div>
-            <label htmlFor="log-note" className="mb-1 block text-xs font-medium">
-              Note <span className="font-normal text-muted">— paste the M-Pesa or bank message here</span>
-            </label>
-            <textarea
-              id="log-note"
-              rows={4}
-              value={note}
-              onChange={(e) => {
-                setNote(e.target.value);
-                setDuplicate('');
-              }}
-              placeholder="SK9X2Q1LMN Confirmed. Ksh1,400.00 sent to WAZO MOJA SELF-HELP GROUP on 17/9/26 at 8:04 AM."
-              className="w-full rounded-lg border border-rule bg-canvas px-3 py-2 text-sm leading-5"
-            />
-          </div>
-
-          {/* The amount on a pasted M-Pesa message, offered rather than applied: a message can be
-              about something else, and the figure the treasurer typed is the one he meant. */}
-          {pasted.amount && pasted.amount !== Number(String(amount).replace(/[,\s]/g, '')) && (
-            <button
-              type="button"
-              onClick={() => setAmount(String(pasted.amount))}
-              className="min-h-11 w-full rounded-lg border border-rule px-3 text-left text-sm"
-            >
-              The message says <span className="amount font-semibold">{money(pasted.amount)}</span>
-              {pasted.code ? ` (${pasted.code})` : ''}. <span className="font-medium text-primary">Use that amount</span>
-            </button>
-          )}
-
-          {duplicate && (
-            <div role="alert" className="rounded-lg border border-alert/30 bg-alert/5 px-3 py-3 text-sm">
-              <p className="text-alert">{duplicate}</p>
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDuplicate('')}
-                  className="min-h-11 flex-1 rounded-lg border border-rule bg-surface text-sm font-medium"
-                >
-                  Do not log it
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => submit(null, true)}
-                  className="min-h-11 flex-1 rounded-lg bg-alert text-sm font-semibold text-white disabled:opacity-60"
-                >
-                  It is a second payment
-                </button>
-              </div>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="min-h-12 w-full rounded-lg bg-primary text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {busy ? 'Logging…' : 'Log it'}
-          </button>
-        </form>
-
-        <div className="min-w-0 space-y-5">
-          <section>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
-                His entries ({logs.length})
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowWeeks((v) => !v)}
-                className="-mr-2 -my-1 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary"
-              >
-                {showWeeks ? 'Hide weeks' : 'Week by week'}
-              </button>
-            </div>
-
-            {logs.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
-                Nothing logged for {member.name} since week {week.currentWeek} yet.
-              </p>
-            ) : (
-              <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
-                {logs.map((l) => (
-                  <li key={l._id} className="flex items-start gap-3 border-b border-rule px-4 py-3 last:border-b-0">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">
-                        {shortDate(l.date)}
-                        <span className="text-muted">
-                          {' · '}W{l.week} · {l.typeName || 'Contribution'} ·{' '}
-                          {METHOD_LABELS[l.method] || l.method}
-                        </span>
-                      </p>
-                      {l.note && (
-                        <p className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-canvas px-3 py-2 text-xs leading-5 text-muted">
-                          {l.note}
-                        </p>
-                      )}
-                    </div>
-                    <p className="amount shrink-0 font-semibold">{money(l.amount)}</p>
-                    <button
-                      type="button"
-                      onClick={() => setDeleting({ ...l, kind: 'contribution' })}
-                      aria-label={`Delete ${money(l.amount)} on ${shortDate(l.date)}`}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-alert"
-                    >
-                      <TrashIcon />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {showWeeks && (
-            <section className="overflow-x-auto rounded-xl border border-rule bg-surface">
-              <table className="w-full text-sm">
-                <thead className="border-b border-rule bg-canvas">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Week</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Paid in</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Status</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">Tea (auto)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...ledger.weeks].reverse().map((w) => (
-                    <tr key={w.weekNumber} className="border-b border-rule last:border-b-0">
-                      <td className="amount px-3 py-2">
-                        {w.weekNumber}
-                        {w.isCurrent && (
-                          <span className="ml-1 text-[11px] uppercase tracking-wide text-primary">now</span>
-                        )}
-                      </td>
-                      <td className="amount px-3 py-2">{money(w.personalPaid)}</td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest ${
-                            w.status === 'paid'
-                              ? 'bg-primary/10 text-primary'
-                              : w.status === 'partial'
-                                ? 'bg-accent/10 text-accent'
-                                : w.nillFineDue
-                                  ? 'bg-alert/10 text-alert'
-                                  : 'bg-canvas text-muted'
-                          }`}
-                        >
-                          {w.isBaseline
-                            ? 'opening'
-                            : w.status === 'paid'
-                              ? 'paid in full'
-                              : w.status === 'partial'
-                                ? 'partly paid'
-                                : 'nothing paid'}
-                        </span>
-                      </td>
-                      <td className="amount px-3 py-2 text-muted">
-                        {money(w.chaiAmount ?? ledger.chaiAmount)}
-                      </td>
-                    </tr>
-                  ))}
-
-                  {data.history?.length > 0 && (
-                    <>
-                      <tr className="border-b border-rule bg-canvas">
-                        <td colSpan={4} className="px-3 py-2 text-xs leading-5 text-muted">
-                          Weeks 1–{data.history[data.history.length - 1].weekNumber} ran before this ledger
-                          opened. Their money is already inside the {money(ledger.openingBalance)} brought
-                          forward, so they are listed for reference and never scored again.
-                        </td>
-                      </tr>
-                      {[...data.history].reverse().map((w) => {
-                        // A week before the cycle that was collected — the one-time
-                        // week-91 entry — shows its money and its tea. The rest are
-                        // carried forward inside the opening balance, which is what
-                        // the row above explains.
-                        const collected = w.paid > 0 || w.chaiPaid > 0;
-                        return (
-                          <tr
-                            key={w.weekNumber}
-                            className="border-b border-rule text-muted last:border-b-0"
-                          >
-                            <td className="amount px-3 py-2">{w.weekNumber}</td>
-                            <td className="amount px-3 py-2">{collected ? money(w.paid || 0) : '—'}</td>
-                            <td className="px-3 py-2">
-                              {collected ? (
-                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest text-primary">
-                                  paid in
-                                </span>
-                              ) : (
-                                <span className="text-xs">counted in his carried-in money</span>
-                              )}
-                            </td>
-                            <td className="amount px-3 py-2">
-                              {collected && w.chaiPaid > 0 ? money(w.chaiPaid) : '—'}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </>
-                  )}
-                </tbody>
-              </table>
-            </section>
-          )}
-
-          <section>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
-                Fund spending{teaFund ? ` — Tea Fund holds ${money(teaFund.balance)}` : ''}
-              </h2>
-              {/* The group's whole spending record, where an expense is a row of its own
-                  rather than something attached to this member. */}
-              <Link
-                to="/admin/finance/expenses"
-                className="-mr-2 -my-1 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary"
-              >
-                All spending
-              </Link>
-            </div>
-            {expenses.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
-                Nothing spent from the funds yet.
-              </p>
-            ) : (
-              <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
-                {expenses.map((x) => (
-                  <li key={x._id} className="flex items-start gap-3 border-b border-rule px-4 py-3 last:border-b-0">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">
-                        {x.description || 'Expense'}
-                        <span className="text-muted">
-                          {' · '}
-                          {x.typeId?.name ? `${x.typeId.name} · ` : ''}
-                          {shortDate(x.date)}
-                        </span>
-                      </p>
-                      {x.note && (
-                        <p className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-canvas px-3 py-2 text-xs leading-5 text-muted">
-                          {x.note}
-                        </p>
-                      )}
-                    </div>
-                    <p className="amount shrink-0 font-semibold text-alert">{money(x.amount)}</p>
-                    <button
-                      type="button"
-                      onClick={() => setDeleting({ ...x, kind: 'expense' })}
-                      aria-label={`Delete expense of ${money(x.amount)}`}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-alert"
-                    >
-                      <TrashIcon />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
+        <LedgerEntries
+          data={data}
+          expenses={expenses}
+          ledger={ledger}
+          logs={logs}
+          member={member}
+          setDeleting={setDeleting}
+          setShowWeeks={setShowWeeks}
+          showWeeks={showWeeks}
+          teaFund={teaFund}
+          week={week}
+        />
       </div>
 
       <ConfirmDialog
@@ -905,19 +465,5 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
     </div>
   );
 }
-
-// One icon, used by both delete buttons — inline SVG, no icon library, matching
-// LedgerRows.
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 6h18" />
-      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-    </svg>
-  );
-}
-
-
 
 

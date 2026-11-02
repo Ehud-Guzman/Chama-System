@@ -18,7 +18,7 @@ router.use(requireAuth, requireRole('super_admin', 'admin', 'treasurer'));
 
 router.get('/', listLedger);
 router.get('/setup', getSetup);
-router.patch('/setup', updateSetup);
+router.patch('/setup', periodLock('setup'), updateSetup);
 // A whole week collected for everybody at once — the one-time week-91 entry —
 // with a dry run and an undo, because it is the one bulk write in the system.
 router.post('/collect-week', periodLock('week'), collectWeek);

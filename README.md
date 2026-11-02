@@ -134,7 +134,7 @@ money dated before the cycle opens is credited to the opening week.
 | `npm run seed:constitution -- --confirm-write` | Copies the constitution into the database (then the file can leave git). `--from=/path` seeds from a copy kept outside the repository |
 | `npm run check:national-ids` | Reports duplicate/blank/free-text IDs. Exit code 1 on duplicates — a unique index cannot build while two members share a number, and the gate refuses both |
 | `npm run audit:prune -- --days=730 --confirm-write` | Trims the audit trail to a retention window. Dry run without `--confirm-write`; the prune itself is recorded in what remains |
-| `npm run balances:restore` · `ledger:clear-contributions` | The destructive ones that remain. Both dry-run by default, both back up to `backend/data/` (gitignored), both write a `System` audit entry naming the operator (`--by=<email>`, or the earliest super admin) |
+| `npm run balances:restore` · `ledger:clear-contributions` · `ledger:reset-to-paper` | The destructive ones that remain. Both dry-run by default, both back up to `backend/data/` (gitignored), both write a `System` audit entry naming the operator (`--by=<email>`, or the earliest super admin) |
 | `node scripts/reportMoneyLine.js` · `node scripts/verifyLedgerFigures.js` | The two read-only checks to reach for when the figures are argued about — a balance in a meeting, or an email somebody says was sent to the wrong member. Neither writes anything, builds an index, creates a Settings row or sends anything. The first prints every member's held money, what he owes, his fines, whether he is told about any of it and why (the money line included); the second recomputes each member the long way — carried in + what he paid since the cycle opened − tea — and compares it with the engine, member by member, so "the system says X" can be answered with "and a plain sum of the documents says the same". `--rows` on the second lists every shilling logged since the books opened with the week it belongs to; `--member=<part of a name>` narrows it to one member |
 
 **The go-live scripts are gone, because the go-live happened.** Five commands were removed on
@@ -732,7 +732,7 @@ over money, and the API refuses them). Nobody can deactivate the super admin acc
   default, 0 for off) is a line in *money*: at or above it, his closed weeks stop being something
   he is written to about — his unpaid fines still are, and his own passbook still reports the week,
   because that is his record. The line **moves with the cycle**: `weeklyAmount` is added every week
-  after the week it was measured in (114,600 in week 92, 116,000 in week 93, 117,400 in week 94,
+  after the week it was measured in (114,600 in week 92, 116,100 in week 93, 117,600 in week 94,
   …), because what it is compared against is what the group expected a member to have put in by
   then — a frozen figure would stop excluding anybody within a fortnight. It is compared against
   the money the group is actually holding for him (`ledger.money`, carried in + paid in − tea) —

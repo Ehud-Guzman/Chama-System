@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { toMoney, readMoney, moneySetter, MAX_AMOUNT } = require('../src/utils/money');
+const { toMoney, readMoney, readAmount, moneySetter, MAX_AMOUNT } = require('../src/utils/money');
 
 test('toMoney rounds to two decimal places', () => {
   assert.equal(toMoney(0.1 + 0.2), 0.3); // the classic
@@ -54,4 +54,32 @@ test('the model setter rounds whatever a caller hands it', () => {
   assert.equal(moneySetter(null), null);
   assert.equal(moneySetter(undefined), undefined);
   assert.equal(moneySetter(''), '');
+});
+
+// Money typed by hand on the setup sheet.
+test('readAmount reads every way the treasurer types a figure', () => {
+  assert.deepEqual(readAmount('1,400'), { amount: 1400 });
+  assert.deepEqual(readAmount(' 1400 '), { amount: 1400 });
+  assert.deepEqual(readAmount('Ksh 1400'), { amount: 1400 });
+  assert.deepEqual(readAmount('KSH 1,400.50'), { amount: 1400.5 });
+  assert.deepEqual(readAmount(0), { amount: 0 });
+  assert.deepEqual(readAmount(1400.004), { amount: 1400 }, 'rounded to the cent like every stored figure');
+});
+
+test('readAmount: a blank box is "leave it alone", never zero', () => {
+  assert.deepEqual(readAmount(''), { skip: true });
+  assert.deepEqual(readAmount('   '), { skip: true });
+  assert.deepEqual(readAmount(null), { skip: true });
+  assert.deepEqual(readAmount(undefined), { skip: true });
+});
+
+test('readAmount refuses what is not a figure, and what no balance could be', () => {
+  assert.deepEqual(readAmount('abc'), { invalid: true });
+  assert.deepEqual(readAmount('12x'), { invalid: true });
+  assert.deepEqual(readAmount(NaN), { invalid: true });
+  // The model's min/max do not run on the update paths that write these, so the range is held here.
+  assert.deepEqual(readAmount('-5000'), { outOfRange: true });
+  assert.deepEqual(readAmount(MAX_AMOUNT + 1), { outOfRange: true });
+  assert.deepEqual(readAmount('99999999999'), { outOfRange: true });
+  assert.deepEqual(readAmount(MAX_AMOUNT), { amount: MAX_AMOUNT });
 });

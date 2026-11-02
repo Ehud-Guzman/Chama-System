@@ -5,31 +5,15 @@ import { useModal } from '../../hooks/useModal';
 import Modal from '../shared/Modal';
 import { todayISO } from '../../utils/format';
 import MemberAvatar from './MemberAvatar';
+import NextOfKinFields from './memberForm/NextOfKinFields';
+import FamilyFields from './memberForm/FamilyFields';
+import AdmissionFields from './memberForm/AdmissionFields';
 
 function toDateInput(value) {
   if (!value) return '';
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 }
-
-// The relationships offered as you type. Free text is allowed on top of these:
-// the office knows this family, and "Uncle" has to be writable.
-const KIN_RELATIONSHIPS = [
-  'Spouse',
-  'Son',
-  'Daughter',
-  'Child',
-  'Father',
-  'Mother',
-  'Brother',
-  'Sister',
-  'In-law',
-  'Guardian',
-  'Other',
-];
-
-// The quick-add chips. These are the three the office is asked for most often.
-const KIN_QUICK_ADD = ['Spouse', 'Child', 'In-law'];
 
 function blankKin(relationship = '') {
   return { name: '', relationship, phone: '', email: '' };
@@ -484,377 +468,39 @@ export default function MemberForm({ initial, busy, onSubmit, onCancel }) {
             member names more than one: a spouse, the children, the in-laws. Name
             plus at least one way to reach each of them is what the server checks
             for, entry by entry. */}
-        <fieldset className="rounded-xl border border-rule p-3">
-          <legend className="px-1 text-xs font-semibold uppercase tracking-widest text-muted">
-            Next of kin
-          </legend>
-
-          <p className="text-xs text-muted">
-            Add as many as you need — spouse, children, in-laws. Each one needs a name
-            and a phone number or an email.
-            {kinLocked && ` ${adminOnlyHint}`}
-          </p>
-
-          <ul className="mt-2 space-y-3">
-            {form.nextOfKin.map((kin, index) => (
-              <li
-                key={index}
-                className="rounded-xl border border-rule bg-page p-3"
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-                    Contact {index + 1}
-                    {kin.relationship ? ` · ${kin.relationship}` : ''}
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => removeKin(index)}
-                    disabled={kinLocked}
-                    className="min-h-11 rounded-lg px-2 text-sm font-medium text-alert disabled:text-muted"
-                  >
-                    Remove
-                  </button>
-                </div>
-
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <label htmlFor={`kin-name-${index}`} className="sr-only">
-                      Contact {index + 1} name
-                    </label>
-                    <input
-                      id={`kin-name-${index}`}
-                      type="text"
-                      placeholder="Name"
-                      value={kin.name}
-                      onChange={setKin(index, 'name')}
-                      disabled={kinLocked}
-                      className="h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm disabled:bg-elevation disabled:text-muted"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label htmlFor={`kin-relationship-${index}`} className="sr-only">
-                      Contact {index + 1} relationship
-                    </label>
-                    <input
-                      id={`kin-relationship-${index}`}
-                      type="text"
-                      list="kin-relationship-options"
-                      placeholder="Relationship — spouse, daughter, in-law…"
-                      value={kin.relationship}
-                      onChange={setKin(index, 'relationship')}
-                      disabled={kinLocked}
-                      className="h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm disabled:bg-elevation disabled:text-muted"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor={`kin-phone-${index}`} className="sr-only">
-                      Contact {index + 1} phone
-                    </label>
-                    <input
-                      id={`kin-phone-${index}`}
-                      type="tel"
-                      inputMode="tel"
-                      placeholder="07XX XXX XXX"
-                      value={kin.phone}
-                      onChange={setKin(index, 'phone')}
-                      disabled={kinLocked}
-                      className="amount h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm disabled:bg-elevation disabled:text-muted"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor={`kin-email-${index}`} className="sr-only">
-                      Contact {index + 1} email
-                    </label>
-                    <input
-                      id={`kin-email-${index}`}
-                      type="email"
-                      placeholder="Email (optional)"
-                      value={kin.email}
-                      onChange={setKin(index, 'email')}
-                      disabled={kinLocked}
-                      className="amount h-11 w-full rounded-xl border border-rule bg-surface px-3 text-sm disabled:bg-elevation disabled:text-muted"
-                    />
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          <datalist id="kin-relationship-options">
-            {KIN_RELATIONSHIPS.map((relationship) => (
-              <option key={relationship} value={relationship} />
-            ))}
-          </datalist>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {KIN_QUICK_ADD.map((relationship) => (
-              <button
-                key={relationship}
-                type="button"
-                onClick={() => addKin(relationship)}
-                disabled={kinLocked}
-                className="min-h-11 rounded-lg border border-rule bg-surface px-3 text-xs font-medium text-primary disabled:opacity-50"
-              >
-                + {relationship}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              onClick={() => addKin()}
-              disabled={kinLocked}
-              className="min-h-11 rounded-lg border border-rule bg-surface px-3 text-xs font-medium disabled:opacity-50"
-            >
-              + Another contact
-            </button>
-          </div>
-        </fieldset>
+        <NextOfKinFields
+          addKin={addKin}
+          adminOnlyHint={adminOnlyHint}
+          form={form}
+          kinLocked={kinLocked}
+          removeKin={removeKin}
+          setKin={setKin}
+        />
 
         {/* The family block. Collapsed unless there is something in it: on a phone this
             form is already long, and a member can sit in the register for months with
             nothing but a name and a number. */}
-        <details className="rounded-xl border border-rule p-3" defaultOpen={familyOpen}>
-          <summary className="cursor-pointer px-1 text-xs font-semibold uppercase tracking-widest text-muted">
-            Family <span className="font-normal normal-case tracking-normal">
-              {familyOnFile ? '(on file)' : '(optional)'}
-            </span>
-          </summary>
-
-          <p className="mt-2 text-xs text-muted">
-            Spouse, children, parents and in-laws — the family the group supports
-            and calls on.
-          </p>
-
-          <div className="mt-3 space-y-3">
-            <div>
-              <label htmlFor="m-spouse" className="mb-1 block text-sm font-medium">
-                Spouse's name
-              </label>
-              <input
-                id="m-spouse"
-                type="text"
-                value={form.family.spouseName}
-                onChange={setFamily('spouseName')}
-                className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
-              />
-            </div>
-
-            <fieldset>
-              <legend className="mb-1 text-sm font-medium">Children</legend>
-              <ul className="space-y-2">
-                {form.family.children.map((child, index) => (
-                  <li key={index} className="flex items-center gap-2">
-                    <label htmlFor={`m-child-${index}`} className="sr-only">
-                      Child {index + 1}
-                    </label>
-                    <input
-                      id={`m-child-${index}`}
-                      type="text"
-                      placeholder={`Child ${index + 1}`}
-                      value={child}
-                      onChange={setChild(index)}
-                      className="h-11 min-w-0 flex-1 rounded-xl border border-rule px-3 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeChild(index)}
-                      className="min-h-11 shrink-0 rounded-lg px-2 text-xs font-medium text-alert"
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                type="button"
-                onClick={addChild}
-                className="mt-2 min-h-11 rounded-lg border border-rule bg-surface px-3 text-xs font-medium text-primary"
-              >
-                + Another child
-              </button>
-            </fieldset>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label htmlFor="m-father" className="mb-1 block text-sm font-medium">
-                  Father's name
-                </label>
-                <input
-                  id="m-father"
-                  type="text"
-                  value={form.family.fatherName}
-                  onChange={setFamily('fatherName')}
-                  className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="m-mother" className="mb-1 block text-sm font-medium">
-                  Mother's name
-                </label>
-                <input
-                  id="m-mother"
-                  type="text"
-                  value={form.family.motherName}
-                  onChange={setFamily('motherName')}
-                  className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="m-father-in-law" className="mb-1 block text-sm font-medium">
-                  Father-in-law's name
-                </label>
-                <input
-                  id="m-father-in-law"
-                  type="text"
-                  value={form.family.fatherInLawName}
-                  onChange={setFamily('fatherInLawName')}
-                  className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="m-mother-in-law" className="mb-1 block text-sm font-medium">
-                  Mother-in-law's name
-                </label>
-                <input
-                  id="m-mother-in-law"
-                  type="text"
-                  value={form.family.motherInLawName}
-                  onChange={setFamily('motherInLawName')}
-                  className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
-                />
-              </div>
-            </div>
-          </div>
-        </details>
+        <FamilyFields
+          addChild={addChild}
+          familyOnFile={familyOnFile}
+          familyOpen={familyOpen}
+          form={form}
+          removeChild={removeChild}
+          setChild={setChild}
+          setFamily={setFamily}
+        />
 
         {/* The form's declaration and its "for official use only" block: the member's
             acceptance of the constitution, then the three office bearers who admitted
             him. Kept together because they are one act of paperwork. */}
-        <details className="rounded-xl border border-rule p-3" defaultOpen={admissionOpen}>
-          <summary className="cursor-pointer px-1 text-xs font-semibold uppercase tracking-widest text-muted">
-            Declaration &amp; approvals <span className="font-normal normal-case tracking-normal">
-              {admissionComplete ? '(complete)' : '(pending)'}
-            </span>
-          </summary>
-
-          <div className="mt-3 space-y-3">
-            <label className="flex items-start gap-2 rounded-xl border border-rule px-3 py-3 text-sm">
-              <input
-                type="checkbox"
-                checked={form.commitment.agreed}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    commitment: {
-                      ...prev.commitment,
-                      agreed: e.target.checked,
-                      // Stamped the first time it is ticked, so the date it happened
-                      // survives later edits that never touch the box.
-                      agreedAt: prev.commitment.agreedAt || todayISO(),
-                    },
-                  }))
-                }
-                className="mt-0.5 h-4 w-4"
-              />
-              <span>
-                Member has read the constitution and accepts the weekly commitment
-                <span className="block text-xs text-muted">
-                  The group's constitution and by-laws, and the weekly contribution agreed by members.
-                </span>
-              </span>
-            </label>
-
-            {form.commitment.agreed && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="m-signed-by" className="mb-1 block text-sm font-medium">
-                    Signed by
-                  </label>
-                  <input
-                    id="m-signed-by"
-                    type="text"
-                    placeholder="Name as signed"
-                    value={form.commitment.signedBy}
-                    onChange={setCommitment('signedBy')}
-                    className="h-11 w-full rounded-xl border border-rule px-4 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="m-signed-date" className="mb-1 block text-sm font-medium">
-                    Date signed
-                  </label>
-                  <input
-                    id="m-signed-date"
-                    type="date"
-                    max={todayISO()}
-                    value={form.commitment.agreedAt}
-                    onChange={setCommitment('agreedAt')}
-                    className="h-11 w-full rounded-xl border border-rule px-3 text-sm"
-                  />
-                </div>
-              </div>
-            )}
-
-            <fieldset>
-              <legend className="text-sm font-medium">
-                For official use — membership approved by
-              </legend>
-              <p className="mt-1 text-xs text-muted">
-                Type the names the three office bearers signed with. A name left without a
-                date is recorded as today.
-              </p>
-
-              <ul className="mt-2 space-y-3">
-                {form.approvals.map((approval, index) => (
-                  <li key={approval.role} className="rounded-xl border border-rule bg-page p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-                      {approval.label}
-                    </p>
-
-                    <div className="mt-1 grid gap-2 sm:grid-cols-2">
-                      <div>
-                        <label htmlFor={`m-approval-name-${approval.role}`} className="sr-only">
-                          {approval.label} name
-                        </label>
-                        <input
-                          id={`m-approval-name-${approval.role}`}
-                          type="text"
-                          placeholder="Name"
-                          value={approval.name}
-                          onChange={setApproval(index, 'name')}
-                          className="h-11 w-full rounded-xl border border-rule px-3 text-sm"
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor={`m-approval-date-${approval.role}`} className="sr-only">
-                          {approval.label} date signed
-                        </label>
-                        <input
-                          id={`m-approval-date-${approval.role}`}
-                          type="date"
-                          max={todayISO()}
-                          value={approval.signedAt}
-                          onChange={setApproval(index, 'signedAt')}
-                          className="h-11 w-full rounded-xl border border-rule px-3 text-sm"
-                        />
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </fieldset>
-          </div>
-        </details>
+        <AdmissionFields
+          admissionComplete={admissionComplete}
+          admissionOpen={admissionOpen}
+          form={form}
+          setApproval={setApproval}
+          setCommitment={setCommitment}
+          setForm={setForm}
+        />
 
         <label className="flex items-start gap-2 rounded-xl border border-rule px-4 py-3 text-sm">
           <input

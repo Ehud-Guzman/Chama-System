@@ -49,11 +49,10 @@ if (URI && !/rehearsal|scratch|test/i.test(URI)) {
 const app = require('../../src/app');
 const Member = require('../../src/models/Member');
 const User = require('../../src/models/User');
-const Settings = require('../../src/models/Settings');
 const Contribution = require('../../src/models/Contribution');
 const Fine = require('../../src/models/Fine');
 const { getOrCreateSettings, invalidateSettings } = require('../../src/utils/settings');
-const { seedLedgerTypes, seedGroupFunds, getLedgerTypes } = require('../../src/utils/ledgerTypes');
+const { seedLedgerTypes, seedGroupFunds } = require('../../src/utils/ledgerTypes');
 const { seedDisciplinaryFineTypes } = require('../../src/utils/seedDisciplinaryFineTypes');
 const { fridayOf } = require('../../src/utils/weekCycle');
 

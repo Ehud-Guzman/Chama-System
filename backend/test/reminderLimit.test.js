@@ -91,21 +91,23 @@ test('the week the figure was measured in falls back to the cycle\'s opening wee
   );
 });
 
-// The line rises by what a member who pays in full actually gains: the contribution less the tea.
-test('the line rises by the contribution less the tea', () => {
-  const settings = { reminderMoneyLimit: 114600 };
-  const net = { cycleStartWeek: 92, weeklyAmount: 1500, chaiAmount: 100 };
+// The line rises by the whole contribution, as the paper register adds it — the tea is not taken off.
+test('the line rises by the full weekly contribution', () => {
+  const full = { cycleStartWeek: 92, weeklyAmount: 1500, chaiAmount: 100 };
 
-  assert.equal(lineStep(net), 1400);
-  assert.equal(moneyLimitForWeek(settings, net, 92), 114600);
-  assert.equal(moneyLimitForWeek(settings, net, 93), 116000);
-  assert.equal(moneyLimitForWeek(settings, net, 94), 117400);
-  // No tea set, or tea larger than the contribution: never a line that falls.
-  assert.equal(lineStep({ weeklyAmount: 1400 }), 1400);
-  assert.equal(lineStep({ weeklyAmount: 50, chaiAmount: 100 }), 0);
+  assert.equal(lineStep(full), 1500);
+  assert.equal(moneyLimitForWeek({ reminderMoneyLimit: 114600 }, full, 92), 114600);
+  assert.equal(moneyLimitForWeek({ reminderMoneyLimit: 114600 }, full, 93), 116100);
+  assert.equal(moneyLimitForWeek({ reminderMoneyLimit: 114600 }, full, 94), 117600);
+  // The paper register's own figures: 123,600 in week 98, so 125,100 in week 99.
+  const paper = { reminderMoneyLimit: 123600, reminderMoneyLimitWeek: 98 };
+  assert.equal(moneyLimitForWeek(paper, full, 98), 123600);
+  assert.equal(moneyLimitForWeek(paper, full, 99), 125100);
+  // No amount set: never a line that falls.
+  assert.equal(lineStep({}), 0);
 });
 
-test('a member who pays every week stays on the line, week after week', () => {
+test('a member who pays every week is never behind, though the line outruns him by the tea', () => {
   const { computeMemberLedger } = require('../src/utils/memberLedger');
   const { resolveConfig, weekRange } = require('../src/utils/weekCycle');
   const settings = {
@@ -131,6 +133,9 @@ test('a member who pays every week stays on the line, week after week', () => {
     const now = weekRange(week, cfg).startDate.getTime() + 3 * 86400000;
     const ledger = computeMemberLedger({ member: { openingBalance: 114600 }, contributions, config: cfg, now });
     assert.equal(ledger.weeksBehind, 0, `week ${week}: nothing unpaid`);
-    assert.ok(ledger.money >= ledger.moneyLimit, `week ${week}: holds ${ledger.money}, line ${ledger.moneyLimit}`);
+    assert.equal(ledger.chasedArrears, 0, `week ${week}: nothing chased`);
+    // The line rises 1,500 and he nets 1,400 after the tea, so he slips 100 a week under it —
+    // the tea of the weeks that have closed (the running week's is not taken until it closes).
+    assert.equal(ledger.moneyLimit - ledger.money, 100 * (week - 93), `week ${week}: gap to the line`);
   }
 });

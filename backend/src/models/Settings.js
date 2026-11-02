@@ -89,7 +89,7 @@ const SettingsSchema = new Schema(
     //
     // The figure is measured **in the week the books opened** (`reminderMoneyLimitWeek`), because
     // the line moves: `weeklyAmount` is added every week after it, so week 92 reads 114,600, week 93
-    // reads 116,000, and so on. A fixed figure would stop excluding anybody within a fortnight.
+    // reads 116,100, and so on. A fixed figure would stop excluding anybody within a fortnight.
     //
     // The default is this group's own number at week 92 — the same way 1,400, 100 and 92 are the
     // constitution's figures — and it is editable, because it is a policy and not arithmetic.

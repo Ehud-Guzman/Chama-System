@@ -2,8 +2,19 @@ const Contribution = require('../models/Contribution');
 const Expense = require('../models/Expense');
 const Fine = require('../models/Fine');
 const Loan = require('../models/Loan');
+const Member = require('../models/Member');
+const ContributionType = require('../models/ContributionType');
+const mongoose = require('mongoose');
 const { getOrCreateSettings } = require('../utils/settings');
-const { resolveConfig, weekRange, parseEatDate, toEatDateString, DAY_MS } = require('../utils/weekCycle');
+const { readAmount } = require('../utils/money');
+const {
+  resolveConfig,
+  weekRange,
+  fridayOf,
+  parseEatDate,
+  toEatDateString,
+  DAY_MS,
+} = require('../utils/weekCycle');
 const { overrideReason } = require('../utils/overrides');
 const { logAudit } = require('../utils/auditLogger');
 
@@ -62,6 +73,10 @@ const SOURCES = {
     const index = Number.parseInt(req.params.index, 10);
     return [Number.isInteger(index) ? fine?.settlements?.[index]?.date : null];
   },
+  // The week cycle and the opening balances. Not dated money — but every figure in a closed period is
+  // worked out from them, so changing one rewrites the period the committee agreed. A real change is
+  // treated as touching the last closed day; saving the screen with nothing altered is not.
+  setup: async (req, settings) => (await setupWouldChange(req.body || {}, settings) ? [new Date(lockedBefore(settings) - 1)] : []),
   // A whole week at once: the ledger dates a week's rows on the day it closed.
   week: async (req, settings) => {
     if (req.body?.dryRun) return [];
@@ -70,6 +85,50 @@ const SOURCES = {
     return [weekRange(week, resolveConfig(settings)).endDate];
   },
 };
+
+// Whether a save of the finance setup screen would actually change a figure. The screen sends every
+// box back on every save, so "the body carries a balance" is not the question — "it differs from what
+// is stored" is. Unreadable values are the controller's 400 to give, not a change.
+async function setupWouldChange(body, settings) {
+  const differs = (value, current) => {
+    const read = readAmount(value);
+    return read.amount !== undefined && read.amount !== (Number(current) || 0);
+  };
+  if (differs(body.weeklyAmount, settings.weeklyAmount)) return true;
+  if (differs(body.chaiAmount, settings.chaiAmount)) return true;
+  if (body.cycleStartWeek !== undefined && body.cycleStartWeek !== null && body.cycleStartWeek !== '') {
+    const week = parseInt(body.cycleStartWeek, 10);
+    if (Number.isInteger(week) && week !== settings.cycleStartWeek) return true;
+  }
+  if (body.weekAnchorDate) {
+    const anchor = fridayOf(parseEatDate(body.weekAnchorDate)).getTime();
+    if (!Number.isNaN(anchor) && anchor !== new Date(settings.weekAnchorDate).getTime()) return true;
+  }
+
+  const rowsOf = (list, idKey) =>
+    (Array.isArray(list) ? list : []).filter((row) => row && mongoose.Types.ObjectId.isValid(row[idKey]));
+  const members = rowsOf(body.balances, 'memberId');
+  if (members.length) {
+    const current = await Member.find({ _id: { $in: members.map((r) => r.memberId) } })
+      .select('openingBalance')
+      .lean();
+    const byId = new Map(current.map((m) => [String(m._id), m.openingBalance]));
+    if (members.some((r) => byId.has(String(r.memberId)) && differs(r.openingBalance, byId.get(String(r.memberId))))) {
+      return true;
+    }
+  }
+  const funds = rowsOf(body.funds, 'typeId');
+  if (funds.length) {
+    const current = await ContributionType.find({ _id: { $in: funds.map((r) => r.typeId) } })
+      .select('openingBalance')
+      .lean();
+    const byId = new Map(current.map((t) => [String(t._id), t.openingBalance]));
+    if (funds.some((r) => byId.has(String(r.typeId)) && differs(r.openingBalance, byId.get(String(r.typeId))))) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function periodLock(source = 'body') {
   const datesFor = SOURCES[source];

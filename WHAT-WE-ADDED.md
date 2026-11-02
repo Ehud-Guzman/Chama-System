@@ -2601,6 +2601,96 @@ WHAT THE GROUP HAS TO DO
    - On the free host: do NOT set JOBS_CRON_TOKEN or create timers. Instead, run the nightly backup by hand
      (Control Room -> Backups -> Run now) after any day money was recorded, and before anything risky.
 
+THE LINE RISES BY THE FULL CONTRIBUTION AGAIN, AND THE SETUP SAVE IS GUARDED (2 NOV 2026)
+
+  The group's paper register adds the whole weekly contribution to its line every week (114,600 in
+  week 92, 123,600 in week 98, 125,100 in week 99), so the line follows it: utils/reminderLimit
+  lineStep is weeklyAmount again, not weeklyAmount - chaiAmount. The entry above is the history of
+  the other rule. A member who pays in full nets 1,400 after the tea, so he drifts 100 a week below
+  the line with nothing owed - by the group's decision, and nobody is chased for it (he is not behind).
+
+  RESETTING THE BOOKS TO THE PAPER REGISTER
+  backend/src/scripts/resetToPaperSheet.js (npm run ledger:reset-to-paper, dry run by default) takes
+  the register's PREVIOUS column from backend/data/paper-sheet-week98.json (gitignored: it holds real
+  names and amounts), makes the week the register closed the opening week, sets every opening balance,
+  clears the contribution rows, voids the fines and members' fine debits, sets the Tea, Registration
+  and Resignation funds so they read the register, backs everything up first, audit-logs each change,
+  and re-reads every member through the ledger engine - it fails loudly if any figure differs.
+
+  THE SETUP SAVE (PATCH /api/ledger/setup)
+  - A balance below nothing or past a billion is refused whole (utils/money readAmount, now shared).
+    The model's min/max only run on save(), and this write is an update, so nothing held the range.
+  - Tea larger than the weekly amount is refused.
+  - A request refused part-way no longer leaves its cycle figures in the cached settings document:
+    everything is read and checked first, applied together, and the cache is dropped if the save fails.
+  - Closed books now hold the setup like any other money write (periodLock('setup')): a save that
+    really changes a cycle figure or a balance is a 423 for the office, and goes through for the super
+    admin with a written reason. Saving the screen with nothing altered still works.
+
+  Dependencies: npm audit fix cleared six advisories (multer, body-parser, qs, nodemailer,
+  sanitize-html, deepmerge); the front end's react-router advisory needs a major upgrade and is
+  not applied.
+
+  Tests: test/integration/setupGuards.test.js (new), test/money.test.js, test/reminderLimit.test.js,
+  test/memberLedger.test.js.
+
+
+EVERY FILE OVER 600 LINES, SPLIT BY JOB (2 NOV 2026)
+
+  Sixteen files had grown past 600 lines, each holding a dozen unrelated jobs. Each is now a folder of
+  small files, one per job. The original path stays and is only the index (backend) or the page
+  itself (frontend), so every route, script, test and router import is unchanged.
+
+  Backend (9 files, 2 passes)
+    controllers/member/        common, read, write, register, profile, statements, gate
+    controllers/report/        performance, summary, monthly, contributions, member, fines, print
+    controllers/ledger/        read, logs, week, setup
+    controllers/auth/          common, signIn, admins, twoFactor, passwordReset
+    controllers/fine/          common, read, office, payments
+    controllers/notification/  dues, read, send
+    utils/mailer/              providers, config, api, smtp, send, failures, templates
+    utils/meetingReport/       data, format, layout, sections, pdf
+    utils/fineReport/          format, layout, single, group
+
+  Front end (11 pages; each page file stays the default export and loses its big JSX sections)
+    pages/reports/ (Reports 1,159 -> 283 lines)        pages/memberDetail/     pages/memberLedger/
+    pages/constitution/   pages/financeSetup/   pages/minutes/   pages/fines/   pages/expenses/
+    pages/disciplinary/   components/members/memberForm/   components/public/records/
+  A section receives exactly the variables it reads from the page as props (1 to 25 of them); helpers
+  two sections share live in that folder's shared.jsx.
+
+  HOW IT WAS DONE, AND HOW IT WAS PROVED
+  The cuts were made with a parser and scope analysis, not by hand, so each new file imports exactly
+  what it uses; the dependency graph has no cycles. Then:
+    - no undefined or unused names anywhere (lint pass), unit tests (584 backend, 105 front end), the
+      production build, and all 22 integration suites through the real routes;
+    - the 11 pages were opened in a real browser against a throwaway database: every tab, a payment
+      added in the ledger, an expense recorded, a minute opened, the members' sign-in and the
+      constitution. 12 of 12 interactions passed with no console errors;
+    - screenshots of 18 page states were taken from the ORIGINAL code and from the split code on the
+      same data and compared pixel by pixel: no difference anywhere except the 36x36 logo tile, which
+      renders in several variants within either build (load timing).
+  The browser pass caught a real fault in the first attempt that lint and the build could not: a
+  section was handed the browser's own window.performance instead of the page's performance state,
+  because a browser global shares the name. The tool now treats any name the page declares as its own.
+
+  THE CONSTITUTION PAGE, TAKEN FURTHER (2 NOV 2026)
+  pages/PublicConstitution.jsx was still 597 lines because its logic (the ID gate, the document fetch,
+  the member's decisions, search, open/close and scroll tracking) sat in the page itself. That logic is
+  now three hooks in pages/constitution/ - useConstitutionAccess, useConstitutionDecisions and
+  useConstitutionReader - copied over line for line, and the locked screen is ConstitutionGate. The
+  page file is 180 lines and only arranges the screen; the largest file in the folder is 319.
+  Proved in a real browser with a four-chapter constitution loaded, on desktop and on a phone-width
+  screen: the gate (malformed ID, unknown ID, the right ID), search and Escape, expand all, chapter
+  navigation, approving a chapter, rejecting one with a reason, back to top. The same test on the
+  original code gives the same results, and 20 of 22 screenshots are pixel-identical; the other two
+  differ from themselves between runs of the ORIGINAL code, so they say nothing about this change.
+
+
+  Also: three copies of the same compact figure tile and two of the same icons became
+  components/shared/CompactStat.jsx and icons.jsx; dead imports and variables found by the lint pass
+  were removed.
+
 
 END OF DOCUMENT
 ===============

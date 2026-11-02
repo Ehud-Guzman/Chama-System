@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
-import { money, shortDate, METHOD_LABELS } from '../utils/format';
+import { money, shortDate } from '../utils/format';
 import { invalidateLedger } from '../services/ledgerCache';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import BackLink from '../components/shared/BackLink';
 import Loader from '../components/shared/Loader';
+import OpeningBalancesSection from './financeSetup/OpeningBalancesSection';
+import FundsSection from './financeSetup/FundsSection';
+import WeekCollectionSection from './financeSetup/WeekCollectionSection';
+import { Field } from './financeSetup/shared';
 
 // Money typed by hand: "1,400", " 1400 " and "Ksh 1400" all mean the same number —
 // Number() alone reads two of those three as NaN, which is how a sheet full of good
@@ -399,333 +403,39 @@ export default function FinanceSetup() {
         </p>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-rule bg-surface">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rule px-4 py-3">
-          <div>
-            <h2 className="text-sm font-bold">
-              Opening balances (what each member held when these books opened)
-            </h2>
-            <p className="mt-0.5 text-xs text-muted">
-              What each member held on the paper ledger when this started. It is the base every
-              later week is added to. Type figures as digits — 1400 and 1,400 both work — and a box
-              you leave alone keeps the value it already has.
-              {/* On a phone these boxes are a scroll away from the lock bar, so the reason
-                  they cannot be typed into travels with them. */}
-              {locked && <span className="ml-1 font-medium text-ink">Locked — unlock above to edit.</span>}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={useSuggestions}
-            disabled={locked}
-            title={locked ? 'Unlock to edit first' : undefined}
-            className="min-h-11 rounded-lg border border-rule px-4 text-sm font-medium disabled:opacity-60"
-          >
-            Use all suggestions
-          </button>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-rule bg-canvas">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">
-                  Member
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">
-                  From the ledger
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">
-                  Opening balance
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.members.map((m) => {
-                const differs = Number(balances[m._id] || 0) !== m.suggested;
-                return (
-                  <tr key={m._id} className="border-b border-rule last:border-b-0">
-                    <td className="px-4 py-2">
-                      <p className="font-medium">
-                        {m.name}
-                        {!m.active && <span className="ml-2 text-xs text-muted">(inactive)</span>}
-                      </p>
-                      <p className="text-xs text-muted">{m.regNumber || ''}</p>
-                    </td>
-                    <td className="amount px-4 py-2 text-muted">{money(m.suggested)}</td>
-                    <td className="px-4 py-2">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={balances[m._id] ?? ''}
-                        onChange={(e) => setBalances({ ...balances, [m._id]: e.target.value })}
-                        disabled={locked}
-                        aria-label={`Opening balance for ${m.name}`}
-                        className={`amount h-11 w-36 rounded-lg border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
-                          differs ? 'border-primary bg-primary/5' : 'border-rule bg-canvas'
-                        }`}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot className="border-t border-rule bg-canvas">
-              <tr>
-                <td className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-muted" colSpan={2}>
-                  Total entered
-                </td>
-                <td className="px-4 py-3">
-                  <p className="amount font-bold">{money(enteredTotal)}</p>
-                  {enteredTotal !== storedMembersTotal && (
-                    <p className="amount text-xs text-muted">
-                      saved now: {money(storedMembersTotal)}
-                    </p>
-                  )}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </section>
+      <OpeningBalancesSection
+        balances={balances}
+        data={data}
+        enteredTotal={enteredTotal}
+        locked={locked}
+        setBalances={setBalances}
+        storedMembersTotal={storedMembersTotal}
+        useSuggestions={useSuggestions}
+      />
 
       {/* The group's funds, each with the total it already held. */}
-      <section className="overflow-hidden rounded-xl border border-rule bg-surface">
-        <div className="border-b border-rule px-4 py-3">
-          <h2 className="text-sm font-bold">Funds — what the group already holds (one-time)</h2>
-          <p className="mt-0.5 max-w-3xl text-xs leading-5 text-muted">
-            Each fund&rsquo;s own carry-in, the same idea as a member&rsquo;s balance: the tea float,
-            registration money collected so far, anything the group was holding before this ledger
-            started counting. A fund&rsquo;s balance on every screen is this figure plus what comes
-            in minus what goes out — so a fund nobody carries in reads as empty. Digits only
-            (1400 or 1,400 both work); a box you leave alone keeps the value it already has.
-            {locked && <span className="ml-1 font-medium text-ink">Locked — unlock above to edit.</span>}
-          </p>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-rule bg-canvas">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">
-                  Fund
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">
-                  The ledger counts
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-widest text-muted">
-                  Carried in
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data.funds || []).map((f) => {
-                const differs = Number(funds[f.typeId] || 0) !== f.openingBalance;
-                return (
-                  <tr key={f.typeId} className="border-b border-rule last:border-b-0">
-                    <td className="px-4 py-2">
-                      <p className="font-medium">
-                        {f.name}
-                        {!f.active && <span className="ml-2 text-xs text-muted">(inactive)</span>}
-                      </p>
-                      <p className="text-xs text-muted">
-                        {[
-                          f.isGroupFund
-                            ? 'Group fund'
-                            : 'Member money — carried in the members’ balances above',
-                          f.tracksExpenses ? 'we spend from it' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </p>
-                    </td>
-                    <td className="amount px-4 py-2 text-muted">
-                      {money(f.collected + f.derived - f.spent)}
-                      {f.derived > 0 && (
-                        <span className="block text-xs">
-                          includes {money(f.derived)} of automatic tea
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={funds[f.typeId] ?? ''}
-                        onChange={(e) => setFunds({ ...funds, [f.typeId]: e.target.value })}
-                        disabled={locked}
-                        aria-label={`Carried-in total for ${f.name}`}
-                        className={`amount h-11 w-36 rounded-lg border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
-                          differs ? 'border-primary bg-primary/5' : 'border-rule bg-canvas'
-                        }`}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot className="border-t border-rule bg-canvas">
-              <tr>
-                <td
-                  className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-muted"
-                  colSpan={2}
-                >
-                  Total carried in
-                </td>
-                <td className="amount px-4 py-3 font-bold">{money(fundsTotal)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {/* Not a nested form: the page is one form, so this is plain fields and a
-            button that posts on its own. */}
-        <div className="flex flex-wrap items-end gap-3 border-t border-rule px-4 py-3">
-          <div className="min-w-48 flex-1">
-            <label htmlFor="newFundName" className="mb-1 block text-xs font-medium">
-              Add a fund the group collects — registration, resignation, welfare…
-            </label>
-            <input
-              id="newFundName"
-              value={newFund.name}
-              onChange={(e) => setNewFund({ ...newFund, name: e.target.value })}
-              placeholder="Registration"
-              className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-            />
-          </div>
-
-          <label className="flex min-h-12 items-center gap-2 text-xs font-medium">
-            <input
-              type="checkbox"
-              checked={newFund.isGroupFund}
-              onChange={(e) => setNewFund({ ...newFund, isGroupFund: e.target.checked })}
-              className="h-4 w-4"
-            />
-            Belongs to the group
-          </label>
-
-          <label className="flex min-h-12 items-center gap-2 text-xs font-medium">
-            <input
-              type="checkbox"
-              checked={newFund.tracksExpenses}
-              onChange={(e) => setNewFund({ ...newFund, tracksExpenses: e.target.checked })}
-              className="h-4 w-4"
-            />
-            We spend from it
-          </label>
-
-          <button
-            type="button"
-            onClick={addFund}
-            disabled={addingFund}
-            className="min-h-11 rounded-lg border border-rule px-4 text-sm font-medium disabled:opacity-60"
-          >
-            {addingFund ? 'Adding…' : 'Add fund'}
-          </button>
-        </div>
-      </section>
+      <FundsSection
+        addFund={addFund}
+        addingFund={addingFund}
+        data={data}
+        funds={funds}
+        fundsTotal={fundsTotal}
+        locked={locked}
+        newFund={newFund}
+        setFunds={setFunds}
+        setNewFund={setNewFund}
+      />
 
       {/* One week, collected for everybody — the one-time bulk entry. */}
-      <section className="rounded-xl border border-rule bg-surface p-4">
-        <h2 className="text-sm font-bold">A whole week collected for everybody (one-time)</h2>
-        <p className="mt-0.5 max-w-3xl text-xs leading-5 text-muted">
-          For a week paid in cash before the books opened — week 91 is the one: every member paid
-          that week&rsquo;s contribution and that week&rsquo;s tea. It posts both rows for every
-          active member at once, dated on the Thursday the week closed, so the money shows against
-          week 91 rather than against the opening week. Preview first: nothing is written until you
-          post it, and it can be taken back out.
-        </p>
-
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field
-            id="collectWeek"
-            label="Week number"
-            value={collect.weekNumber}
-            onChange={(v) => {
-              setPreview(null);
-              setCollect({ ...collect, weekNumber: v });
-            }}
-          />
-          <Field
-            id="collectWeekly"
-            label="Contribution each"
-            value={collect.weeklyAmount}
-            onChange={(v) => {
-              setPreview(null);
-              setCollect({ ...collect, weeklyAmount: v });
-            }}
-            money
-          />
-          <Field
-            id="collectChai"
-            label="Tea each"
-            value={collect.chaiAmount}
-            onChange={(v) => {
-              setPreview(null);
-              setCollect({ ...collect, chaiAmount: v });
-            }}
-            money
-          />
-          <div>
-            <label htmlFor="collectMethod" className="mb-1 block text-xs font-medium">
-              How it came in
-            </label>
-            <select
-              id="collectMethod"
-              value={collect.method}
-              onChange={(e) => {
-                setPreview(null);
-                setCollect({ ...collect, method: e.target.value });
-              }}
-              className="h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm"
-            >
-              {Object.entries(METHOD_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => runCollect(true)}
-            disabled={collecting}
-            className="min-h-11 rounded-lg border border-rule px-4 text-sm font-medium disabled:opacity-60"
-          >
-            {collecting ? 'Checking…' : 'Preview'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirming('post')}
-            disabled={collecting || !preview || preview.posted === 0}
-            className="min-h-11 rounded-xl bg-primary px-5 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            Post it for everyone
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirming('undo')}
-            disabled={collecting}
-            className="min-h-11 rounded-lg px-4 text-sm font-medium text-alert disabled:opacity-60"
-          >
-            Undo this week&rsquo;s batch
-          </button>
-        </div>
-
-        {preview && (
-          <p className="mt-3 rounded-xl border border-rule bg-canvas px-4 py-3 text-xs leading-5">
-            {preview.message}
-            {preview.posted > 6 && preview.membersAffected?.length > 0 && (
-              <span className="mt-1 block text-muted">
-                {preview.membersAffected.length} members, from {preview.membersAffected[0]}
-              </span>
-            )}
-          </p>
-        )}
-      </section>
+      <WeekCollectionSection
+        collect={collect}
+        collecting={collecting}
+        preview={preview}
+        runCollect={runCollect}
+        setCollect={setCollect}
+        setConfirming={setConfirming}
+        setPreview={setPreview}
+      />
 
       <ConfirmDialog
         open={confirming === 'post'}
@@ -794,28 +504,6 @@ export default function FinanceSetup() {
       />
 
     </form>
-  );
-}
-
-// Small shared input so the four cycle figures stay one shape.
-function Field({ id, label, value, onChange, money: isMoney, disabled = false }) {
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1 block text-xs font-medium">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className={`h-12 w-full rounded-lg border border-rule bg-canvas px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
-          isMoney ? 'amount' : ''
-        }`}
-      />
-    </div>
   );
 }
 

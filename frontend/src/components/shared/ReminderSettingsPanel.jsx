@@ -29,7 +29,7 @@ export default function ReminderSettingsPanel() {
   const [moneyLimit, setMoneyLimit] = useState('114600');
   const [limitWeek, setLimitWeek] = useState('');
   const [savedLine, setSavedLine] = useState({ limit: 114600, week: null });
-  // What the line rises by each week (the contribution less the tea), used only to show what the
+  // What the line rises by each week (the whole weekly contribution), used only to show what the
   // line becomes next week.
   const [weeklyAmount, setWeeklyAmount] = useState(1500);
   const [busy, setBusy] = useState(false);
@@ -51,9 +51,7 @@ export default function ReminderSettingsPanel() {
         setMoneyLimit(String(limit));
         setLimitWeek(week == null ? '' : String(week));
         setSavedLine({ limit: Number(limit) || 0, week });
-        setWeeklyAmount(
-          Math.max(0, (Number(res.data.settings.weeklyAmount) || 1500) - (Number(res.data.settings.chaiAmount) || 0)),
-        );
+        setWeeklyAmount(Math.max(0, Number(res.data.settings.weeklyAmount) || 1500));
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -172,8 +170,9 @@ export default function ReminderSettingsPanel() {
           <p className="mt-1 text-xs leading-5 text-muted">
             A member holding at least this much is not told he is behind. He has paid more into the
             cycle than it has asked of him, so a closed week he missed is not a reason to email him —
-            his unpaid fines still are. The line rises every week by the contribution less the tea, because
-            what the figure is being measured against is what the group expected of him by then.
+            his unpaid fines still are. The line rises every week by the weekly contribution, as the paper
+            register adds it, because what the figure is being measured against is what the group
+            expected of him by then.
           </p>
 
           <div className="mt-3 flex flex-wrap items-end gap-3">
@@ -219,9 +218,9 @@ export default function ReminderSettingsPanel() {
                   ? 'Off: every member who is behind is told, whatever he is holding.'
                   : `${moneyLabel(parsedLimit)} in the week you name, and ${moneyLabel(
                       parsedLimit + weeklyAmount
-                    )} the week after — the contribution less the tea, ${moneyLabel(
+                    )} the week after — the weekly contribution, ${moneyLabel(
                       weeklyAmount
-                    )} a week, is added each week the cycle runs.`}
+                    )}, is added each week the cycle runs.`}
           </p>
         </div>
 

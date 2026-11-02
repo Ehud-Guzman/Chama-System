@@ -16,10 +16,9 @@
 //                                    opening week, so a fresh install needs only one number
 //
 // and the line **moves with the cycle**: `limit(week) = base + (weeklyAmount − tea) × (week − anchor)`.
-// On a 1,500 contribution with 100 of tea, week 92 reads 114,600, week 93 reads 116,000, week 94
-// reads 117,400 — the same net 1,400 a week a member who pays in full gains (the tea is cut from
-// every member's contribution), because the figure it is being compared against is what
-// the group expects a member to have put in by then. Without that growth the rule would silently
+// On a 1,500 contribution, week 92 reads 114,600, week 93 reads 116,100, week 94 reads 117,600 —
+// the full contribution a week, as the paper register adds it, because the figure it is being
+// compared against is what the group expects a member to have put in by then. Without that growth the rule would silently
 // expire: a fixed 114,600 stops excluding anybody a fortnight later.
 //
 // `reminderMoneyLimit = 0` switches the whole thing off, and that is a real choice rather than a
@@ -73,14 +72,12 @@ function normaliseMoneyLimitWeek(value) {
   return week;
 }
 
-// How much the line rises each week: the contribution less the tea, which is cut from every
-// member's contribution. A member who pays in full gains exactly this much in what the group holds
-// for him, so a line that rose by the whole contribution would leave him a little further below it
-// every week with nothing owed (1,500 paid, 100 of tea: he gains 1,400, and the line must too).
+// How much the line rises each week: the whole weekly contribution, as the treasurer's paper
+// register adds it (114,600 in week 92, 123,600 in week 98, 125,100 in week 99). The tea that is
+// cut from a member's contribution is not taken off the line: the group decided the line follows
+// the contribution, not what a member nets after the tea.
 function lineStep(config) {
-  const weekly = Number(config?.weeklyAmount) || 0;
-  const tea = Number(config?.chaiAmount) || 0;
-  return Math.max(0, weekly - tea);
+  return Math.max(0, Number(config?.weeklyAmount) || 0);
 }
 
 // The line as it stands in `currentWeek`, or 0 when the rule is switched off. Pure, so the

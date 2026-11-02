@@ -4,36 +4,19 @@ import api, { apiMessage } from '../services/api';
 import { useToast } from '../components/shared/Toast';
 import { money, shortDate } from '../utils/format';
 import MemberForm from '../components/members/MemberForm';
-import LedgerRows from '../components/contributions/LedgerRows';
 import EditContributionModal from '../components/contributions/EditContributionModal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import BackLink from '../components/shared/BackLink';
 import ErrorState from '../components/shared/ErrorState';
 import ResignDialog from '../components/members/ResignDialog';
-import IssueFineForm from '../components/members/IssueFineForm';
 import PayFinesModal from '../components/fines/PayFinesModal';
-import MessageMemberPanel from '../components/members/MessageMemberPanel';
-import FinesPanel from '../components/shared/FinesPanel';
-import MemberLoans from '../components/members/MemberLoans';
 import LedgerWalk from '../components/shared/LedgerWalk';
-import WeeklyScheduleTable from '../components/shared/WeeklyScheduleTable';
 import Loader from '../components/shared/Loader';
-import MemberAvatar from '../components/members/MemberAvatar';
-import StatementPeriodPicker, { useStatementPeriod } from '../components/shared/StatementPeriodPicker';
+import { useStatementPeriod } from '../components/shared/StatementPeriodPicker';
 import { takeWarmJson } from '../services/prefetch';
-
-// One label/value pair in the profile's admission blocks. Renders nothing when
-// there is no value, so a half-filled record shows only what is actually known
-// rather than a column of blanks.
-function Detail({ label, value }) {
-  if (!value) return null;
-  return (
-    <div>
-      <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">{label}</dt>
-      <dd className="text-sm">{value}</dd>
-    </div>
-  );
-}
+import MemberSummaryCard from './memberDetail/MemberSummaryCard';
+import MemberMoneyColumns from './memberDetail/MemberMoneyColumns';
+import ConstitutionReviewCard from './memberDetail/ConstitutionReviewCard';
 
 export default function MemberDetail() {
   const { id } = useParams();
@@ -365,343 +348,35 @@ async function exportStatementExcel() {
     <div className="space-y-4">
       <BackLink to="/admin/members">Members</BackLink>
 
-      <section className="rounded-xl border border-rule bg-surface p-5">
-        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <MemberAvatar name={member.name} photoUrl={member.photoUrl} size="lg" />
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold">
-                {member.name}
-                {!member.active && (
-                  <span className="ml-2 align-middle text-[11px] font-semibold uppercase tracking-widest text-alert">
-                    Inactive
-                  </span>
-                )}
-              </h1>
-              <p className="amount mt-1 text-sm text-muted">{member.phone}</p>
-              {member.email && <p className="mt-0.5 truncate text-sm text-muted">{member.email}</p>}
-              {member.regNumber && (
-                <p className="amount text-xs uppercase tracking-widest text-muted">
-                  № {member.regNumber}
-                </p>
-              )}
-              {member.notes && <p className="mt-2 text-sm text-muted">{member.notes}</p>}
-            </div>
-          </div>
-          {/* Full width under the name on a phone, beside it once there is room: the
-              lines this block carries are sentences, and a sentence in a narrow column
-              is what pushes a header past the screen edge. */}
-          <div className="w-full min-w-0 text-right sm:w-auto sm:shrink-0">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-              Money held by member
-            </p>
-            <p className="amount text-xl font-bold text-accent">
-              {money(ledger ? ledger.money : totalContributed)}
-            </p>
-            <p className="mt-0.5 text-[11px] leading-4 text-muted">
-              {ledger?.finesPaid > 0
-                ? '(carried in + paid in − tea − fines paid out of his money)'
-                : '(carried in + paid in − tea)'}
-            </p>
-            {ledger && (
-              <p className="amount mt-1 text-xs text-muted">
-                {money(ledger.openingBalance)} carried in at week {ledger.cycleStartWeek} ·{' '}
-                {money(ledger.paid)} paid in since
-              </p>
-            )}
-            {ledger && (ledger.chasedArrears ?? ledger.arrears) > 0 && (
-              <p className="amount mt-1 text-xs font-semibold text-alert">
-                {money(ledger.chasedArrears ?? ledger.arrears)} owed
-                {(ledger.chasedWeeksBehind ?? ledger.weeksBehind) > 0
-                  ? ` (${ledger.chasedWeeksBehind ?? ledger.weeksBehind} week${
-                      (ledger.chasedWeeksBehind ?? ledger.weeksBehind) === 1 ? '' : 's'
-                    } behind)`
-                  : ''}
-              </p>
-            )}
-            {/* Above the group's line: the money is still uncollected, but nothing is asked of him —
-                said in the calm tone rather than the red one (utils/reminderLimit). */}
-            {ledger && (ledger.chasedArrears ?? ledger.arrears) === 0 && ledger.arrears > 0 && (
-              <p className="amount mt-1 text-xs font-semibold text-muted">
-                Ahead of the cycle — {money(ledger.arrears)} of a closed week not collected
-                {ledger.moneyLimit > 0 ? ` (he holds more than ${money(ledger.moneyLimit)})` : ''}
-              </p>
-            )}
-          </div>
-        </div>
-        <dl className="mt-3 grid gap-3 border-t border-rule pt-3 sm:grid-cols-2">
-          <div>
-            <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-              Member since
-            </dt>
-            <dd className="text-xs text-muted">
-              {shortDate(member.joinDate || member.createdAt)}
-            </dd>
-          </div>
-
-          <div>
-            <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-              Email reminders
-            </dt>
-            <dd className="text-xs text-muted">
-              {!member.email
-                ? 'No email address on file'
-                : member.emailNotifications === false
-                  ? 'Switched off for this member'
-                  : 'On — late contributions and fines'}
-            </dd>
-          </div>
-        </dl>
-
-        <div className="mt-3 border-t border-rule pt-3">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-            Next of kin {hasKin ? `(${kin.length})` : ''}
-          </p>
-          {hasKin ? (
-            <ul className="mt-1 space-y-1.5">
-              {kin.map((person, index) => (
-                <li key={index} className="text-sm">
-                  <span className="font-medium">{person.name}</span>
-                  {person.relationship ? ` (${person.relationship})` : ''}
-                  {person.phone && (
-                    <span className="amount block text-xs text-muted sm:inline"> · {person.phone}</span>
-                  )}
-                  {person.email && (
-                    <span className="block break-words text-xs text-muted sm:inline">
-                      {' '}
-                      · {person.email}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1 text-xs text-muted">
-              Not recorded yet — add a spouse, the children or the in-laws via Edit.
-            </p>
-          )}
-        </div>
-
-        {/* The member's own details beyond the name and the number, each block only as
-            long as what is known: a member entered from a name and a number shows the
-            prompt to fill him in, not a column of blanks. */}
-        <div className="mt-3 border-t border-rule pt-3">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-            Personal details
-          </p>
-          {hasPersonal ? (
-            <dl className="mt-1 grid gap-2 sm:grid-cols-3">
-              <Detail label="Date of birth" value={member.dateOfBirth ? shortDate(member.dateOfBirth) : ''} />
-              <Detail label="National ID / passport" value={member.nationalId} />
-              <Detail label="Physical address" value={member.physicalAddress} />
-            </dl>
-          ) : (
-            <p className="mt-1 text-xs text-muted">
-              Date of birth, ID number and address not recorded — add them via Edit.
-            </p>
-          )}
-        </div>
-
-        <div className="mt-3 border-t border-rule pt-3">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">Family</p>
-          {hasFamily ? (
-            <dl className="mt-1 grid gap-2 sm:grid-cols-2">
-              <Detail label="Spouse" value={family.spouseName} />
-              <Detail label="Children" value={children.join(', ')} />
-              <Detail label="Father" value={family.fatherName} />
-              <Detail label="Mother" value={family.motherName} />
-              <Detail label="Father-in-law" value={family.fatherInLawName} />
-              <Detail label="Mother-in-law" value={family.motherInLawName} />
-            </dl>
-          ) : (
-            <p className="mt-1 text-xs text-muted">
-              No family recorded — add a spouse, the children or the parents via Edit.
-            </p>
-          )}
-        </div>
-
-        <div className="mt-3 border-t border-rule pt-3">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-            Admission
-          </p>
-          <dl className="mt-1 grid gap-2 sm:grid-cols-2">
-            <Detail label="Declaration" value={declaration} />
-            <Detail
-              label="Approved by"
-              value={
-                approvals.length > 0
-                  ? approvals
-                      .map((approval) => `${approval.name} (${approval.role})`)
-                      .join(', ')
-                  : ''
-              }
-            />
-          </dl>
-          {approvals.length > 0 && (
-            <ul className="mt-1 space-y-1">
-              {approvals.map((approval) => (
-                <li key={approval.role} className="text-xs text-muted">
-                  <span className="font-medium capitalize">{approval.role}</span> · {approval.name} ·{' '}
-                  {shortDate(approval.signedAt)}
-                </li>
-              ))}
-            </ul>
-          )}
-          {!admission.complete && (
-            <p className="mt-1 text-xs text-muted">
-              Pending{admission.missing?.length ? ` — waiting on the ${admission.missing.join(', ')}` : ''}.
-              {' '}Record the signatures via Edit.
-            </p>
-          )}
-        </div>
-
-        {member.resignedAt && (
-          <p className="mt-3 border-t border-rule pt-3 text-xs text-alert">
-            Resigned {shortDate(member.resignedAt)}
-            {member.resignationReason ? ` — ${member.resignationReason}` : ''}
-            {member.resignationSettlement ? ` · Settled: ${member.resignationSettlement}` : ''}
-          </p>
-        )}
-
-        {/* A member who has left is read as at the day he left, and the page says so: otherwise the
-            figures below look like they stopped by accident. */}
-        {ledger?.endedAt && (
-          <p className="mt-2 text-xs text-muted">
-            His figures stop on {shortDate(ledger.endedAt)}, the day he was made inactive. Nothing is charged to
-            him after it.
-          </p>
-        )}
-
-        {/* Profile photo and the reminder switch. Both write to the server the
-            moment they are used rather than routing the admin back through the
-            edit form, and the picker stays disabled with an explanation when the
-            server has no image-storage keys configured. */}
-        <div className="mt-3 space-y-2 border-t border-rule pt-3">
-          <input
-            ref={photoInputRef}
-            type="file"
-            accept="image/*"
-            onChange={onPhotoPicked}
-            className="hidden"
-            aria-label="Member profile photo"
-          />
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => photoInputRef.current?.click()}
-              disabled={photoUploading || uploadStatus?.cloudinaryConfigured === false}
-              className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium disabled:opacity-50"
-            >
-              {photoUploading ? 'Uploading…' : member.photoUrl ? 'Change photo' : 'Upload photo'}
-            </button>
-
-            {member.photoUrl && (
-              <button
-                type="button"
-                onClick={removePhoto}
-                disabled={busy || photoUploading}
-                className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium text-alert disabled:opacity-50"
-              >
-                Remove photo
-              </button>
-            )}
-
-            {member.email && (
-              <button
-                type="button"
-                onClick={toggleEmailNotifications}
-                disabled={busy}
-                className="min-h-11 rounded-lg border border-rule px-3 text-xs font-medium disabled:opacity-50"
-              >
-                {member.emailNotifications === false
-                  ? 'Turn email reminders on'
-                  : 'Turn email reminders off'}
-              </button>
-            )}
-          </div>
-
-          {uploadStatus?.cloudinaryConfigured === false && (
-            <p className="text-xs text-muted">
-              Photo storage is not set up on the server yet, so photos are switched off.
-            </p>
-          )}
-
-          {photoError && (
-            <p className="text-xs text-alert" role="alert">
-              {photoError}
-            </p>
-          )}
-        </div>
-
-        {/* Two per row on a phone. Four buttons across a 300px card left each one
-            about 76px wide with no padding, so "Resign member" wrapped onto two
-            lines and the label touched the border. */}
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium"
-          >
-            Edit
-          </button>
-
-          <button
-            type="button"
-            onClick={exportStatement}
-            className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium"
-          >
-            Statement PDF
-          </button>
-
-          <button
-            type="button"
-            onClick={exportStatementExcel}
-            className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium"
-          >
-            Statement Excel
-          </button>
-
-          {/* His own copy, as a PDF, to the address on his record, for the period chosen below. */}
-          <button
-            type="button"
-            onClick={emailStatement}
-            disabled={emailing || !member.email}
-            title={member.email ? `Send to ${member.email}` : 'There is no email address on his record'}
-            className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium disabled:opacity-50"
-          >
-            {emailing ? 'Sending…' : 'Email statement'}
-          </button>
-
-          {/* Both statement buttons download whatever period is chosen here. The picker sits in the
-              action row rather than under the figures because it is an argument to those two
-              buttons, not a fact about the member. Its width is the grid column's: a minimum
-              width here (13rem was tried) outgrows the column on a tablet and pushes the page
-              sideways, so the select shrinks with the row instead. */}
-          <StatementPeriodPicker
-            className="min-w-0"
-            idPrefix="office-period"
-            preset={statementPeriod.preset}
-            from={statementPeriod.from}
-            to={statementPeriod.to}
-            onChange={({ preset, from, to }) => {
-              if (preset !== undefined) statementPeriod.setPreset(preset);
-              if (from !== undefined) statementPeriod.setFrom(from);
-              if (to !== undefined) statementPeriod.setTo(to);
-            }}
-          />
-
-          {member.active && (
-            <button
-              type="button"
-              onClick={() => setConfirmingResign(true)}
-              className="min-h-11 rounded-lg border border-rule px-3 text-sm font-medium text-alert"
-            >
-              Resign member
-            </button>
-          )}
-        </div>
-      </section>
+      <MemberSummaryCard
+        admission={admission}
+        approvals={approvals}
+        busy={busy}
+        children={children}
+        declaration={declaration}
+        emailStatement={emailStatement}
+        emailing={emailing}
+        exportStatement={exportStatement}
+        exportStatementExcel={exportStatementExcel}
+        family={family}
+        hasFamily={hasFamily}
+        hasKin={hasKin}
+        hasPersonal={hasPersonal}
+        kin={kin}
+        ledger={ledger}
+        member={member}
+        onPhotoPicked={onPhotoPicked}
+        photoError={photoError}
+        photoInputRef={photoInputRef}
+        photoUploading={photoUploading}
+        removePhoto={removePhoto}
+        setConfirmingResign={setConfirmingResign}
+        setEditing={setEditing}
+        statementPeriod={statementPeriod}
+        toggleEmailNotifications={toggleEmailNotifications}
+        totalContributed={totalContributed}
+        uploadStatus={uploadStatus}
+      />
 
 
       {/* =====================================================
@@ -726,172 +401,32 @@ async function exportStatementExcel() {
               page's rail is a fixed 20rem, so on a tablet the ledger would be left a
               couple of hundred pixels — narrow enough to cut the amounts and the row
               buttons off. Below lg the two simply stack. */}
-      <div className="lg:grid lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start lg:gap-6">
-        <section className="space-y-4">
-          {/* What he has paid into, by type. This was the pledge editor — an amount
-              the office set per fund. Pledges are gone: the member's page shows
-              what actually moved, which is what the books can back. */}
-          <div>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-              Paid by contribution type
-            </h2>
-            {byType.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-rule px-5 py-6 text-center text-sm text-muted">
-                No contribution types set up yet.
-              </p>
-            ) : (
-              <ul className="overflow-hidden rounded-xl border border-rule bg-surface">
-                {byType.map((entry) => (
-                  <li
-                    key={entry.typeId}
-                    className="flex items-baseline justify-between gap-3 border-b border-rule px-4 py-3 last:border-b-0"
-                  >
-                    <span className="min-w-0 truncate text-sm">
-                      {entry.name}
-                      {entry.isGroupFund && (
-                        <span className="ml-1 text-[11px] uppercase tracking-wide text-muted">
-                          group fund
-                        </span>
-                      )}
-                    </span>
-                    <span className="amount shrink-0 text-sm font-semibold">
-                      {money(entry.contributed)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">Fines</h2>
-              {!issuingFine && (
-                <button
-                  type="button"
-                  onClick={() => setIssuingFine(true)}
-                  className="-mr-2 -my-1 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary"
-                >
-                  Issue fine
-                </button>
-              )}
-            </div>
-            {issuingFine ? (
-              <IssueFineForm
-                memberId={member._id}
-                onIssued={() => {
-                  setIssuingFine(false);
-                  load();
-                }}
-                onCancel={() => setIssuingFine(false)}
-              />
-            ) : (
-              <FinesPanel fines={fines} onVoid={setVoidingFine} onSettle={setSettlingFine} />
-            )}
-          </div>
-
-          <MemberLoans memberId={member._id} />
-
-          <MessageMemberPanel member={member} pendingFinesTotal={fines?.totalOwed || 0} />
-        </section>
-
-        <section className="mt-5 space-y-4 lg:mt-0">
-          <div>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-              Contributions ({contributions.length})
-            </h2>
-            <LedgerRows
-              contributions={contributions}
-              onEdit={setEditingContribution}
-              onDelete={setDeletingContribution}
-            />
-          </div>
-
-          {weeklySchedules?.length > 0 && (
-            <div>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-                Weekly schedule
-              </h2>
-              <WeeklyScheduleTable schedules={weeklySchedules} />
-            </div>
-          )}
-        </section>
-      </div>
+      <MemberMoneyColumns
+        byType={byType}
+        contributions={contributions}
+        fines={fines}
+        issuingFine={issuingFine}
+        load={load}
+        member={member}
+        setDeletingContribution={setDeletingContribution}
+        setEditingContribution={setEditingContribution}
+        setIssuingFine={setIssuingFine}
+        setSettlingFine={setSettlingFine}
+        setVoidingFine={setVoidingFine}
+        weeklySchedules={weeklySchedules}
+      />
 
       {/* What he decided on each chapter of the constitution — the same record
           his own reading page shows him. Nothing here is editable: a decision is
           recorded once and cannot be changed, by him or by the office. */}
       {constitution && (
-        <section className="rounded-xl border border-rule bg-surface p-5">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
-              Constitution review
-            </h2>
-            <p className="amount text-xs text-muted">
-              {constitutionDecided} of {constitutionTotal} chapters decided
-            </p>
-          </div>
-
-          {constitutionTotal > 0 && (
-            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-canvas">
-              <div className="flex h-full w-full">
-                <span className="h-full bg-accent" style={{ width: `${approvedPct}%` }} />
-                <span className="h-full bg-alert" style={{ width: `${rejectedPct}%` }} />
-              </div>
-            </div>
-          )}
-
-          <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-            <span className="font-semibold text-accent">
-              {constitution.approved} approved
-            </span>
-            <span className="font-semibold text-alert">
-              {constitution.rejected} rejected
-            </span>
-            <span className="text-muted">{constitution.pending} pending</span>
-          </p>
-
-          {constitution.decisions.length === 0 ? (
-            <p className="mt-3 text-xs text-muted">
-              No chapter decided yet. He records his decisions from the constitution
-              page on his own phone.
-            </p>
-          ) : (
-            <ul className="mt-3 divide-y divide-rule border-t border-rule">
-              {constitution.decisions.map((d) => (
-                <li
-                  key={d.chapterNumber}
-                  className="flex items-start justify-between gap-3 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm leading-5">
-                      <span className="amount font-semibold">
-                        {String(d.chapterNumber).padStart(2, '0')}
-                      </span>{' '}
-                      <span className="break-words">{d.chapterTitle}</span>
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted">{shortDate(d.decidedAt)}</p>
-                    {d.reason && (
-                      <p className="mt-1 break-words text-xs leading-5 text-muted">
-                        “{d.reason}”
-                      </p>
-                    )}
-                  </div>
-
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                      d.decision === 'approved'
-                        ? 'bg-accent/15 text-accent'
-                        : 'bg-alert/10 text-alert'
-                    }`}
-                  >
-                    {d.decision === 'approved' ? 'Approved' : 'Rejected'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <ConstitutionReviewCard
+          approvedPct={approvedPct}
+          constitution={constitution}
+          constitutionDecided={constitutionDecided}
+          constitutionTotal={constitutionTotal}
+          rejectedPct={rejectedPct}
+        />
       )}
 
       {editing && (
