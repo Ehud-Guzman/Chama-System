@@ -30,7 +30,9 @@ router.get(
   requireRole('super_admin', 'admin', 'disciplinary'),
   exportMemberFines
 );
-router.post('/', requireRole('super_admin', 'admin', 'disciplinary'), createFine);
+// A fine is money dated on a day, so closed books hold it like every other money write: a fine back-dated into a
+// closed period is refused (the super admin can go through with a written reason).
+router.post('/', requireRole('super_admin', 'admin', 'disciplinary'), periodLock('body'), createFine);
 
 // Taking payment, and sorting out the ones recorded before payments said how they were made.
 // Every one of these moves money, so every one is the office's alone: a payment can come off a

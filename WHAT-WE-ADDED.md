@@ -2692,6 +2692,16 @@ EVERY FILE OVER 600 LINES, SPLIT BY JOB (2 NOV 2026)
   were removed.
 
 
+ISSUING A FINE RESPECTS CLOSED BOOKS (3 NOV 2026)
+
+  Settling, undoing and voiding a fine were already held by the period lock (Control Room -> Close the books),
+  but issuing one was not, so a fine could still be back-dated into a period the committee had agreed. POST
+  /api/fines now runs through periodLock('body'): a fine dated on or before the closed day is refused with the
+  same message as any other money write, and the super admin can still go through with a written reason, which
+  is recorded. A fine dated after the lock, or with no date (today), is unaffected.
+
+  backend/src/routes/fineRoutes.js; test/integration/fineLock.test.js (four cases).
+
 END OF DOCUMENT
 ===============
 
