@@ -2737,6 +2737,19 @@ THE GROUP'S RULE ON THE LINE, SAID PLAINLY (3 NOV 2026)
   frontend: pages/FinanceMemberLedger.jsx, components/public/GroupOverview.jsx.
   tests: test/memberLedger.test.js (three cases), test/integration/carriedIn.test.js.
 
+REPORT WORDING AFTER A RE-BASE (3 NOV 2026)
+
+  After the books were re-based to the paper register, the reports read oddly: "Total contributed (all time)"
+  was almost entirely money the members and funds already held, and "N members are yet to contribute" read as
+  though everybody was delinquent. Wording only, no figure changes:
+    - "Total contributed (all time)", "Paid between them" and "Collected, all time" are now "Brought forward +
+      paid in" (the summary, the performance tab and the Control Room overview);
+    - "N of M active members are yet to contribute" is "... have paid nothing since the books opened";
+    - the empty monthly report says "No payments logged since the books opened. Earlier months are in the paper
+      ledger and the backups."
+
+  frontend: pages/reports/SummaryTab.jsx, MonthlyTab.jsx, PerformanceTab.jsx; components/control/ControlOverview.jsx.
+
 END OF DOCUMENT
 ===============
 

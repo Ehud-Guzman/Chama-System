@@ -24,7 +24,7 @@ export default function PerformanceTab({ performance, performanceTotals, setChar
         <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <div className="min-w-0 rounded-xl border border-rule bg-surface px-3 py-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-              Paid between them
+              Brought forward + paid in
             </p>
             <p className="amount mt-0.5 truncate text-lg font-bold text-primary">
               {money(performanceTotals.totalContributed)}

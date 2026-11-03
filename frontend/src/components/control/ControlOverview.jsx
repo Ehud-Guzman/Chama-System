@@ -296,7 +296,7 @@ export default function ControlOverview({ overview, reload }) {
             <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
               <Figure label="Active members" value={glance.members.active} hint={`${glance.members.inactive} resigned or inactive`} />
               <Figure label="Money held" value={money(glance.money.netBalance)} accent hint="after spending" />
-              <Figure label="Collected, all time" value={money(glance.money.totalContributed)} />
+              <Figure label="Brought forward + paid in" value={money(glance.money.totalContributed)} />
               <Figure
                 label="Fines owed"
                 value={money(glance.fines.owedTotal)}

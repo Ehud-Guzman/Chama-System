@@ -26,7 +26,7 @@ export default function SummaryTab({ summary }) {
       {summary && (
         <section className="rounded-xl border border-rule bg-surface p-5">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-            Total contributed (all time)
+            Brought forward + paid in
           </p>
           <p className="amount mt-1 text-3xl font-bold text-primary">
             {money(summary.totalContributed)}
@@ -115,7 +115,7 @@ export default function SummaryTab({ summary }) {
             <span className="amount font-semibold text-ink">
               {summary.membersWithZeroContributions}
             </span>{" "}
-            of {summary.activeMembers} active members are yet to contribute.
+            of {summary.activeMembers} active members have paid nothing since the books opened.
           </p>
         </section>
       )}

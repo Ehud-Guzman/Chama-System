@@ -10,7 +10,7 @@ export default function MonthlyTab({ monthTotals, months }) {
         <Loader />
       ) : months.length === 0 ? (
         <p className="rounded-xl border border-dashed border-rule px-5 py-8 text-center text-sm text-muted">
-          No contributions logged yet.
+          No payments logged since the books opened. Earlier months are in the paper ledger and the backups.
         </p>
       ) : (
         <>
