@@ -2778,6 +2778,21 @@ THE MEMBER LEDGER'S "EXPECTED", IN THE WAY THE HERITAGE SYSTEM SHOWS IT (3 NOV 2
   frontend/src/pages/FinanceMemberLedger.jsx. Checked in a browser along the route Finance -> click a member, for a
   member below the line and one above it.
 
+THE EXPECTED FIGURE ON THE MEMBERS' PASSBOOK TOO (3 NOV 2026)
+
+  The same expected figure the treasurer now sees on the member ledger is on the members' own passbook. In the
+  position card, under the money he holds: "The group's line for week 99 is Ksh 125,100." followed, in words
+  addressed to him, by what the group's rule makes of his side of it - below the line: everyone is expected to
+  be level with it, so he contributes every week and a week with nothing paid is fined (clause 7.5); at or above
+  it: being ahead, he is not required to contribute weekly and is not fined for a week with nothing paid. And an
+  "Expected" entry in "Your details" (the line, how it rises, and what he holds against it).
+
+  The green "Up to date - nothing owing in arrears" is no longer shown to a member below the line, because the
+  line just above it tells him he is behind and the two would argue. Nothing changes for a member at or above it.
+
+  No backend change: the passbook already receives what he holds, the line, the week and the weekly amount.
+  frontend/src/components/public/PassbookCard.jsx. Checked as a member, with an ID, below and above the line.
+
 END OF DOCUMENT
 ===============
 

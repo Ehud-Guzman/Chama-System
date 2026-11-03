@@ -5,6 +5,7 @@ import { useToast } from '../shared/Toast';
 import { money, shortDate, METHOD_LABELS } from '../../utils/format';
 import { blobErrorMessage } from '../../utils/blobError';
 import { passbookPosition } from '../../utils/passbookPosition';
+import { linePosition } from '../../utils/linePosition';
 import MemberAvatar from '../members/MemberAvatar';
 import FinesPanel from '../shared/FinesPanel';
 import LedgerWalk from '../shared/LedgerWalk';
@@ -60,6 +61,9 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl, 
   // held" and "paid in his own name" when the cycle engine has no answer — lives in
   // utils/passbookPosition, where it is tested without a browser.
   const position = passbookPosition(result.ledger, result.totalContributed);
+  // Where he stands against the group's line this week (null when the line is switched off or there is no
+  // ledger): the "expected" figure, and what the group's rule makes of his side of it.
+  const line = linePosition(result.ledger);
 
   // Fetched as a blob rather than a plain <a href> — a bare link hitting a
   // rate limit or error shows the visitor raw JSON in their browser instead
@@ -165,15 +169,40 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl, 
               <p className="amount mt-1 text-xs leading-5 text-muted">{position.identity}</p>
             )}
 
+            {line && (
+              <p className="mt-2 text-sm leading-6">
+                The group&rsquo;s line for week {result.ledger.currentWeek} is{' '}
+                <span className="amount font-semibold">{money(line.line)}</span>.{' '}
+                {line.side === 'below' && (
+                  <span className="font-medium text-alert">
+                    You are {money(line.distance)} below it: everyone is expected to be level with the line, so you
+                    contribute every week, and a week with nothing paid is fined (clause 7.5).
+                  </span>
+                )}
+                {line.side === 'on' && (
+                  <span className="font-medium text-primary">
+                    You are exactly on it, so you are not fined for a week with nothing paid.
+                  </span>
+                )}
+                {line.side === 'above' && (
+                  <span className="font-medium text-primary">
+                    You are {money(line.distance)} above it: being ahead, you are not required to contribute weekly
+                    and are not fined for a week with nothing paid.
+                  </span>
+                )}
+              </p>
+            )}
+
             {position.arrearsText ? (
               <p className="amount mt-2 text-sm font-medium text-alert">{position.arrearsText}</p>
             ) : position.aheadText ? (
               /* Above the group's line: it asks nothing of him, so the card says so in the calm
                  tone rather than in the red one used for money the group is chasing. */
               <p className="amount mt-2 text-sm font-medium text-muted">{position.aheadText}</p>
-            ) : position.upToDate ? (
+            ) : position.upToDate && !(line && line.side === 'below') ? (
               /* Said out loud rather than left blank: a member who is up to date should not have to
-                 work it out from an absence. */
+                 work it out from an absence. Not for a member below the group's line: the line above has
+                 just told him he is behind it, and "up to date" would argue with it. */
               <p className="mt-2 text-sm font-medium text-primary">
                 Up to date — nothing owing in arrears.
               </p>
@@ -208,6 +237,16 @@ export default function PassbookCard({ result, statementUrl, statementExcelUrl, 
                   label={`Carried in (week ${result.ledger.cycleStartWeek})`}
                   value={money(result.ledger.openingBalance)}
                   hint="(what he held when these books opened)"
+                />
+              )}
+
+              {line && (
+                <Fact
+                  label="Expected"
+                  value={money(line.line)}
+                  hint={`(the group's line for week ${result.ledger.currentWeek}, rising ${money(
+                    result.ledger.weeklyAmount
+                  )} a week; you hold ${money(line.held)})`}
                 />
               )}
 
