@@ -2750,6 +2750,19 @@ REPORT WORDING AFTER A RE-BASE (3 NOV 2026)
 
   frontend: pages/reports/SummaryTab.jsx, MonthlyTab.jsx, PerformanceTab.jsx; components/control/ControlOverview.jsx.
 
+THE MEMBER LEDGER'S WEEKS TABLE NO LONGER LISTS EVERY WEEK (3 NOV 2026)
+
+  The week-by-week table on a member's ledger printed every week before the cycle (1 to 97) as a row saying
+  "counted in his carried-in money", on top of the live weeks: about a hundred rows, burying the week that is
+  running. Now the live cycle shows its latest 8 weeks (with "Show all N weeks of this cycle" when there are
+  more), and the weeks before the cycle fold behind one line - "Weeks 1-97 ran before this ledger opened.
+  Their money is already inside the Ksh X brought forward, so they are never scored again. Show the other N
+  weeks". A week before the cycle in which money WAS collected (the one-time week 91 entry) always stays on
+  show. The shared schedule table on the member record and the passbook already folded its history.
+
+  frontend/src/pages/memberLedger/LedgerEntries.jsx. Checked in a browser at phone width: 4 rows when first
+  opened, the toggle shows the other 96 weeks and folds them again.
+
 END OF DOCUMENT
 ===============
 

@@ -1,8 +1,17 @@
+import { useState } from 'react';
 import { shortDate, METHOD_LABELS, money } from '../../utils/format';
 import { TrashIcon } from '../../components/shared/icons';
 import { Link } from 'react-router-dom';
 
+// The weeks of the live cycle show newest first, and only this many until the reader asks for the rest: the list
+// grows by a row every Friday, and a screen of rows nobody is looking for buries the one running now.
+const WEEKS_PREVIEW = 8;
+
 export default function LedgerEntries({ data, expenses, ledger, logs, member, setDeleting, setShowWeeks, showWeeks, teaFund, week }) {
+  const [showAllWeeks, setShowAllWeeks] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const weeksNewestFirst = [...ledger.weeks].reverse();
+  const weeksShown = showAllWeeks ? weeksNewestFirst : weeksNewestFirst.slice(0, WEEKS_PREVIEW);
   return (
     <div className="min-w-0 space-y-5">
       <section>
@@ -68,7 +77,7 @@ export default function LedgerEntries({ data, expenses, ledger, logs, member, se
               </tr>
             </thead>
             <tbody>
-              {[...ledger.weeks].reverse().map((w) => (
+              {weeksShown.map((w) => (
                 <tr key={w.weekNumber} className="border-b border-rule last:border-b-0">
                   <td className="amount px-3 py-2">
                     {w.weekNumber}
@@ -104,45 +113,76 @@ export default function LedgerEntries({ data, expenses, ledger, logs, member, se
                 </tr>
               ))}
 
-              {data.history?.length > 0 && (
-                <>
-                  <tr className="border-b border-rule bg-canvas">
-                    <td colSpan={4} className="px-3 py-2 text-xs leading-5 text-muted">
-                      Weeks 1–{data.history[data.history.length - 1].weekNumber} ran before this ledger
-                      opened. Their money is already inside the {money(ledger.openingBalance)} brought
-                      forward, so they are listed for reference and never scored again.
-                    </td>
-                  </tr>
-                  {[...data.history].reverse().map((w) => {
-                    // A week before the cycle that was collected — the one-time
-                    // week-91 entry — shows its money and its tea. The rest are
-                    // carried forward inside the opening balance, which is what
-                    // the row above explains.
-                    const collected = w.paid > 0 || w.chaiPaid > 0;
-                    return (
-                      <tr
-                        key={w.weekNumber}
-                        className="border-b border-rule text-muted last:border-b-0"
-                      >
-                        <td className="amount px-3 py-2">{w.weekNumber}</td>
-                        <td className="amount px-3 py-2">{collected ? money(w.paid || 0) : '—'}</td>
-                        <td className="px-3 py-2">
-                          {collected ? (
-                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest text-primary">
-                              paid in
-                            </span>
-                          ) : (
-                            <span className="text-xs">counted in his carried-in money</span>
-                          )}
-                        </td>
-                        <td className="amount px-3 py-2">
-                          {collected && w.chaiPaid > 0 ? money(w.chaiPaid) : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </>
+              {weeksNewestFirst.length > WEEKS_PREVIEW && (
+                <tr className="border-b border-rule">
+                  <td colSpan={4} className="p-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowAllWeeks((v) => !v)}
+                      className="min-h-11 w-full text-sm font-semibold text-primary"
+                    >
+                      {showAllWeeks
+                        ? `Show the last ${WEEKS_PREVIEW} weeks`
+                        : `Show all ${weeksNewestFirst.length} weeks of this cycle`}
+                    </button>
+                  </td>
+                </tr>
               )}
+
+              {data.history?.length > 0 && (() => {
+                // A week before the cycle that was collected — the one-time week-91 entry — shows its
+                // money and its tea, and always stays on show. Every other week before the cycle is
+                // carried forward inside the opening balance: ninety-odd rows saying so bury the week
+                // that is running, so they sit behind one line and a toggle.
+                const newestFirst = [...data.history].reverse();
+                const wasCollected = (w) => w.paid > 0 || w.chaiPaid > 0;
+                const rows = showHistory ? newestFirst : newestFirst.filter(wasCollected);
+                const folded = newestFirst.length - rows.length;
+                return (
+                  <>
+                    <tr className="border-b border-rule bg-canvas">
+                      <td colSpan={4} className="px-3 py-2 text-xs leading-5 text-muted">
+                        Weeks 1–{data.history[data.history.length - 1].weekNumber} ran before this ledger
+                        opened. Their money is already inside the {money(ledger.openingBalance)} brought
+                        forward, so they are never scored again.
+                        {(folded > 0 || showHistory) && (
+                          <>
+                            {' '}
+                            <button
+                              type="button"
+                              onClick={() => setShowHistory((v) => !v)}
+                              className="font-semibold text-primary"
+                            >
+                              {showHistory ? 'Hide them' : `Show the other ${folded} weeks`}
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                    {rows.map((w) => {
+                      const collected = wasCollected(w);
+                      return (
+                        <tr key={w.weekNumber} className="border-b border-rule text-muted last:border-b-0">
+                          <td className="amount px-3 py-2">{w.weekNumber}</td>
+                          <td className="amount px-3 py-2">{collected ? money(w.paid || 0) : '—'}</td>
+                          <td className="px-3 py-2">
+                            {collected ? (
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest text-primary">
+                                paid in
+                              </span>
+                            ) : (
+                              <span className="text-xs">counted in his carried-in money</span>
+                            )}
+                          </td>
+                          <td className="amount px-3 py-2">
+                            {collected && w.chaiPaid > 0 ? money(w.chaiPaid) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </>
+                );
+              })()}
             </tbody>
           </table>
         </section>
