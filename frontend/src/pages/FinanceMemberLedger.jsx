@@ -13,6 +13,7 @@ import Loader from '../components/shared/Loader';
 import { fetchMember, getCachedMember, invalidateLedger } from '../services/ledgerCache';
 import { parseMpesaMessage } from '../utils/mpesaMessage';
 import CompactStat from '../components/shared/CompactStat';
+import { linePosition } from '../utils/linePosition';
 import AddLogForm from './memberLedger/AddLogForm';
 import LedgerEntries from './memberLedger/LedgerEntries';
 
@@ -273,6 +274,8 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
   // Whether anything is being asked of him at all: below the group's line and short of a closed
   // week, he is chased; above it, nothing is asked (utils/reminderLimit).
   const owed = (ledger.chasedArrears ?? ledger.arrears) > 0;
+  // Where he stands against the group's line this week: the "expected" figure (null when the rule is off).
+  const position = linePosition(ledger);
   // The earliest closed week the money is missing from — the one a catch-up payment is logged
   // against. Each week carries its own 1,400, so there is one line per week, never a lump.
   const firstShortWeek = (ledger.weeks || []).find((w) => w.behind) || null;
@@ -324,7 +327,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         </div>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <CompactStat
           label={`Carried in at week ${data.week.cycleStartWeek}`}
           value={money(ledger.openingBalance)}
@@ -336,6 +339,18 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
           hint={ledger.finesPaid > 0 ? '(carried in + paid in − tea − fines paid out of his money)' : '(carried in + paid in − tea)'}
           accent
         />
+        {position && (
+          <CompactStat
+            label={`Expected by week ${ledger.currentWeek}`}
+            value={money(position.line)}
+            hint={`(the group's line, rising ${money(ledger.weeklyAmount)} a week — ${
+              position.side === 'on'
+                ? 'he is exactly on it'
+                : `he is ${money(position.distance)} ${position.side} it`
+            })`}
+            accent={position.side !== 'below'}
+          />
+        )}
         <CompactStat
           label="Weeks that have closed"
           value={money(ledger.required)}
@@ -382,6 +397,15 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
               chased and he is not told he is behind
             </span>{' '}
             — it stays on his record and is logged whenever he brings it.
+          </>
+        )}
+        {position && (
+          <>
+            {' '}
+            The line for week {ledger.currentWeek} is {money(position.line)}
+            {position.side === 'on'
+              ? '; he is exactly on it.'
+              : `; he holds ${money(position.held)}, which is ${money(position.distance)} ${position.side} it.`}
           </>
         )}
         {' '}While the expectation was still being

@@ -2702,6 +2702,18 @@ ISSUING A FINE RESPECTS CLOSED BOOKS (3 NOV 2026)
 
   backend/src/routes/fineRoutes.js; test/integration/fineLock.test.js (four cases).
 
+THE MEMBER LEDGER SHOWS THE EXPECTED FIGURE (3 NOV 2026)
+
+  The treasurer's member ledger showed what a member holds and the weekly 1,500 expectation, which reads 0
+  until a week has closed. It did not show the figure the group actually measures him against: the money line
+  for the week (123,600 in week 98, 125,100 in week 99). A new tile, "Expected by week N", now shows it, with
+  how far he is below or above it (below is what the group calls a debt, at or above is extra), and the
+  explanation under the tiles says the same in a sentence. Nothing is shown when the line is switched off.
+  The comparison is utils/linePosition (pure, tested); the figure itself is the server's own, already on the
+  ledger payload, so every screen agrees.
+
+  frontend/src/pages/FinanceMemberLedger.jsx, src/utils/linePosition.js, test/linePosition.test.js.
+
 END OF DOCUMENT
 ===============
 
