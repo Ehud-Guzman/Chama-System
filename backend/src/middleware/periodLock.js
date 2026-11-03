@@ -77,6 +77,12 @@ const SOURCES = {
   // worked out from them, so changing one rewrites the period the committee agreed. A real change is
   // treated as touching the last closed day; saving the screen with nothing altered is not.
   setup: async (req, settings) => (await setupWouldChange(req.body || {}, settings) ? [new Date(lockedBefore(settings) - 1)] : []),
+  // A new weekly amount starting in a week: the day that week starts is the day it touches.
+  weeklyChange: async (req, settings) => {
+    const week = parseInt(req.body?.fromWeek ?? req.params?.fromWeek, 10);
+    if (!Number.isInteger(week) || week < 1) return [];
+    return [weekRange(week, resolveConfig(settings)).startDate];
+  },
   // A whole week at once: the ledger dates a week's rows on the day it closed.
   week: async (req, settings) => {
     if (req.body?.dryRun) return [];

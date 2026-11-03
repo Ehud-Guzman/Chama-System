@@ -1,4 +1,5 @@
 const ContributionType = require('../models/ContributionType');
+const { resolveConfig } = require('./weekCycle');
 const Contribution = require('../models/Contribution');
 
 // The only contribution types the system still maintains. The treasurer's
@@ -151,7 +152,7 @@ async function seedGroupFunds() {
 // are kept in step with it. Called on boot and whenever the figures change.
 async function syncLedgerTypeAmounts(settings) {
   await Promise.all([
-    ContributionType.updateOne({ name: WEEKLY_TYPE_NAME }, { $set: { weeklyAmount: settings.weeklyAmount } }),
+    ContributionType.updateOne({ name: WEEKLY_TYPE_NAME }, { $set: { weeklyAmount: resolveConfig(settings).weeklyAmount } }),
     ContributionType.updateOne({ name: CHAI_TYPE_NAME }, { $set: { weeklyAmount: settings.chaiAmount } }),
   ]);
 }

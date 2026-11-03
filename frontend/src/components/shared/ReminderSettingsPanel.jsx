@@ -51,7 +51,7 @@ export default function ReminderSettingsPanel() {
         setMoneyLimit(String(limit));
         setLimitWeek(week == null ? '' : String(week));
         setSavedLine({ limit: Number(limit) || 0, week });
-        setWeeklyAmount(Math.max(0, Number(res.data.settings.weeklyAmount) || 1500));
+        setWeeklyAmount(Math.max(0, Number(res.data.settings.weeklyAmountNow ?? res.data.settings.weeklyAmount) || 1500));
       })
       .catch(() => {})
       .finally(() => setLoaded(true));

@@ -119,18 +119,32 @@ test('a balance below nothing or past a billion is refused, and nothing is writt
 });
 
 test('a request refused part-way leaves the cycle figures exactly as they were', { skip }, async () => {
-  // A good weekly amount followed by tea larger than it: the 400 must not leave 2,000 live.
-  const res = await api('PATCH', '/api/ledger/setup', {
+  const stored = async () => Settings.findOne({ key: 'main' }).lean();
+
+  // A new weekly amount together with tea larger than it. Weeks have already been asked 1,500, so the weekly
+  // amount is refused outright (a rise goes through POST /api/ledger/weekly-amount); either way nothing stays live.
+  const both = await api('PATCH', '/api/ledger/setup', {
     token: tokens.treasurer,
     body: { weeklyAmount: 2000, chaiAmount: 5000 },
   });
-  assert.equal(res.status, 400, JSON.stringify(res.body));
-  assert.match(res.body.message, /tea/i);
+  assert.equal(both.status, 400, JSON.stringify(both.body));
+  assert.match(both.body.message, /already been asked/i);
+
+  // The weekly amount left alone and only the tea too large: the tea is the reason, and nothing stays live.
+  const tea = await api('PATCH', '/api/ledger/setup', {
+    token: tokens.treasurer,
+    body: { weeklyAmount: 1500, chaiAmount: 5000 },
+  });
+  assert.equal(tea.status, 400, JSON.stringify(tea.body));
+  assert.match(tea.body.message, /tea/i);
 
   const read = await api('GET', '/api/ledger/setup', { token: tokens.treasurer });
   assert.equal(read.body.settings.weeklyAmount, 1500, 'what the next request reads');
-  assert.equal((await Settings.findOne({ key: 'main' }).lean()).weeklyAmount, 1500, 'and what is stored');
+  assert.equal(read.body.settings.chaiAmount, 100);
+  assert.equal((await stored()).weeklyAmount, 1500, 'and what is stored');
+  assert.equal((await stored()).chaiAmount, 100);
 });
+
 
 test('closed books hold a real change to the setup, but not a save with nothing altered', { skip }, async () => {
   await lock(true);

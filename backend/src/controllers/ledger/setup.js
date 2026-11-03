@@ -6,7 +6,8 @@ const Contribution = require('../../models/Contribution');
 const Expense = require('../../models/Expense');
 const mongoose = require('mongoose');
 const { getOrCreateSettings, invalidateSettings } = require('../../utils/settings');
-const { resolveConfig, toEatDateString, currentWeekNumber, weekRange, fridayOf, parseEatDate } = require('../../utils/weekCycle');
+const { resolveConfig, toEatDateString, currentWeekNumber, weekRange, fridayOf, parseEatDate, scoredWeeks } = require('../../utils/weekCycle');
+const { describeSchedule } = require('./weekly');
 const { seedGroupFunds, bucketForType, syncLedgerTypeAmounts } = require('../../utils/ledgerTypes');
 const { suggestedOpeningBalances } = require('../../utils/suggestedBalances');
 const { teaMemberWeeks } = require('../../utils/teaCharges');
@@ -82,7 +83,12 @@ async function getSetup(req, res, next) {
       settings: {
         chamaName: settings.chamaName,
         cycleStartWeek: config.cycleStartWeek,
-        weeklyAmount: config.weeklyAmount,
+        // The amount the cycle OPENED with, which is what the form saves back. What is asked this week, and the dated
+        // rises, are `weeklyAmountNow` and `weeklyAmountChanges`; closed weeks cannot have the opening amount changed.
+        weeklyAmount: config.weeklyBase,
+        weeklyAmountNow: config.weeklyAmount,
+        weeklyAmountChanges: describeSchedule(settings).changes,
+        weeksClosed: scoredWeeks(config),
         chaiAmount: config.chaiAmount,
         // The Friday as an EAT calendar date, so the date input shows the real
         // week boundary and saving it back lands on the same instant.
@@ -211,6 +217,14 @@ async function updateSetup(req, res, next) {
     }
     if (weekly.amount !== undefined && weekly.amount <= 0) {
       return res.status(400).json({ message: 'Weekly amount must be greater than zero' });
+    }
+    // The amount the cycle opened with cannot be changed once a week has been asked at it: that would rewrite every
+    // closed week. A rise goes through POST /api/ledger/weekly-amount, from a week that has not closed.
+    if (weekly.amount !== undefined && weekly.amount !== Number(settings.weeklyAmount) && scoredWeeks(resolveConfig(settings)) > 0) {
+      return res.status(400).json({
+        message:
+          'Weeks have already been asked this weekly amount, so it cannot be overwritten. To raise it, use "Change the weekly amount from week" and pick a week that has not closed.',
+      });
     }
     const chai = readAmount(chaiAmount);
     if (chai.invalid || chai.outOfRange) {

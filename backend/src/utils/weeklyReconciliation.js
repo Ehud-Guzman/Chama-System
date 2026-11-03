@@ -2,7 +2,7 @@ const Member = require('../models/Member');
 const Contribution = require('../models/Contribution');
 const ContributionType = require('../models/ContributionType');
 const { getOrCreateSettings } = require('./settings');
-const { resolveConfig } = require('./weekCycle');
+const { resolveConfig, weeklyAmountForWeek } = require('./weekCycle');
 const { bucketForType, CHAI_TYPE_NAME, WEEKLY_TYPE_NAME } = require('./ledgerTypes');
 const { computeMemberLedger } = require('./memberLedger');
 
@@ -68,6 +68,9 @@ async function computeWeeklyReconciliation() {
       typeName: WEEKLY_TYPE_NAME,
       isGroupFund: false,
       weeklyAmount: config.weeklyAmount,
+      // What this fund asks in a given week: the weekly contribution can rise from a week, and the weeks before
+      // the rise must still be read against what they asked.
+      amountFor: (weekNumber) => weeklyAmountForWeek(config, weekNumber),
       read: (week) => ({ paid: week.personalPaid, item: week }),
     },
     {
@@ -75,6 +78,7 @@ async function computeWeeklyReconciliation() {
       typeName: CHAI_TYPE_NAME,
       isGroupFund: true,
       weeklyAmount: config.chaiAmount,
+      amountFor: () => config.chaiAmount,
       // Automatic: every member is charged the week's tea whether or not anybody
       // logged anything, so a tea week is always collected and can never come up
       // short. Reported as its own fund so the total reaching the Group is
@@ -94,6 +98,7 @@ async function computeWeeklyReconciliation() {
     const perFund = [];
 
     for (const fund of funds) {
+      const amount = fund.amountFor(weekNumber);
       let actual = 0;
       let paidCount = 0;
       let contributingCount = 0;
@@ -112,9 +117,9 @@ async function computeWeeklyReconciliation() {
         const { paid } = fund.read(week);
         actual += paid;
         if (paid > 0) contributingCount += 1;
-        if (fund.weeklyAmount > 0 && paid >= fund.weeklyAmount) paidCount += 1;
+        if (amount > 0 && paid >= amount) paidCount += 1;
         if (isBaseline) continue;
-        const status = fund.weeklyAmount > 0 && paid >= fund.weeklyAmount ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+        const status = amount > 0 && paid >= amount ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
         if (status !== 'paid') {
           shortfallMembers.push({
             memberId: member._id,
@@ -137,14 +142,14 @@ async function computeWeeklyReconciliation() {
         }
       }
 
-      const expected = isBaseline ? 0 : ledgers.length * fund.weeklyAmount;
+      const expected = isBaseline ? 0 : ledgers.length * amount;
 
       perFund.push({
         typeId: fund.type ? fund.type._id : null,
         typeName: fund.typeName,
         isGroupFund: fund.isGroupFund,
         automatic: Boolean(fund.automatic),
-        weeklyAmount: fund.weeklyAmount,
+        weeklyAmount: amount,
         eligibleCount: ledgers.length,
         expected,
         actual,

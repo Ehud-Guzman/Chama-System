@@ -40,6 +40,24 @@ const SettingsSchema = new Schema(
     cycleStartWeek: { type: Number, default: 92 },
     // Required personal contribution per week (constitution §7.1).
     weeklyAmount: { type: Number, default: 1500 },
+    // `weeklyAmount` is the amount the cycle OPENED with. A rise is a dated entry here and applies from its week
+    // onward, never to the weeks before it (utils/weeklyAmounts). `fromWeek` is a week number; the rest is the
+    // record of who changed it, when and why.
+    weeklyAmountChanges: {
+      type: [
+        new Schema(
+          {
+            fromWeek: { type: Number, required: true, min: 1 },
+            amount: { type: Number, required: true, min: 1 },
+            changedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+            changedAt: { type: Date, default: Date.now },
+            reason: { type: String, default: '', maxlength: 300 },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
     // Tea Fund contribution per week. Tracked on its own and never mixed into a
     // member's personal figures — the fund belongs to the Group (§7.2).
     chaiAmount: { type: Number, default: 100 },

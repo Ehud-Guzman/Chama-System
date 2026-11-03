@@ -58,11 +58,11 @@ export default function AddLogForm({ amount, amountRef, busy, coverArrears, data
                 }.`
               : selectedWeek.isCurrent
                 ? ` — the week running now. Its ${money(
-                    ledger.weeklyAmount
+                    selectedWeek.weeklyAmount ?? ledger.weeklyAmount
                   )} is only counted the day after it closes, so logging it here is what settles it.`
                 : selectedWeek.settled
                   ? ' — already settled, so anything logged now is simply more of his money.'
-                  : ` — ${money(weekDue)} of the ${money(ledger.weeklyAmount)} still due.`}
+                  : ` — ${money(weekDue)} of the ${money(selectedWeek.weeklyAmount ?? ledger.weeklyAmount)} still due.`}
           </p>
         )}
         {data.history?.length > 0 && (

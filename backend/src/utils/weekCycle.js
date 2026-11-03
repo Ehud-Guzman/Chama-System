@@ -16,6 +16,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // resolveConfig). The rule itself lives in utils/reminderLimit, which needs nothing from this file —
 // no cycle, no database — so this stays a one-way dependency.
 const { normaliseMoneyLimit, normaliseMoneyLimitWeek } = require('./reminderLimit');
+// The weekly contribution by week: the amount the cycle opened with and the dated rises since (utils/weeklyAmounts).
+const { normaliseWeeklyChanges, weeklyAmountForWeek, sumWeeklyAmounts } = require('./weeklyAmounts');
 
 // Kenya runs a fixed +3 with no daylight saving, so a week boundary is plain
 // arithmetic rather than a timezone-database lookup. Fixing the offset matters
@@ -78,11 +80,16 @@ function resolveConfig(settings) {
   if (!settings || !settings.weekAnchorDate) {
     throw new Error('Week cycle anchor is not set — call getOrCreateSettings() first');
   }
-  return {
+  const weeklyBase = Number.isFinite(Number(settings.weeklyAmount))
+    ? Number(settings.weeklyAmount)
+    : DEFAULT_WEEKLY_AMOUNT;
+  const config = {
     cycleStartWeek: Number(settings.cycleStartWeek) || DEFAULT_CYCLE_START_WEEK,
-    weeklyAmount: Number.isFinite(Number(settings.weeklyAmount))
-      ? Number(settings.weeklyAmount)
-      : DEFAULT_WEEKLY_AMOUNT,
+    // What the cycle opened with, and the dated rises since. `weeklyAmount` below is what is asked THIS week, so
+    // every screen that says "the weekly amount" without naming a week is still right after a rise.
+    weeklyBase,
+    weeklyChanges: normaliseWeeklyChanges(settings.weeklyAmountChanges),
+    weeklyAmount: weeklyBase,
     chaiAmount: Number.isFinite(Number(settings.chaiAmount))
       ? Number(settings.chaiAmount)
       : DEFAULT_CHAI_AMOUNT,
@@ -91,6 +98,8 @@ function resolveConfig(settings) {
     reminderMoneyLimit: normaliseMoneyLimit(settings.reminderMoneyLimit),
     reminderMoneyLimitWeek: normaliseMoneyLimitWeek(settings.reminderMoneyLimitWeek),
   };
+  config.weeklyAmount = weeklyAmountForWeek(config, currentWeekNumber(config));
+  return config;
 }
 
 // Raw week number for a date — may fall before the cycle (historical rows) or
@@ -169,6 +178,8 @@ module.exports = {
   toEatDateString,
   parseEatDate,
   resolveConfig,
+  weeklyAmountForWeek,
+  sumWeeklyAmounts,
   weekNumberForDate,
   cycleWeekNumber,
   weekRange,

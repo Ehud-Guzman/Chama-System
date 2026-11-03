@@ -8,7 +8,7 @@ const Counter = require('../../models/Counter');
 const { cleanDateOfBirth, cleanText, cleanFamily, cleanCommitment, cleanApprovals } = require('../../utils/memberDetails');
 const { storedNationalId, normalizeNationalId } = require('../../utils/nationalId');
 const { getOrCreateSettings } = require('../../utils/settings');
-const { resolveConfig, weekNumberForDate, cycleHistory } = require('../../utils/weekCycle');
+const { resolveConfig, weekNumberForDate, cycleHistory, weeklyAmountForWeek } = require('../../utils/weekCycle');
 const { bucketForType } = require('../../utils/ledgerTypes');
 const { buildWeeklySchedule } = require('../../utils/weeklySchedule');
 
@@ -85,7 +85,8 @@ async function buildFinesAndSchedules(member, contributions, settings) {
     // screens that still read the type's own weeklyAmount.
     const isChai = bucketForType(type) === 'chai';
     const amount = isChai ? config.chaiAmount : config.weeklyAmount;
-    const weeks = buildWeeklySchedule(config, amount, typeContributions);
+    // The weekly contribution asks each week its own amount (it can rise from a given week); the tea is one amount.
+    const weeks = buildWeeklySchedule(config, isChai ? amount : (w) => weeklyAmountForWeek(config, w), typeContributions);
     // Weeks before the cycle that were collected — the one-time week-91 entry —
     // carry their figures, so the schedule shows what was actually paid instead of
     // a dash for every week back to week one. They stay unscored: their money is

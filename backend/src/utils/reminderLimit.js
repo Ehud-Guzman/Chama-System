@@ -35,6 +35,7 @@
 // (carried in + paid in − tea). Not against what he was asked for and not against his arrears: the
 // question is "does he have money in the group's hands", and this is the engine's own answer to it.
 const { toMoney } = require('./money');
+const { sumWeeklyAmounts } = require('./weeklyAmounts');
 
 // The group's own line as at its opening week. 1,400 × 82 weeks less 200 that the paper ledger had
 // already carried into the 92nd week's figure — the treasurer's number, not a derived one, which is
@@ -87,10 +88,11 @@ function moneyLimitForWeek(settings, config, currentWeek) {
   if (base <= 0) return 0;
 
   const anchor = normaliseMoneyLimitWeek(settings?.reminderMoneyLimitWeek) ?? config.cycleStartWeek;
-  // Nothing is added for a week the group has not reached, so a limit anchored in a future week
-  // reads as the figure itself rather than as the figure minus a few weeks' worth.
-  const weeksSince = Math.max(0, (Number(currentWeek) || 0) - anchor);
-  return toMoney(base + lineStep(config) * weeksSince);
+  // Every week after the anchor adds what THAT week asks (utils/weeklyAmounts), so a rise in the weekly amount
+  // lifts the line from the week it starts and not for the weeks before it. Nothing is added for a week the
+  // group has not reached, so a limit anchored in a future week reads as the figure itself rather than as the
+  // figure minus a few weeks' worth.
+  return toMoney(base + sumWeeklyAmounts(config, anchor + 1, Number(currentWeek) || 0));
 }
 
 // The decision, as a pure function of (what he holds, where the line is). At or above the line he

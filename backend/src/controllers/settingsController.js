@@ -1,6 +1,7 @@
 const { getOrCreateSettings, invalidateSettings } = require('../utils/settings');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { syncLedgerTypeAmounts } = require('../utils/ledgerTypes');
+const { resolveConfig } = require('../utils/weekCycle');
 const { destroyImage } = require('../utils/cloudinary');
 const { normaliseMaxPerWeek, MAX_PER_WEEK_CEILING } = require('../utils/reminderLog');
 const {
@@ -19,7 +20,9 @@ const STATEMENT_MAX = 600;
 async function getSettings(req, res, next) {
   try {
     const settings = await getOrCreateSettings();
-    res.json({ settings });
+    // `weeklyAmount` on the document is what the cycle opened with; what is asked THIS week (it can have been raised
+    // since) rides beside it for the screens that talk about "a week's contribution" without naming a week.
+    res.json({ settings: { ...settings.toObject(), weeklyAmountNow: resolveConfig(settings).weeklyAmount } });
   } catch (err) {
     next(err);
   }

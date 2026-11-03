@@ -86,7 +86,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
   // What the selected week still needs from him. Left blank once that week is
   // covered — logging the full amount again would silently become money on top.
   const weekDue = selectedWeek
-    ? Math.max(0, (ledger?.weeklyAmount || 0) - (selectedWeek.personalPaid || 0))
+    ? Math.max(0, (selectedWeek.weeklyAmount ?? ledger?.weeklyAmount ?? 0) - (selectedWeek.personalPaid || 0))
     : 0;
 
   // Set by the one-tap catch-up so the prefill below doesn't immediately
@@ -354,9 +354,13 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         <CompactStat
           label="Due from closed weeks"
           value={money(ledger.required)}
-          hint={`(${money(ledger.weeklyAmount)} × ${ledger.chai.weeks} closed week${
-            ledger.chai.weeks === 1 ? '' : 's'
-          } — not taken off the money he holds)`}
+          hint={
+            ledger.weeklyChanged
+              ? `(${ledger.chai.weeks} closed weeks, each at the amount it asked — not taken off the money he holds)`
+              : `(${money(ledger.weeklyAmount)} × ${ledger.chai.weeks} closed week${
+                  ledger.chai.weeks === 1 ? '' : 's'
+                } — not taken off the money he holds)`
+          }
         />
         <CompactStat
           label={owed ? 'Owed' : 'Paid in'}

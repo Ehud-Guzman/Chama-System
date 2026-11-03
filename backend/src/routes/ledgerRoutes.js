@@ -7,6 +7,8 @@ const {
   undoCollectWeek,
   getSetup,
   updateSetup,
+  setWeeklyAmount,
+  cancelWeeklyAmount,
 } = require('../controllers/ledgerController');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { periodLock } = require('../middleware/periodLock');
@@ -19,6 +21,9 @@ router.use(requireAuth, requireRole('super_admin', 'admin', 'treasurer'));
 router.get('/', listLedger);
 router.get('/setup', getSetup);
 router.patch('/setup', periodLock('setup'), updateSetup);
+// Raising the weekly contribution from a given week (never rewriting the weeks before it), and taking a change back.
+router.post('/weekly-amount', periodLock('weeklyChange'), setWeeklyAmount);
+router.delete('/weekly-amount/:fromWeek', periodLock('weeklyChange'), cancelWeeklyAmount);
 // A whole week collected for everybody at once — the one-time week-91 entry —
 // with a dry run and an undo, because it is the one bulk write in the system.
 router.post('/collect-week', periodLock('week'), collectWeek);

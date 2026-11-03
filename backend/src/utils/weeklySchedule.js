@@ -13,7 +13,10 @@ const { currentWeekNumber, weekRange, cycleWeekNumber } = require('./weekCycle')
 // `contributions` are this member's rows for the same fund only. grossAmount is
 // used when present so a payment partly redirected to settle a fine still
 // fulfilled the week from the member's own side.
+// `weeklyAmount` is the amount each week asks, or a function from a week number to what that week asks: the weekly
+// contribution can rise from a given week, and a week before the rise must keep asking what it asked.
 function buildWeeklySchedule(config, weeklyAmount, contributions) {
+  const amountFor = typeof weeklyAmount === 'function' ? weeklyAmount : () => weeklyAmount;
   const currentWeek = currentWeekNumber(config);
 
   const paidByWeek = new Map();
@@ -31,11 +34,12 @@ function buildWeeklySchedule(config, weeklyAmount, contributions) {
     // so the numbering matches the paper ledger, never scored — the same rule
     // computeMemberLedger applies.
     const isBaseline = w === config.cycleStartWeek;
-    const expected = isBaseline ? 0 : weeklyAmount;
+    const amount = amountFor(w);
+    const expected = isBaseline ? 0 : amount;
     let status = isBaseline ? 'baseline' : 'unpaid';
 
     if (!isBaseline) {
-      if (weeklyAmount > 0 && paid >= weeklyAmount) status = 'paid';
+      if (amount > 0 && paid >= amount) status = 'paid';
       else if (paid > 0) status = 'partial';
     }
 

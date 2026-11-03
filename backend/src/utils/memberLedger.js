@@ -1,4 +1,11 @@
-const { weekNumberForDate, weekRange, currentWeekNumber, scoredWeeks } = require('./weekCycle');
+const {
+  weekNumberForDate,
+  weekRange,
+  currentWeekNumber,
+  scoredWeeks,
+  weeklyAmountForWeek,
+  sumWeeklyAmounts,
+} = require('./weekCycle');
 const { membershipEnd, accountingNow } = require('./membership');
 // The group's own line, and the decision built on it: a member holding at least that much is not
 // told he is behind. The ledger reports the *policy* view of that beside the money — `arrears` and
@@ -83,7 +90,10 @@ function computeMemberLedger({ member, contributions, config, now: requestedNow 
   // week still running — one the day after that week's Thursday passes, two the
   // week after, and so on. See the rule at the top.
   const weeksScored = scoredWeeks(config, now);
-  const required = config.weeklyAmount * weeksScored;
+  // What the closed weeks asked in all: each week its own amount, so a rise in the weekly contribution never
+  // reaches back into weeks that were already asked for less (utils/weeklyAmounts). With no rise it is the
+  // weekly amount times the weeks, exactly as before.
+  const required = sumWeeklyAmounts(config, config.cycleStartWeek + 1, config.cycleStartWeek + weeksScored);
   // Tea is automatic: every member is charged the week's tea for every scored week
   // of the cycle, whether or not anybody logged anything, and the money goes to
   // the Group's fund. That is why there is no such thing as tea arrears and no tea
@@ -106,6 +116,9 @@ function computeMemberLedger({ member, contributions, config, now: requestedNow 
       // The week's tea, automatic for every member — see chaiDue below. Nothing
       // comes off the baseline week, which is where the opening balance stands.
       chaiAmount: isBaseline ? 0 : config.chaiAmount,
+      // What the weekly contribution asked of him in this week: nothing for the opening week, and for the
+      // others the amount in force from the week it started (a rise applies only from its own week).
+      weeklyAmount: isBaseline ? 0 : weeklyAmountForWeek(config, w),
       otherPaid: 0,
       isBaseline,
       logs: [],
@@ -191,7 +204,7 @@ function computeMemberLedger({ member, contributions, config, now: requestedNow 
       return { ...w, personalPaid, status: 'baseline', isCurrent: w.weekNumber === currentWeek };
     }
     let status = 'nill';
-    if (config.weeklyAmount > 0 && personalPaid >= config.weeklyAmount) status = 'paid';
+    if (w.weeklyAmount > 0 && personalPaid >= w.weeklyAmount) status = 'paid';
     else if (personalPaid > 0) status = 'partial';
     return { ...w, personalPaid, status, isCurrent: w.weekNumber === currentWeek };
   });
@@ -223,8 +236,8 @@ function computeMemberLedger({ member, contributions, config, now: requestedNow 
       w.nillFineDue = false;
       continue;
     }
-    w.settled = config.weeklyAmount > 0 && w.personalPaid >= config.weeklyAmount;
-    w.shortfall = Math.max(0, config.weeklyAmount - w.personalPaid);
+    w.settled = w.weeklyAmount > 0 && w.personalPaid >= w.weeklyAmount;
+    w.shortfall = Math.max(0, w.weeklyAmount - w.personalPaid);
     // `behind` is the debt: a closed week with money missing from it. The week still running is not
     // one — nobody is behind on a week whose Thursday is to come.
     w.behind = !w.isCurrent && w.shortfall > 0;
@@ -301,7 +314,10 @@ function computeMemberLedger({ member, contributions, config, now: requestedNow 
     // owed.
     weeksElapsed: elapsed,
     weeksScored,
-    weeklyAmount: config.weeklyAmount,
+    // What is asked this week (a screen that says "the weekly amount" means this one), and whether the closed
+    // weeks did not all ask the same, so a screen does not say "1,500 x 4 weeks" about weeks that asked 1,500 and 2,000.
+    weeklyAmount: weeklyAmountForWeek(config, currentWeek),
+    weeklyChanged: weeks.some((w) => !w.isBaseline && !w.isCurrent && w.weeklyAmount !== weeklyAmountForWeek(config, currentWeek)),
     chaiAmount: config.chaiAmount,
     openingBalance,
     paid,

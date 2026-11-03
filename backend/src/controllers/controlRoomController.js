@@ -17,7 +17,7 @@ const { buildPermissionMatrix } = require('../utils/permissionMatrix');
 const { logAudit } = require('../utils/auditLogger');
 const { listDefinitions, jobsEnabled } = require('../jobs');
 const { walkChain } = require('../jobs/auditJob');
-const { toEatDateString } = require('../utils/weekCycle');
+const { toEatDateString, resolveConfig } = require('../utils/weekCycle');
 const { recentServerErrors } = require('../utils/serverErrors');
 const { loansSnapshot } = require('./loanController');
 
@@ -388,7 +388,8 @@ function controlsOf(settings) {
     twoFactorAuthEnabled: Boolean(settings.twoFactorAuthEnabled),
     passbookPhoneCheck: Boolean(settings.passbookPhoneCheck),
     cycle: {
-      weeklyAmount: settings.weeklyAmount,
+      // What is asked this week (the amount the cycle opened with can have been raised since).
+      weeklyAmount: resolveConfig(settings).weeklyAmount,
       chaiAmount: settings.chaiAmount,
       cycleStartWeek: settings.cycleStartWeek,
       weekAnchorDate: settings.weekAnchorDate ? toEatDateString(settings.weekAnchorDate) : null,

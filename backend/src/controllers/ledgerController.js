@@ -6,6 +6,7 @@
 //   logs   logging one payment against a member
 //   week   collecting a whole week at once, and taking it back
 //   setup  the week cycle and the opening balances (the go-live screen)
+//   weekly raising the weekly contribution from a given week, and taking a change back
 //
 // This file only gathers them, so every route and test that requires it keeps working.
 
@@ -13,6 +14,7 @@ const { listLedger, memberLedger } = require('./ledger/read');
 const { createLog } = require('./ledger/logs');
 const { collectWeek, undoCollectWeek } = require('./ledger/week');
 const { getSetup, updateSetup } = require('./ledger/setup');
+const { setWeeklyAmount, cancelWeeklyAmount } = require('./ledger/weekly');
 
 module.exports = {
   listLedger,
@@ -22,4 +24,6 @@ module.exports = {
   undoCollectWeek,
   getSetup,
   updateSetup,
+  setWeeklyAmount,
+  cancelWeeklyAmount,
 };

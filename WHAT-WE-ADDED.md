@@ -2793,6 +2793,52 @@ THE EXPECTED FIGURE ON THE MEMBERS' PASSBOOK TOO (3 NOV 2026)
   No backend change: the passbook already receives what he holds, the line, the week and the weekly amount.
   frontend/src/components/public/PassbookCard.jsx. Checked as a member, with an ID, below and above the line.
 
+RAISING THE WEEKLY CONTRIBUTION FROM A GIVEN WEEK (3 NOV 2026)
+
+  The weekly amount was one number for all time, so changing it rewrote history: weeks already asked at 1,500
+  would suddenly have asked 2,000, a member who had paid in full would read as short, and the group's line would
+  jump for the weeks behind it (week 99 would have read 125,600 instead of 125,100). It is now a dated change:
+  "from week N the weekly amount is X". Every week before N keeps what it asked, what members paid stays paid,
+  and the group's line rises by the new amount each week from N. The tea does not change with it.
+
+  HOW IT WORKS
+    - Settings keeps the amount the cycle OPENED with (weeklyAmount) and the dated rises (weeklyAmountChanges:
+      fromWeek, amount, who, when, why). utils/weeklyAmounts holds the three helpers every part reads (the
+      amount for a week, the sum over weeks, a clean list); it has no requires, because weekCycle and
+      reminderLimit both need it and one already requires the other.
+    - The line is 123,600 at week 98 plus, for every week after it, THAT week's amount: 125,100 in week 99, and
+      with 2,000 from week 103, 131,600 in week 103 (not 133,600), 133,600 in 104.
+    - Each week of a member's ledger carries the amount it asked (weeks[].weeklyAmount). The closed weeks'
+      total (required), each week's paid / partly paid / short, the arrears, the weekly schedules and the weekly
+      reconciliation all read that week's own amount. config.weeklyAmount still means what is asked THIS week, so
+      every screen that says "the weekly amount" stays right after a rise.
+    - Finance -> Setup has "Change the weekly amount from a week": the amount, the week it starts from (this week
+      or later: a week that has closed cannot be changed), and an optional reason. It PREVIEWS first ("From week
+      104 each member is asked 2,000 instead of 1,500. The group's line in that week goes from 132,600 to
+      133,100") and saves only on confirmation. A change can be replaced or taken back until its week closes, and
+      one whose week has closed stays. Every change and every take-back is in the audit trail, and closed books
+      hold a change that starts inside the closed period (the super admin can go through with a reason).
+    - The opening amount cannot be overwritten once a week has been asked at it (PATCH /api/ledger/setup refuses
+      it, and its box is greyed out); a rise goes through POST /api/ledger/weekly-amount instead.
+    - The log-a-payment form works out what is still due for the chosen week from THAT week's amount.
+
+  PROVED, NOT ASSUMED
+    With no rise scheduled the new backend and the one that was live gave identical answers to 38 requests
+    (dashboard, every ledger, reports, reminders, passbook, weekly reconciliation, control room) on the same
+    data; the only differences were the new per-week amount field and the folder each test server ran from.
+    10 unit tests (the helpers, the line, a member's ledger across a rise, the schedule) and 10 integration tests
+    (preview saves nothing, refusals, no retroactive effect, replace and take back, the lock, the opening-amount
+    guard, the reconciliation) pass, with all 25 integration suites and the front end's 114 tests. The screen was
+    walked in a browser: preview, a refused closed week, confirm, the ledger unchanged, take back.
+
+  backend: utils/weeklyAmounts.js, weekCycle.js, reminderLimit.js, memberLedger.js, weeklySchedule.js,
+  weeklyReconciliation.js, ledgerTypes.js, models/Settings.js, controllers/ledger/weekly.js and setup.js,
+  settingsController.js, controlRoomController.js, middleware/periodLock.js, routes/ledgerRoutes.js.
+  frontend: pages/financeSetup/WeeklyAmountSection.jsx, FinanceSetup.jsx, FinanceMemberLedger.jsx,
+  memberLedger/AddLogForm.jsx, components/shared/ReminderSettingsPanel.jsx.
+  tests: test/weeklyAmounts.test.js, test/integration/weeklyAmount.test.js; setupGuards.test.js updated for the
+  guard on the opening amount.
+
 END OF DOCUMENT
 ===============
 

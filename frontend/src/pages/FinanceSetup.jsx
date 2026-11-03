@@ -4,6 +4,7 @@ import { useToast } from '../components/shared/Toast';
 import { money, shortDate } from '../utils/format';
 import { invalidateLedger } from '../services/ledgerCache';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
+import WeeklyAmountSection from './financeSetup/WeeklyAmountSection';
 import BackLink from '../components/shared/BackLink';
 import Loader from '../components/shared/Loader';
 import OpeningBalancesSection from './financeSetup/OpeningBalancesSection';
@@ -369,11 +370,16 @@ export default function FinanceSetup() {
         />
         <Field
           id="weeklyAmount"
-          label="Required each week (the weekly contribution)"
+          label={
+            data.settings.weeksClosed > 0
+              ? 'Required each week when the cycle opened (raise it below)'
+              : 'Required each week (the weekly contribution)'
+          }
           value={settings.weeklyAmount}
           onChange={(v) => setSettings({ ...settings, weeklyAmount: v })}
           money
-          disabled={locked}
+          // Once a week has been asked this amount it is history: a rise goes in below, from a week that has not closed.
+          disabled={locked || data.settings.weeksClosed > 0}
         />
         <Field
           id="chaiAmount"
@@ -402,6 +408,8 @@ export default function FinanceSetup() {
           already on the ledger, so only do it while setting up.
         </p>
       </section>
+
+      <WeeklyAmountSection data={data} onChanged={reload} />
 
       <OpeningBalancesSection
         balances={balances}

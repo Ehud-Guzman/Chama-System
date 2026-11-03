@@ -5,7 +5,7 @@ const ContributionType = require('../../models/ContributionType');
 const Contribution = require('../../models/Contribution');
 const { nonPersonalTypeIds } = require('../../utils/personalTypes');
 const { getOrCreateSettings } = require('../../utils/settings');
-const { resolveConfig } = require('../../utils/weekCycle');
+const { resolveConfig, weeklyAmountForWeek } = require('../../utils/weekCycle');
 const { buildWeeklySchedule } = require('../../utils/weeklySchedule');
 
 // Month helpers. The group's calendar is Kenya (UTC+3), and the label is built
@@ -118,7 +118,7 @@ async function computeMemberReport(memberId) {
   let weeksUnpaid = 0;
   for (const type of personalWeeklyTypes) {
     const typeContributions = rows.filter((c) => String(c.typeId) === String(type._id));
-    const weeks = buildWeeklySchedule(config, config.weeklyAmount, typeContributions);
+    const weeks = buildWeeklySchedule(config, (w) => weeklyAmountForWeek(config, w), typeContributions);
     const scored = weeks.filter((w) => !w.isBaseline && !w.isCurrent);
     weeksExpected += scored.length;
     weeksPaid += scored.filter((w) => w.status === 'paid').length;

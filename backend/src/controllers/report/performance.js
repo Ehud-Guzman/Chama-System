@@ -6,7 +6,7 @@ const Contribution = require('../../models/Contribution');
 const Fine = require('../../models/Fine');
 const { nonPersonalTypeIds } = require('../../utils/personalTypes');
 const { getOrCreateSettings } = require('../../utils/settings');
-const { resolveConfig } = require('../../utils/weekCycle');
+const { resolveConfig, weeklyAmountForWeek } = require('../../utils/weekCycle');
 const { buildWeeklySchedule } = require('../../utils/weeklySchedule');
 const { sendWorkbook } = require('../../utils/xlsxExport');
 const { aboutSheet } = require('../../utils/aboutSheet');
@@ -79,7 +79,7 @@ async function computePerformance() {
     let runningWeek = null;
     for (const type of personalWeeklyTypes) {
       const typeContributions = own.filter((c) => String(c.typeId) === String(type._id));
-      const weeks = buildWeeklySchedule(config, config.weeklyAmount, typeContributions);
+      const weeks = buildWeeklySchedule(config, (w) => weeklyAmountForWeek(config, w), typeContributions);
       // The opening week is the baseline: it carried no expectation and no
       // payment, so counting it would drag every member's consistency down and
       // report a week nobody could have paid. The week still running is not
