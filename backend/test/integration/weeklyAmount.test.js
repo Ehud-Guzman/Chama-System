@@ -218,6 +218,17 @@ test('a rise starting this week applies to this week only, and the closed weeks 
   assert.equal(ledger.moneyLimit, 114600 + 6 * 1500 + 1800, 'this week adds the new amount to the line');
   const thisWeek = ledger.weeks.find((w) => w.isCurrent);
   assert.equal(thisWeek.weeklyAmount, 1800);
+
+  // The type's stored copy of the weekly amount is not refreshed when a dated change reaches its week, so the legacy
+  // import template reads the amount in force from the cycle, not from the copy.
+  await ContributionType.updateOne({ name: WEEKLY_TYPE_NAME }, { $set: { weeklyAmount: 1500 } });
+  const sheet = await fetch(`${base}/api/contributions/bulk/template`, { headers: { Authorization: `Bearer ${tokens.treasurer}` } });
+  assert.equal(sheet.status, 200);
+  const XLSX = require('xlsx');
+  const book = XLSX.read(Buffer.from(await sheet.arrayBuffer()), { type: 'buffer' });
+  const rows = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]]);
+  assert.ok(rows.length > 0);
+  assert.equal(rows[0][WEEKLY_TYPE_NAME], 1800);
   await clear();
 });
 

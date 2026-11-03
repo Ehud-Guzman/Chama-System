@@ -116,3 +116,29 @@ like Wĩlson Kĩnũthia prints as it is written and not as Wilson Kinuthia. If a
 on Render: every document goes back to the standard fonts at once (names with ĩ or ũ then print as i and u). Remove it when
 the cause is fixed. The font is Liberation Sans, a free font (SIL Open Font Licence; its licence is in
 `backend/src/assets/fonts`), with the same letter widths as the old one, so no page moves.
+
+---
+
+## 7. Changing the weekly contribution
+
+The weekly amount is not one number for all time: a rise is a dated entry, "from week N the weekly amount is X". Only
+the super admin makes it, from Finance, Setup, "Change the weekly amount from a week".
+
+1. Type the new amount and the week it starts from. The start week is next week unless you change it; the current week
+   is allowed, and a week that has closed is refused.
+2. **Preview the change.** It says what each member will be asked, and the group's line in the first week of it
+   before and after. Nothing is saved yet.
+3. **Confirm the change.** From then on the line rises by that week's own amount each week.
+
+What it does not do: weeks before the start week keep the amount they asked, so a member who paid every closed week in
+full is not made short, and nothing already paid moves. The tea stays as it is. A member who pays the old amount for a
+week that now asks more owes the difference for that week.
+
+A change can be **taken back** with the button on its row until its week has closed (it is in the audit trail either
+way). Two changes can be set one after the other; correcting a typo is "take back", then add it again. The amount the
+cycle opened with cannot be edited once weeks have been asked it: that would re-price every closed week, so the screen
+refuses and the books are corrected by hand with a backup first.
+
+Before the meeting where a rise is agreed, do not schedule anything: the group's line keeps rising at the amount in
+force. After it, check one member's ledger the week the rise starts: the "Expected" tile and the sum in words should
+show the new amount for that week only.

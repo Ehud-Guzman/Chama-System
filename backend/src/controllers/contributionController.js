@@ -5,6 +5,8 @@ const ContributionType = require('../models/ContributionType');
 const { logAudit, snapshot } = require('../utils/auditLogger');
 const { sendWorkbook } = require('../utils/xlsxExport');
 const { getOrCreateSettings } = require('../utils/settings');
+const { resolveConfig } = require('../utils/weekCycle');
+const { WEEKLY_TYPE_NAME } = require('../utils/ledgerTypes');
 // Shared with the ledger's own log endpoint (utils/fineAllocation). They were
 // private here once, which is exactly how the two write paths drifted apart: this
 // one paid down fines, the one the member panel actually calls did not.
@@ -481,15 +483,20 @@ async function deleteContribution(req, res, next) {
 // because a scripted import is still the right tool for a one-off backfill.
 async function bulkImportTemplate(req, res, next) {
   try {
-    const [members, types] = await Promise.all([
+    const [members, types, settings] = await Promise.all([
       Member.find({ active: true }).sort({ name: 1 }).lean(),
       ContributionType.find({ active: true }).sort({ name: 1 }).lean(),
+      getOrCreateSettings(),
     ]);
+    // The personal weekly column carries what the running week asks. The type's own copy is only refreshed when the
+    // figures are saved, so it falls behind once a dated change reaches its week.
+    const askedNow = resolveConfig(settings).weeklyAmount;
 
     const sheetRows = members.map((m) => {
       const row = { Name: m.name, 'Reg number': m.regNumber || '' };
       for (const t of types) {
-        row[t.name] = t.isWeekly && t.weeklyAmount > 0 ? t.weeklyAmount : '';
+        const amount = t.name === WEEKLY_TYPE_NAME ? askedNow : t.weeklyAmount;
+        row[t.name] = t.isWeekly && amount > 0 ? amount : '';
       }
       return row;
     });

@@ -2839,6 +2839,12 @@ RAISING THE WEEKLY CONTRIBUTION FROM A GIVEN WEEK (3 NOV 2026)
   tests: test/weeklyAmounts.test.js, test/integration/weeklyAmount.test.js; setupGuards.test.js updated for the
   guard on the opening amount.
 
+- Dated weekly amount, follow-up (2026-11-03, after comparing with the Heritage version). The contribution import template
+  (the legacy bulk-import sheet) now prefills the weekly column with the amount the running week asks, not the contribution
+  type's stored copy, which only refreshes when the figures are saved and so falls behind once a dated change reaches its
+  week. OPERATIONS.md has a new section 7 saying how to change the weekly contribution, take a change back, and what the
+  screen refuses. backend: controllers/contributionController.js.
+
 END OF DOCUMENT
 ===============
 
