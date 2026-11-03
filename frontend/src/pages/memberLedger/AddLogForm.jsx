@@ -208,7 +208,7 @@ export default function AddLogForm({ amount, amountRef, busy, coverArrears, data
             setNote(e.target.value);
             setDuplicate('');
           }}
-          placeholder="SK9X2Q1LMN Confirmed. Ksh1,400.00 sent to WAZO MOJA SELF-HELP GROUP on 17/9/26 at 8:04 AM."
+          placeholder="SK9X2Q1LMN Confirmed. Ksh1,500.00 sent to WAZO MOJA SELF-HELP GROUP on 17/9/26 at 8:04 AM."
           className="w-full rounded-lg border border-rule bg-canvas px-3 py-2 text-sm leading-5"
         />
       </div>

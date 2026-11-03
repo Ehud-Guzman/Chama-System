@@ -2714,6 +2714,29 @@ THE MEMBER LEDGER SHOWS THE EXPECTED FIGURE (3 NOV 2026)
 
   frontend/src/pages/FinanceMemberLedger.jsx, src/utils/linePosition.js, test/linePosition.test.js.
 
+THE GROUP'S RULE ON THE LINE, SAID PLAINLY (3 NOV 2026)
+
+  The group's rule: everybody is expected to be level with the week's line, whenever they joined. A member
+  ABOVE it who pays nothing in a week is fine; a member BELOW it who pays nothing is fined (clause 7.5).
+  The engine did not know this: a closed week with nothing paid was flagged for the fine for everybody. Now
+  (utils/memberLedger) the flag is lifted for a member at or above the line, judged by the same comparison
+  every other screen makes (what he holds now against this week's line). With the line switched off nobody
+  is covered and the flag applies to everyone, as before. The week itself still reads as missed, and the
+  arrears are unchanged; only the fine flag moves.
+
+  The member ledger says it in words for each case: below the line he must contribute every week and an empty
+  week is fined; at the line or above he is not required to contribute weekly and is not fined. The tile that
+  put a money amount under a "weeks" heading is now "Due from closed weeks"; the explanation under the tiles is
+  rewritten more plainly, and the "this figure used to read" note only appears when it differs.
+
+  The group overview now says when the members' money includes members who are no longer active ("includes
+  Ksh 138,350 still held for 1 member who is no longer active"), which is why that figure is more than what the
+  active members hold between them. utils/carriedIn reports it; it stays inside the members' total.
+
+  backend: utils/memberLedger.js, utils/carriedIn.js, controllers/overviewController.js and report/summary.js;
+  frontend: pages/FinanceMemberLedger.jsx, components/public/GroupOverview.jsx.
+  tests: test/memberLedger.test.js (three cases), test/integration/carriedIn.test.js.
+
 END OF DOCUMENT
 ===============
 

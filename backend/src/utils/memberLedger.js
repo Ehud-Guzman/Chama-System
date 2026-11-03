@@ -209,6 +209,10 @@ function computeMemberLedger({ member, contributions, config, now: requestedNow 
   // closed week with nothing paid in it is flagged for one — reported, never charged, because a fine
   // must be issued with its week, reason and calculation. A week still running is never short: its
   // Thursday has not passed.
+  //
+  // Who the flag applies to is the group's rule, applied below once his money is known: everybody is
+  // expected to be level with the week's line, so a member BELOW it who pays nothing in a week is
+  // fined, and a member at or above it, who is ahead already, is not.
   for (const w of weeks) {
     if (w.isBaseline) {
       // Nothing is expected of the opening week (its money is inside the carried-in balance), so it
@@ -275,6 +279,11 @@ function computeMemberLedger({ member, contributions, config, now: requestedNow 
   // every screen that shows the money reads `arrears` — one policy, everywhere, visibly.
   const moneyLimit = moneyLimitForWeek(config, config, currentWeek);
   const coveredByBalance = holdsAtLeastTheLine(money, moneyLimit);
+  // The group's rule: at or above the line, a week with nothing paid is not fined. Read against what he
+  // holds now and this week's line, the same comparison every other screen makes, so a member cannot be
+  // "fine" on one screen and fined on another. With the line switched off (0) nobody is covered and the
+  // flag applies to everyone, exactly as before the line existed.
+  if (coveredByBalance) for (const w of weeks) w.nillFineDue = false;
   // The figure the books showed while the week's expectation was still being
   // netted out of the held money: carried in + paid in − dues so far − tea. Kept
   // on the payload because "it has already happened" is answerable with it — a

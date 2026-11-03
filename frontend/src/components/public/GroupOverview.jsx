@@ -69,6 +69,11 @@ export default function GroupOverview({ overview }) {
   {overview.carriedInMemberBalances > 0 && (
     <> Of that, {money(overview.carriedInMemberBalances)} is the members&rsquo; own brought-forward money: it is held for them, so it sits in &ldquo;Total raised&rdquo; and in no fund below.</>
   )}
+  {overview.carriedInInactiveMembers > 0 && (
+    <> That includes {money(overview.carriedInInactiveBalances)} still held for {overview.carriedInInactiveMembers}{' '}
+    {overview.carriedInInactiveMembers === 1 ? 'member who is' : 'members who are'} no longer active, which is why it is
+    more than what the {overview.activeMembers} active members hold between them.</>
+  )}
 </p>
 
       {/* Side by side from lg. Stacked full width, every amount sat a screen away

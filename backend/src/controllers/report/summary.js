@@ -169,6 +169,8 @@ async function summary(req, res, next) {
       carriedIn: carriedIn.total,
       carriedInMemberBalances: carriedIn.memberBalances,
       carriedInFundFloats: carriedIn.fundFloats,
+      carriedInInactiveBalances: carriedIn.inactiveMemberBalances,
+      carriedInInactiveMembers: carriedIn.inactiveMembers,
       collected,
       totalExpenses,
       // Everything raised, all time, less what has been spent from

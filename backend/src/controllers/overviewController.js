@@ -136,6 +136,9 @@ async function publicOverview(req, res, next) {
       carriedIn: carriedIn.total,
       carriedInMemberBalances: carriedIn.memberBalances,
       carriedInFundFloats: carriedIn.fundFloats,
+      // How much of the members' money is held for members who are no longer active (part of the figure above).
+      carriedInInactiveBalances: carriedIn.inactiveMemberBalances,
+      carriedInInactiveMembers: carriedIn.inactiveMembers,
       collected,
       totalExpenses,
       // What the group actually holds right now: everything raised, minus

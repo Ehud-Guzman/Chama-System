@@ -534,3 +534,40 @@ test('a member who left after "now" is simply read as of now', () => {
   });
   assert.equal(ledger.weeksScored, 3);
 });
+
+// ---------------------------------------------------------------------------------------------
+// The group's rule on missed weeks: everybody is expected to be level with the week's line. Below it,
+// a week with nothing paid is fined (§7.5); at or above it he is ahead already, and is not.
+// ---------------------------------------------------------------------------------------------
+
+// Week 94 on `config` (1,400 a week, tea 100): the line is 114,600 + 2 × 1,400 = 117,400 and week 93 has
+// closed with nothing paid in it.
+const LINE_WEEK_94 = parseEatDate('2026-09-25');
+
+test('below the line, a week with nothing paid is flagged for the fine', () => {
+  const ledger = computeMemberLedger({ member: { openingBalance: 50000 }, contributions: [], config, now: LINE_WEEK_94 });
+  assert.equal(ledger.coveredByBalance, false);
+  assert.deepEqual(ledger.nillWeeksDueFine, [93]);
+  assert.equal(weekOf(ledger, 93).nillFineDue, true);
+});
+
+test('at or above the line, the same empty week carries no fine', () => {
+  const above = computeMemberLedger({ member: { openingBalance: 200000 }, contributions: [], config, now: LINE_WEEK_94 });
+  assert.equal(above.coveredByBalance, true);
+  assert.deepEqual(above.nillWeeksDueFine, []);
+  assert.equal(weekOf(above, 93).nillFineDue, false);
+  // The week itself is still the record: it was not paid, and it still reads as a week he missed.
+  assert.equal(weekOf(above, 93).status, 'nill');
+  assert.equal(above.weeksBehind, 1);
+
+  // Exactly on the line counts as at it, not below it.
+  const on = computeMemberLedger({ member: { openingBalance: above.moneyLimit + above.chai.due }, contributions: [], config, now: LINE_WEEK_94 });
+  assert.equal(on.money, above.moneyLimit);
+  assert.deepEqual(on.nillWeeksDueFine, []);
+});
+
+test('with the line switched off, the fine flag applies to everybody as it always did', () => {
+  const ledger = computeMemberLedger({ member: { openingBalance: 200000 }, contributions: [], config: configNoLine, now: LINE_WEEK_94 });
+  assert.equal(ledger.coveredByBalance, false);
+  assert.deepEqual(ledger.nillWeeksDueFine, [93]);
+});

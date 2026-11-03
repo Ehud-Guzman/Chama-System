@@ -352,9 +352,9 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
           />
         )}
         <CompactStat
-          label="Weeks that have closed"
+          label="Due from closed weeks"
           value={money(ledger.required)}
-          hint={`(expected so far: ${money(ledger.weeklyAmount)} × the ${ledger.chai.weeks} week${
+          hint={`(${money(ledger.weeklyAmount)} × ${ledger.chai.weeks} closed week${
             ledger.chai.weeks === 1 ? '' : 's'
           } — not taken off the money he holds)`}
         />
@@ -368,7 +368,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
                 : `(closed weeks still unpaid — not chased: he holds more than ${money(
                     ledger.moneyLimit
                   )})`
-              : // Just what he has given: the weekly 1,400 is the minimum each closed week asks for,
+              : // Just what he has given: the weekly contribution is the minimum each closed week asks for,
                 // not a pot, so there is nothing to call "extra" and nothing to keep a running total of.
                 '(what he has given since the books opened)'
           }
@@ -385,39 +385,62 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         {money(ledger.openingBalance)} carried in at week {data.week.cycleStartWeek} +{' '}
         {money(ledger.paid)} paid in since then − {money(ledger.chai.due)} tea
         {ledger.finesPaid > 0 ? <> − {money(ledger.finesPaid)} fines paid out of his money</> : null} ={' '}
-        <span className="amount font-semibold">{money(ledger.money)}</span> held for him. The weeks
-        that have closed ({money(ledger.required)}) are what the group expected of him, not money
-        taken off him: a week he has not paid is the {money(ledger.arrears)} he owes beside it, and
-        his held figure is what he actually handed over.
-        {(ledger.chasedArrears ?? ledger.arrears) === 0 && ledger.arrears > 0 && (
-          <>
-            {' '}
-            <span className="font-semibold">
-              He is above the {money(ledger.moneyLimit)} line, so that uncollected week is not
-              chased and he is not told he is behind
-            </span>{' '}
-            — it stays on his record and is logged whenever he brings it.
-          </>
-        )}
+        <span className="amount font-semibold">{money(ledger.money)}</span> held for him.
         {position && (
           <>
             {' '}
-            The line for week {ledger.currentWeek} is {money(position.line)}
-            {position.side === 'on'
-              ? '; he is exactly on it.'
-              : `; he holds ${money(position.held)}, which is ${money(position.distance)} ${position.side} it.`}
+            The line for week {ledger.currentWeek} is {money(position.line)}.{' '}
+            {position.side === 'below' && (
+              <span className="font-semibold">
+                He holds {money(position.held)}, which is {money(position.distance)} below it: everyone is
+                expected to be level with the line, so he must contribute every week, and a week with nothing
+                paid is fined (clause 7.5).
+              </span>
+            )}
+            {position.side === 'on' && (
+              <span className="font-semibold">
+                He holds exactly {money(position.held)}, so he is on the line and is not fined for a week
+                with nothing paid.
+              </span>
+            )}
+            {position.side === 'above' && (
+              <span className="font-semibold">
+                He holds {money(position.held)}, which is {money(position.distance)} above it: being ahead,
+                he is not required to contribute weekly and is not fined for a week with nothing paid.
+              </span>
+            )}
           </>
         )}
-        {' '}While the expectation was still being
-        deducted, this figure read{' '}
-        <span className="amount font-semibold">{money(ledger.moneyNetOfDues ?? ledger.money)}</span>{' '}
-        — the same books, with the {money(ledger.required)} shown as owed instead of taken out. Tea is{' '}
-        {money(ledger.chai.perWeek)} a week, deducted automatically from every member and paid into the
-        Group’s Tea Fund — nobody owes it and nobody pays arrears on it.
+        {' '}The weeks that have closed ({money(ledger.required)}) are what the group expected of him; they are
+        not taken off the money he holds.
+        {ledger.arrears > 0 && (
+          <>
+            {' '}A closed week he has not paid shows beside his balance as owed ({money(ledger.arrears)}).
+            {(ledger.chasedArrears ?? ledger.arrears) === 0 && (
+              <>
+                {' '}
+                <span className="font-semibold">
+                  He holds more than the {money(ledger.moneyLimit)} line, so it is not chased and he is not
+                  told he is behind
+                </span>{' '}
+                — it stays on his record and is logged whenever he brings it.
+              </>
+            )}
+          </>
+        )}
+        {ledger.required > 0 && (
+          <>
+            {' '}Before closed weeks were shown separately, this figure read{' '}
+            <span className="amount font-semibold">{money(ledger.moneyNetOfDues ?? ledger.money)}</span> (what
+            he holds less those weeks).
+          </>
+        )}
+        {' '}Tea is {money(ledger.chai.perWeek)} a week, deducted automatically from every member and paid into
+        the Group’s Tea Fund — nobody owes it and nobody pays arrears on it.
         {ledger.nillWeeksDueFine.length > 0 &&
           ` ${ledger.nillWeeksDueFine.length} closed week(s) had nothing paid in them (${ledger.nillWeeksDueFine
             .map((w) => 'W' + w)
-            .join(', ')}) — the 50 fine under clause 7.5 has not been charged.`}
+            .join(', ')}) — the 50 fine under clause 7.5 has not been charged yet.`}
       </p>
 
       {/* =====================================================
