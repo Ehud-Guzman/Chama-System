@@ -341,13 +341,13 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         />
         {position && (
           <CompactStat
-            label={`Expected by week ${ledger.currentWeek}`}
+            label="Expected"
             value={money(position.line)}
-            hint={`(the group's line, rising ${money(ledger.weeklyAmount)} a week — ${
-              position.side === 'on'
-                ? 'he is exactly on it'
-                : `he is ${money(position.distance)} ${position.side} it`
-            })`}
+            hint={`(the group's line for week ${ledger.currentWeek}, rising ${money(ledger.weeklyAmount)} a week. He holds ${money(
+              position.held
+            )} against it${
+              position.side === 'on' ? ': exactly on it)' : `: ${money(position.distance)} ${position.side} it)`
+            }`}
             accent={position.side !== 'below'}
           />
         )}
@@ -381,36 +381,45 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
         />
       </section>
 
-      <p className="rounded-xl border border-rule bg-canvas px-4 py-3 text-xs leading-5 text-muted">
+      {position && (
+        <p
+          className={`rounded-xl border px-4 py-3 text-sm leading-6 ${
+            position.side === 'below' ? 'border-alert/30 bg-alert/5' : 'border-primary/30 bg-primary/5'
+          }`}
+        >
+          {position.side === 'below' && (
+            <>
+              <span className="font-semibold">{money(position.distance)} below the line.</span> He must contribute
+              every week, and a week with nothing paid is fined (clause 7.5).
+            </>
+          )}
+          {position.side === 'on' && (
+            <>
+              <span className="font-semibold">Exactly on the line.</span> He is not fined for a week with nothing
+              paid.
+            </>
+          )}
+          {position.side === 'above' && (
+            <>
+              <span className="font-semibold">{money(position.distance)} above the line.</span> Being ahead, he is
+              not required to contribute weekly and is not fined for a week with nothing paid.
+            </>
+          )}
+        </p>
+      )}
+
+      <details className="group rounded-xl border border-rule bg-canvas">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm font-semibold">
+          The sum, in words
+          <span aria-hidden="true" className="text-muted transition-transform group-open:rotate-180">
+            ⌄
+          </span>
+        </summary>
+        <p className="border-t border-rule px-4 py-3 text-xs leading-5 text-muted">
         {money(ledger.openingBalance)} carried in at week {data.week.cycleStartWeek} +{' '}
         {money(ledger.paid)} paid in since then − {money(ledger.chai.due)} tea
         {ledger.finesPaid > 0 ? <> − {money(ledger.finesPaid)} fines paid out of his money</> : null} ={' '}
         <span className="amount font-semibold">{money(ledger.money)}</span> held for him.
-        {position && (
-          <>
-            {' '}
-            The line for week {ledger.currentWeek} is {money(position.line)}.{' '}
-            {position.side === 'below' && (
-              <span className="font-semibold">
-                He holds {money(position.held)}, which is {money(position.distance)} below it: everyone is
-                expected to be level with the line, so he must contribute every week, and a week with nothing
-                paid is fined (clause 7.5).
-              </span>
-            )}
-            {position.side === 'on' && (
-              <span className="font-semibold">
-                He holds exactly {money(position.held)}, so he is on the line and is not fined for a week
-                with nothing paid.
-              </span>
-            )}
-            {position.side === 'above' && (
-              <span className="font-semibold">
-                He holds {money(position.held)}, which is {money(position.distance)} above it: being ahead,
-                he is not required to contribute weekly and is not fined for a week with nothing paid.
-              </span>
-            )}
-          </>
-        )}
         {' '}The weeks that have closed ({money(ledger.required)}) are what the group expected of him; they are
         not taken off the money he holds.
         {ledger.arrears > 0 && (
@@ -442,6 +451,7 @@ export default function FinanceMemberLedger({ memberId, onClose, onChanged }) {
             .map((w) => 'W' + w)
             .join(', ')}) — the 50 fine under clause 7.5 has not been charged yet.`}
       </p>
+      </details>
 
       {/* =====================================================
           THE WORKING — the same figures as the tiles above, one

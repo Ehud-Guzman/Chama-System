@@ -2763,6 +2763,21 @@ THE MEMBER LEDGER'S WEEKS TABLE NO LONGER LISTS EVERY WEEK (3 NOV 2026)
   frontend/src/pages/memberLedger/LedgerEntries.jsx. Checked in a browser at phone width: 4 rows when first
   opened, the toggle shows the other 96 weeks and folds them again.
 
+THE MEMBER LEDGER'S "EXPECTED", IN THE WAY THE HERITAGE SYSTEM SHOWS IT (3 NOV 2026)
+
+  The client asked for the expected figure to look like the one in the Heritage (New Chama) system. On Finance ->
+  click a member: a plain "Expected" tile (the week's line, 125,100 in week 99) that says how it is made up and what he
+  holds against it; a short status line that is always visible and states the group's rule for his side of the line
+  (below: he must contribute every week and an empty week is fined; at or above: he is not required to and is not
+  fined); and the long explanation moved into a collapsible "The sum, in words", closed to begin with.
+
+  Heritage's own "Expected" is the cumulative dues (joining fee plus the weeks that have closed). This group's
+  expected figure is the line, as on the paper ledger's header, so the pattern is borrowed and the number is ours;
+  the tile "Due from closed weeks" next to it keeps the weekly-dues figure. The Wazo Moja palette is kept.
+
+  frontend/src/pages/FinanceMemberLedger.jsx. Checked in a browser along the route Finance -> click a member, for a
+  member below the line and one above it.
+
 END OF DOCUMENT
 ===============
 
